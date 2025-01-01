@@ -1,4 +1,4 @@
-function [Ubf,Ybf,Ucf,Ycf,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,N_peanut,L,Kf,project,Lc,opt)
+function [Ubf,Ybf,Ucf,Ycf,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,N_peanut,L,Kf,project,Lc)
 %Get SVD factorisations of the fine grid for all identified close pairs of circles.
 %Center coordinates q, global upsampling factor a_f for fine collocation
 %points, N_f fine source points (for Stokeslets), circle radii rads (only unit radius considered
@@ -10,11 +10,11 @@ function [Ubf,Ybf,Ucf,Ycf,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase
 %if N_peanut>0. L,K, used for the mobility problem. 
 
 
-if nargin<11
+if nargin<12
     N_peanut = 0; 
     L = [];
     project = 0; 
-elseif nargin < 12 
+elseif nargin < 13 
     L = [];
     project = 0; 
     Lc = []; 

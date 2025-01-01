@@ -65,7 +65,8 @@ opt.N_c = N_c;
 opt.N_f = N_f; 
 opt.rads = rads; 
 opt.s = s; 
-opt.precomp = 1; %affects how the fine grid is stored
+opt.precomp = 1; %affects how the fine grid is stored 
+%faster if evaluation of one body basis on fine grid is compted only once.
  
 %accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rg_c)^2/Rg_c;  
@@ -106,7 +107,7 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 
 
 %Get pair basis
-[UB_all,YB_all,UC_all,YC_all,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,N_peanut,Lf,Kf,1,Lc{1},opt);
+[UB_all,YB_all,UC_all,YC_all,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,N_peanut,Lf,Kf,1,Lc{1});
 
 
 %Visualise 1-body and pair-basis

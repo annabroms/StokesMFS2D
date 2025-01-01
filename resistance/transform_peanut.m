@@ -29,6 +29,7 @@ u_corr = zeros(2*N_check*P,1);
 %Store local fine grid correction (peanut compression not used locally on the pair itself)
 
 two_parts = 0; 
+precomp = opt.precomp; 
  
 
 for i = 1:P
@@ -102,28 +103,32 @@ for i = 1:P
             %U{i},Y{i}
             step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other
             tau_mapped = Y{1}*step1;
-            rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
-            %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
-            %R2 = -Nother*tau_mapped; %read off on particle 2
 
-            [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
-                real(rout_fine_other),imag(rout_fine_other),...
-                tau_mapped(1:N_c),tau_mapped(N_c+1:2*N_c),N_c);
-            R2  = -[u2; v2];
-
-            %% Do a similar thing for the other order of the particles in the pair
+           % Do a similar thing for the other order of the particles in the pair
             %U{p2}, Y{p2}
             step1 = U{1}*[tau_particle_x2;tau_particle_y2]; 
             mapped = Y{1}*step1;
 
-            rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
-            %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
-            %R1 = -Nother2*mapped; %read off on particle 1
-
-            [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
-                real(rout_fine_other),imag(rout_fine_other),...
-                mapped(1:N_c),mapped(N_c+1:2*N_c),N_c);
-            R1 = -[u1; v1];
+            if precomp || two_parts
+                %Read off coarse contribution in fine grid of other
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
+                %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
+                %R2 = -Nother*tau_mapped; %read off on particle 2
+    
+                [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+                    real(rout_fine_other),imag(rout_fine_other),...
+                    tau_mapped(1:N_c),tau_mapped(N_c+1:2*N_c),N_c);
+                R2  = -[u2; v2];
+    
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
+                %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
+                %R1 = -Nother2*mapped; %read off on particle 1
+    
+                [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+                    real(rout_fine_other),imag(rout_fine_other),...
+                    mapped(1:N_c),mapped(N_c+1:2*N_c),N_c);
+                R1 = -[u1; v1];
+            end
 
             if two_parts
                 %determine contributions from \chi_1 and \chi_2 separately
@@ -147,7 +152,12 @@ for i = 1:P
                 tau_peanut2 = YC_all{i,p2}*tau_peanut_temp;
             else
                 %... or jointly (faster)
-                rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
+                if precomp
+                    rhs = [tau_mapped(1:end/2); mapped(1:end/2); 
+                        tau_mapped(end/2+1:end); mapped(end/2+1:end)];
+                else
+                    rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];
+                end
        
                 pair_mapped = Upf{i,p2}*rhs; 
                 tau_mapped_tot = Ypf{i,p2}*pair_mapped;

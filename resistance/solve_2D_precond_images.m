@@ -76,6 +76,7 @@ opt.N_c = N_c;
 opt.N_f = N_f; 
 opt.rads = rads; 
 opt.s = s; 
+opt.precomp = 1; 
  
 %accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rg_c)^2/Rg_c;  
@@ -99,7 +100,7 @@ basic = 1; %return only the basic outer grid, else refined outer grid
 [rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
 
 %Get pair basis
-[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s);
+[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt);
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
@@ -107,6 +108,8 @@ basic = 1; %return only the basic outer grid, else refined outer grid
 
 
 %Visualise 1-body and pair-basis
+
+
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
 
 %% Construct rhs

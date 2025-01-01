@@ -8,8 +8,7 @@ function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_s
 
 P = length(q); 
 PM = length(rvec_out);
-N_large = PM/P;
-mu = 1; 
+N_large = PM/P; 
 N_coarse = opt.N_c;
 
 
@@ -38,6 +37,8 @@ tau_pot_y = cell(P);
 
 rimage_k = cell(P,1);
 nimage_k = cell(P,1);
+
+precomp = opt.precomp; 
 
  
 
@@ -184,33 +185,39 @@ for i = 1:P
                 %step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other
                 %tau_mapped = Y{1}*step1;    
                 %Already determined!
-    
-                %Read off coarse grid contribution on other particle fine grid
-                rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
-                %Nother2 = singleLayer(rbase_in_c+q(i),rout_fine_other2,mu);   
-                %R2 = -Nother2*tau_mapped; 
-
-                [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
-                real(rout_fine_other2),imag(rout_fine_other2),...
-                tau_mapped(1:N_coarse),tau_mapped(N_coarse+1:2*N_coarse),N_coarse);
-                R2  = -[u2; v2];
 
                 %Same thing with different orders for the particles in the
                 %pair
                 step1 = U{1}*[tau_particle_x2; tau_particle_y2]; 
                 mapped = Y{1}*step1;
+
+                if ~precomp    
+                    %Read off coarse grid contribution on other particle fine grid
+                    rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
+                    %Nother2 = singleLayer(rbase_in_c+q(i),rout_fine_other2,mu);   
+                    %R2 = -Nother2*tau_mapped; 
     
-                rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
-%                 Nother1 = singleLayer(rbase_in_c+q(p2),rout_fine_other1,mu);               
-%                 R1 = -Nother1*mapped;
+                    [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+                    real(rout_fine_other2),imag(rout_fine_other2),...
+                    tau_mapped(1:N_coarse),tau_mapped(N_coarse+1:2*N_coarse),N_coarse);
+                    R2  = -[u2; v2];
+    
+                    rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
+    %                 Nother1 = singleLayer(rbase_in_c+q(p2),rout_fine_other1,mu);               
+    %                 R1 = -Nother1*mapped;
+    
+                    [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+                    real(rout_fine_other1),imag(rout_fine_other1),...
+                    mapped(1:N_coarse),mapped(N_coarse+1:2*N_coarse),N_coarse);
+                    R1  = -[u1; v1];
+    
+                    coarse_to_fine_tot = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
+                    %store as x x y y 
+                else
+                    coarse_to_fine_tot = [tau_mapped(1:end/2); mapped(1:end/2); 
+                        tau_mapped(end/2+1:end); mapped(end/2+1:end)];
+                end
 
-                [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
-                real(rout_fine_other1),imag(rout_fine_other1),...
-                mapped(1:N_coarse),mapped(N_coarse+1:2*N_coarse),N_coarse);
-                R1  = -[u1; v1];
-
-                coarse_to_fine_tot = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
-                %store as x x y y 
     
                 %Take pseudoinverse of the fine representation to determine
                 %beta for BOTH \chi 1,2 and \chi 2,1.

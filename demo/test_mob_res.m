@@ -11,7 +11,7 @@ P = 5000;
 Pvec = [10 30 50 80 100 200 500 2000];
 reps = 10; %repeat experiment
 Pvec = Pvec(1:6);
-Pvec = 1000; %300; 
+Pvec = 10; %300; 
 %Pvec = 2000;
 reps = 1; 
 for k = 1:length(Pvec)
@@ -66,8 +66,8 @@ end
 
 %% If we want to determine 2-way error
 
-U = [UW(1:3:end) UW(2:3:end)]; 
-W = UW(3:3:end); 
+U = [UW3(1:3:end) UW3(2:3:end)]; 
+W = UW3(3:3:end); 
 
 %% Solve resistance only with 1-body precond
 %Converges very slowly

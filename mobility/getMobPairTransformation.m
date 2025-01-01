@@ -13,7 +13,7 @@ N_large = length(rvec_out)/P;
 PM = length(rvec_out); 
 
 two_parts = 0; 
-recompute = 0; 
+precomp = opt.precomp; 
 
 
 %map densities back
@@ -219,7 +219,7 @@ for i = 1:P
                 mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y];
 
 
-                if recompute
+                if ~precomp
                     %Read off coarse grid contribution on other particle fine
                     %grid
                     rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            

@@ -63,12 +63,14 @@ Rg_f = max([1-sep_f,0.01]);  % and fine grid
 %Rg_c = 0.01; 
 
 %To be sent to solver/matvec later
-opt.a_c = a_c; %check!
+opt.a_c = a_c; 
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
 opt.rads = rads; 
 opt.s = s; 
+opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
+% %Less storage required.
  
 %accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rg_c)^2/Rg_c;  
@@ -111,11 +113,12 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 
 %Get pair basis
 
-[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,0,Lf,Kf,1);
+[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,0,Lf,Kf,1);
 
 
 
-% Now, check pair basis up to the boundary. Is it nice and smooth? 
+% Now, check pair basis up to the boundary. Is it nice and smooth?
+%warning('Deactivate opt.precomp');
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rads)
 %% Construct chech boundaries
 %rcheck_dom = 100+100i;
