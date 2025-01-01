@@ -1,0 +1,467 @@
+function [F,T,err,it,ftest,precond] = solve_2D_precond_images(q,u,omega,rads,delta_pair,rcheck_dom,precond)
+%% SOLVE_2D_PRECOND_IMAGES(q,u,omega,rads,delta_pair,rcheckdom,precond) 
+%solves a 2D Stokes resistance problem with pair corrections. 
+% This is an MFS generalisation of the Cheng-Greengard,2000 idea. The fine grid
+%consists of a fine grid of Stokeslets enhanced with images. 
+%Applies FMM for the evaluation of Stokeslets but direct summation for
+%other source types. 
+
+%Circles centered at q \in C^P with velocities u \in R^(P x 2), omega \in R
+% R^P. Vector of radii rads (only unit circles supported so far...),
+% delta_pairs the maximum distance apart for a pair to be considered close,
+% checkpoints rcheck_dom, precond is the Krylov precond object (but
+% currently not in use)
+
+
+%% SET PARAMS
+%GMRES params
+maxit = 800; 
+%gmres_tol = 1e-6; %not enough given the residual we seek
+gmres_tol = 1e-10; 
+
+% Grid params
+P = length(q); 
+%Set coarse and fine grid. 
+
+%Play with N_c, N_f, a (a_f). 
+N_c = 50;  %100 better here? 
+N_c = 60; 
+%N_c = 100; 
+%N_c = 200; 
+N_f = 100; 
+%N_f = N_c; %debug
+%N_c = 2; 
+%N_c = 150; 
+
+%N_c = 250; 
+a_c = 1.2;
+%a_c = 2.5;
+
+
+%a_c = 5;
+%a_c = 1.2; %results in horrible fourier decay if we 
+           % evaluate on a particle close by in coarse colloc points 
+%a = 2; 
+a_f = 1.2; %upsampling factor for the fine grid
+%a = 2; 
+%a2 = 0.6; 
+%a2 = a; 
+
+% Determine separation to proxy surface.
+tol_c = 1e-12; %I think this works reasonably
+tol_c = 1e-8; %Curve moves closer to the surface -> smaller coeff 
+tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+% But smoother coarse 1-body basis to evaluate on neighbour
+
+
+s = [0 0 1 1]; %set type of singularities at image points
+%s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
+%be changed!
+
+sep_c = (1/N_c)*log(1/tol_c);
+sep_f = (1/N_f)*log(1/tol_c); %what to pick?
+
+Rg_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
+Rg_f = max([1-sep_f,0.01]);  % and fine grid
+Rg_c = 0.7;
+%Rg_f = Rg_c; %debug
+
+%Rg_c = 0.2; %debug! 
+%Rg_c = 0.01; 
+
+%To be sent to solver/matvec later
+opt.a_c = a_c; %check!
+opt.a_f = a_f; 
+opt.N_c = N_c;
+opt.N_f = N_f; 
+opt.rads = rads; 
+opt.s = s; 
+ 
+%accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
+accstop = (1-Rg_c)^2/Rg_c;  
+
+if nargin < 8
+    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
+end
+
+%% CREATE GRID
+%Outer basic grid
+tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
+tout_c = tout_c(1:end-1)';
+rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+%Inner basic grid
+tin = linspace(0,2*pi,N_c+1);
+tin = tin(1:end-1)';
+rbase_in_c = Rg_c*cos(tin)+Rg_c*1i*sin(tin); 
+
+%Construct image grid
+basic = 1; %return only the basic outer grid, else refined outer grid 
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
+
+%Get pair basis
+[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s);
+
+
+%Get one-body pseduo inverse blocks -- enough to do this for single body.
+[U,Y] = getSelfPseudo(rbase_in_c,rbase_out_c);
+
+
+%Visualise 1-body and pair-basis
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+
+%% Construct rhs
+
+%Set boundary condition for MFS. Evaluate known velocities on the coarse
+%grid of collocation points. 
+foutx = [];
+fouty = [];
+for k = 1:P
+   rhs_x = @(x) u(k,1)-omega(k)*(imag(x)-imag(q(k)));
+   rhs_y = @(x) u(k,2)+omega(k)*(real(x-q(k)));
+   foutx = [foutx; rhs_x(rout((k-1)*ceil(a_c*N_c)+1:k*ceil(a_c*N_c)))];
+   fouty = [fouty; rhs_y(rout((k-1)*ceil(a_c*N_c)+1:k*ceil(a_c*N_c)))];  
+end
+
+fout = [foutx; fouty];
+
+
+%% Construct check boundaries
+if nargin < 6
+    rcheck_dom = 100+100i; %some point far away
+end
+
+% Create new grid points, for which the accuracy of the solution is
+% to be evaluated. 
+rcheck_b = [];
+n_bound = 803;
+t = linspace(0,2*pi,n_bound)';
+for k = 1:P
+    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+end
+
+%% SOLVE SYSTEM
+% Build the matrix to check it out
+debug = 0;
+if debug
+    x = zeros(2*length(rout),1);
+    tic
+    for k = 1:2*length(rout)
+        k
+        x(:) = 0; 
+        x(k) = 1; 
+        uu = matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,pairs,Upf,Ypf,s);
+        CC(:,k) = uu;
+    end
+    toc
+    figure(13);
+    clf; 
+    imagesc(log10(abs(CC)))
+    colorbar
+    skeel(CC)
+end
+
+
+% Check older versions. Any symmetry speedups implemented? 
+
+%res = matvec_2D_pairprecond_images(x,rbase_in_c,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf)
+%res = matvec_2D_pairprecond(x,rvec_in,rvec_out,q,UU,Y,B);
+%[tau,flag,relres,it,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
+
+[tau,it,resvec,real_res] = helsing_gmres_mv(@(x) matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+debug = 1; 
+
+%With Krylov precond, do something like
+%[tau, e2, precond] = precond_gmres(@(x) matvec_2D_pairprecond_images_noacc(x,rbase_in_c,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
+%it = length(e2); 
+
+if debug
+      figure()
+%     semilogy(e2);
+      semilogy(resvec);
+      title('Convergence resistance with pair-corr','interpreter','latex')
+
+      %what's the resiudal?
+      %u = matvec_2D_pairprecond_images_noacc(tau,rbase_in_c,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf,s);
+end 
+
+%% POSTPROCESS
+[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+    rimage_vec,nimage,opt,rout,q,U,Y,pairs,Upf,Ypf);
+
+
+lambda_image = [tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
+lambda_proxy = [tau_stokes_x; tau_stokes_y]; %This is the fine density
+%And evaluate in new points rcheck_dom and rcheck_b
+
+%% Compute forces
+K = getKmat2D(rbase_in_c,0);
+FT = zeros(3*P,1); 
+for k= 1:P
+    FT((k-1)*3+1:3*k) = K'*[tau_stokes_x((k-1)*N_c+1:k*N_c); tau_stokes_y((k-1)*N_c+1:k*N_c)];
+end
+
+K = getKmat2D(rbase_in_f,0);
+has_neigh = sort(unique(pairs(:)));
+for i = 1:length(has_neigh)
+    k = has_neigh(i); 
+    FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+ K'*[tau_stokes_x((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
+        tau_stokes_y((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
+end
+
+%extract force and torque separately
+for k = 1:P
+    F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
+    T(k) = FT(3*k); 
+end
+
+
+%% Do the evaluation of the flow in check points , FMM is applied.
+ftest_b = getFMMVelocity(rvec_in,rcheck_b,...
+    tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,tau_pot_x,tau_pot_y,tau_stress_x,tau_stress_y);
+ftest = getFMMVelocity(rvec_in,rcheck_dom,...
+    tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,tau_pot_x,tau_pot_y,tau_stress_x,tau_stress_y);
+
+
+%% Compute residual at boundary
+fbound_x = ftest_b(1:length(rcheck_b));
+fbound_y = ftest_b(length(rcheck_b)+1:end);
+
+fb_x = [];
+fb_y = [];
+ 
+ 
+for k = 1:P
+    rhs_f = @(x) [u(k,1)-omega(k)*(imag(x)-imag(q(k))); u(k,2)+omega(k)*(real(x-q(k)))]; 
+    fb_true = rhs_f(rcheck_b(n_bound*(k-1)+1:n_bound*k));
+    fb_x = [fb_x; fb_true(1:n_bound)];
+    fb_y = [fb_y; fb_true(n_bound+1:end)];   
+end
+
+
+err = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
+
+%Some visualisation stuff... 
+visualise = 1; 
+if visualise
+    figure(9)
+    subplot(2,2,1)
+    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x-fbound_x)),30,log10(abs(fb_x-fbound_x)),'filled')
+    colorbar
+    axis equal
+    view(0,90)
+    grid off
+    set(gca,'xtick',[])
+    set(gca,'ytick',[])
+    title('error in x velocity')
+
+
+    subplot(2,2,2)
+    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_y-fbound_y)),30,log10(abs(fb_y-fbound_y)),'filled')
+    colorbar
+    axis equal
+    view(0,90)
+    grid off
+    set(gca,'xtick',[])
+    set(gca,'ytick',[])
+    title('error in y velocity')
+
+    % Visualise the actual velocity
+    subplot(2,2,3)
+    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x)),30,log10(abs(fb_x)),'filled')
+    colorbar
+    axis equal
+    view(0,90)
+    grid off
+    set(gca,'xtick',[])
+    set(gca,'ytick',[])
+    title('x velocity MFS')
+
+    subplot(2,2,4)
+    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
+    colorbar
+    axis equal
+    view(0,90)
+    grid off
+    set(gca,'xtick',[])
+    set(gca,'ytick',[])
+    title('x velocity reference')
+
+
+    sgtitle('Error on boundary','interpreter','latex')
+
+    % Visualise the error for x and y together
+    figure(10)
+    m = max(sqrt(fb_x.^2+fb_y.^2));
+    scatter3(real(rcheck_b),imag(rcheck_b),log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),...
+        30,log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),'filled')
+    c = colorbar;
+    axis equal
+    view(0,90)
+    grid off
+    set(gca,'xtick',[])
+    set(gca,'ytick',[])
+    ylabel(c,'Relative error in $u$ on boundary (log10)','Interpreter','latex')
+    set(c,'TickLabelInterpreter','latex')
+    set(gca,'TickLabelInterpreter','latex')
+    set(gcf,'color','w');
+    axis off
+
+    %% Visualise density
+    figure()
+    semilogy(abs([lambda_proxy;lambda_image]))
+    ylabel('Magnitude of MFS coefficients','interpreter','latex')
+    title('Pair-corr resistance')
+    % lambda_x = lambda(1:length(rin_f));
+    % lambda_y = lambda(length(rin_f)+1:2*length(rin_f));
+    % 
+    % figure(12)
+    % p = length(rin_f)/length(q);
+    % 
+    % clf; 
+    % lambda_tot = vecnorm([lambda_y lambda_x],2,2);
+    % for k = 1:length(q)
+    %     scatter(real(rin_f((k-1)*p+1:k*p)),imag(rin_f((k-1)*p+1:k*p)),...
+    %         30,log10(abs(lambda_tot((k-1)*p+1:k*p))),'filled');
+    %     hold on
+    % end
+    % %Visualise extra singularities at image points
+    % 
+    % c = colorbar;
+    % axis equal
+    % view(0,90)
+    % grid off
+    % set(gca,'xtick',[])
+    % set(gca,'ytick',[])
+    % hold on
+    % plot(real(rout),imag(rout),'k.')
+    % ylabel(c,'Magnitude of MFS coefficients. log10','interpreter','latex')
+    % set(c,'TickLabelInterpreter','latex')
+    % set(gca,'TickLabelInterpreter','latex')
+    % axis off
+    % set(gcf,'color','w');
+end
+
+end
+
+
+function doPairBasisTest(Upf,Ypf,i,p2,q,U,Y,rbase_in_c,rbase_out_f,rpair_fine)
+%Test pair basis with a smooth coarse density
+warning('Check consistency with the matvec!')
+        mu = 1; 
+
+        %generate density
+        t = linspace(0,2*pi,ceil(1.2*size(rbase_in_c,1))+1);
+        t = t(1:end-1)';
+        tau_1 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
+        tau_2 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
+
+        tau_p1_x = real(tau_1);
+        tau_p1_y = imag(tau_1); 
+        tau_p2_x = real(tau_2);
+        tau_p2_y = imag(tau_2);
+
+        figure()
+        plot(tau_p1_x);
+        hold on
+        plot(tau_p1_y);
+        plot(tau_p2_x);
+        plot(tau_p2_y);
+
+        %Get A1:
+        step1 = U{i}'*[tau_p1_x;tau_p1_y]; %here I assume x and y follow each other?
+        tau_mapped = Y{i}*step1;
+        Nother = singleLayer(rbase_in_c+q(i),rbase_out_f+q(p2),mu);
+        R1 = -Nother*tau_mapped; %not correct. Should read off on particle 2
+        block = R1(1:end/2);
+    
+        A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)]; 
+        %A1 = [tau_particle_x; zeros(size(tau_particle_x)); tau_particle_y; zeros(size(tau_particle_x))];
+        pair_mapped = Upf{i,p2}'*A2;
+
+        %pair_mapped2 = Upf{i,p2}'*A2;
+        tau_mapped = Ypf{i,p2}*pair_mapped;
+
+        %Get A2
+        step1 = U{p2}'*[tau_p2_x;tau_p2_y]; %here I assume x and y follow each other?
+        mapped = Y{p2}*step1;
+        Nother = singleLayer(rbase_in_c+q(p2),rbase_out_f+q(i),mu);
+        R1 = -Nother*mapped;
+        block = R1(1:end/2);
+        A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
+        %A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)];            
+        %A2 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
+        pair_mapped = Upf{i,p2}'*A1;
+        tau_mapped2 = Ypf{i,p2}*pair_mapped;
+
+        tau_tot = tau_mapped+tau_mapped2; 
+
+        %Now apply. Want to compute what this is exterior to the two
+        %particles in the pair
+        x = linspace(-2,5);
+        y = linspace(-2,5);
+        [X,Y] = meshgrid(x,y); 
+        rcheck = X(:)+1i*Y(:);
+        ind1 = find(abs(rcheck-q(i))<1);
+        ind2 = find(abs(rcheck-q(p2))<1);
+        ind_keep_1 = setdiff(1:size(rcheck,1),ind1);
+        ind_keep_2 = setdiff(ind_keep_1,ind2);
+        %rcheck = rcheck(ind_keep_2);
+
+        Npair = singleLayer(rpair_fine,rcheck,mu);
+        ucheck = Npair*tau_tot;
+      %  ucheck(ind1) =  nan;
+      %  ucheck(ind2) = nan; 
+        ucheck = ucheck(1:end/2)+1i*ucheck(end/2+1:end);
+        ucheck(ind1) = nan;
+        ucheck(ind2) = nan;
+
+
+        figure()
+        surfir(real(rcheck),imag(rcheck),abs(ucheck));
+        colorbar
+        axis equal
+        hold on
+        plot(real(q),imag(q),'k+')
+        view(0,90);
+
+        figure()
+        surfir(real(rcheck),imag(rcheck),log10(abs(ucheck)));
+        colorbar
+        axis equal
+        hold on
+        plot(real(q),imag(q),'k+')
+        view(0,90);
+
+        %Also, compute residuals from the solve steps above.
+        %ucheck is the velocity computed with the pair basis?
+        Npair = singleLayer(rpair_fine,[rbase_out_f+q(i); rbase_out_f+q(p2)],mu);
+        ulhs = Npair*tau_mapped;
+        urhs = A2;
+
+        ulhs2 = Npair*tau_mapped2;
+        urhs2 = A1;
+
+        norm(ulhs-A2,inf) %seems pretty accurate... 
+        norm(ulhs2-A1,inf)
+
+%         figure(10)
+%         clf;
+%         plot((A1(1:end/4)-ulhs2(1:end/4))./A1(1:end/4))
+%         hold on
+%         plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4))./A1(end/2+1:3*end/4))
+%         plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2))./A2(end/4+1:end/2))
+%         plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end))./A2(3*end/4+1:end))
+
+        figure(10)
+        clf;
+        plot((A1(1:end/4)-ulhs2(1:end/4)))
+        hold on
+        plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4)))
+        plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2)))
+        plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end)))
+
+
+end
+
+
+
