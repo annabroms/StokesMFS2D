@@ -1,4 +1,4 @@
-function [tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s,ver)
+function [tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s,ver)
 
 if nargin<10
     ver = 1; 
@@ -13,6 +13,7 @@ else
 end
  
 %assuming stresslets and potential dipoles at image
+rot = zeros(sum(pairs(:,1)),1);
 tau_stress_x = zeros(sum(pairs(:,1)),1); 
 tau_stress_y = zeros(sum(pairs(:,1)),1); 
 tau_pot_x = zeros(sum(pairs(:,1)),1); 

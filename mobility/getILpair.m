@@ -1,5 +1,18 @@
-function Lpair = getLpair(L)
-%Returns projection L for a pair of circles. 
+function ILpair = getILpair(L)
+%getILPair(L) returns projection (I-L) onto the nullspace of the
+%force/torque constraint matrix K' for a pair of circles, constructed from
+%the individual projection blocks L of each particle in the pair (assumed
+%the same for everybody).
+%
+% Description: Used for an MFS solver for the Stokes mobility in 2D
+% using pair corrections (2-body preconditioning)
+%
+% Anna Broms April 4, 2025
+
+%There are four blocks in L, xx xy, yx, yy...
+%Need to build projection for the pair the same way
+
+
 Lxx = L(1:end/2,1:end/2);
 Lxy = L(1:end/2,end/2+1:end);
 Lyx = L(end/2+1:end,1:end/2);
@@ -11,7 +24,7 @@ Axy = [-Lxy zeros(size(Lxx)); zeros(size(Lxx)) -Lxy ];
 Ayy = [eye(size(Lxx))-Lyy zeros(size(Lxx)); zeros(size(Lxx)) eye(size(Lxx))-Lyy ];
 Ayx = [-Lyx zeros(size(Lxx)); zeros(size(Lxx)) -Lyx ];
 
-Lpair = [Axx Axy; Ayx Ayy];
+ILpair = [Axx Axy; Ayx Ayy];
 
 %debug
 %     Axx2 = [Lxx zeros(size(Lxx)); zeros(size(Lxx)) Lxx ];

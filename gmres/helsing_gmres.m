@@ -1,5 +1,5 @@
-function [x,it,resvec,trueres] = helsing_gmres_mv(f,b,n,m,tol,debug,grid)
-% *** GMRES with low-threshold stagnation control ***
+function [x,it,resvec,trueres] = helsing_gmres(f,b,n,m,tol,debug,grid)
+% *** GMRES with low-threshold stagnation control taken from RCIP code of Helsing***
 if nargin < 6
     debug = 0;
 end
@@ -38,6 +38,8 @@ resvec(it) = myerr;
         
         y=triu(H(1:it,1:it))\s(1:it);             
         x=fliplr(V(:,1:it))*flipud(y);
+
+       % attempt at visualising the error
 
        %  res = f(x);
        %  err = res-b;

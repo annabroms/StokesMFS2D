@@ -1,69 +1,110 @@
-function [F,T,err,iters,ftest,lambda,rcheck_dom] = solve_2D_res(q,u,omega,rads,image)
-%% SOLVE_2D_RES(q,u,omega,rads,image) solves resistance problem with 1-body precond.
-%Circles centered at q \in C^P with velocities u \in R^(P x 2), omega \in R
-% R^P. Vector of radii rads. Image is a boolean to determine if image
-% enhancement is to be used.
+function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,visualise)
+%SOLVE_2D_RES Solves a 2D Stokes resistance problem with circular particles
+% using 1-body preconditioned MFS.
+%
+% Syntax:
+%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res(q, U, W, rads, image, visualise)
+%
+% Inputs:
+%   q         - Vector of length P, complex-valued center coordinates for the particles
+%   U         - Px2 matrix of translational velocities (columns: x and y components)
+%   W         - Px1 column vector of angular velocities
+%   rads      - Px1 vector of particle radii
+%   image     - Logical flag (true/false): use image system for higher accuracy
+%   visualise - Logical flag: plot the configuration and solution details
+%
+% Outputs:
+%   FT         - 3P×1 vector of computed net forces and torques 
+%   lambda  - Solution vector of source strengths
+%   it         - Number of GMRES iterations required using GMRES with low stagnation control (J. Helsing).
+%   gmres_tol  - Set GMRES tolerance
+%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%
+% See also:
+%   solve_precond_images - 2-body preconditioning enhanced with images for
+%                          resistance
+%   solve_precond_peanut - 2-body preconditioning with peanut compression
+%                          for resistance
+%   solve_2D_mob         - 1-body preconditioned mobility formulation
+%
+% To test, call without arguments
+%
+% Anna Broms, April 4, 2025
+
+if nargin==0, test_solve_res; 
+    return; end
+
+P = length(q);
+
+%% Checks
+
+assert(size(W,1)==P,'Wrong size of angular velocity vector')
+assert(size(U,1)==P,'Wrong size of trans vel vector')
+assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordinates')
+
+if sum(rads)~=P
+    warning('Double check radii') %in the design of image and collocation points, it's assumed all radii are 1.
+end
+
 
 %% SET PARAMS
 % GMRES PARAMS
-maxit = 1600; 
-gmres_tol = 1e-6; 
+maxit = 1600;
+gmres_tol = 1e-6;
 gmres_tol = 1e-10; %don't choose too large! It will impact the force resolution!
 
 % Params to determine grid
-a = 1.2; 
-P = length(q); 
+opt = get2Dparams(); 
+a = opt.a_c;
+opt.image = image;
 solve_xy = 1; %order system as x y x y x y if false
 if image
-    np = 60; %has been 60 all the time before
-    %np = 200; 
-    
-    %np = 100; 
+    Nc = 60; %has been 60 all the time before
+    %Nc = 200;
+
+    %Nc = 100;
     tol = 1e-12;
     %tol = 1e-17;
-    % np = 50; 
+    % Nc = 50;
     %tol = 1e-8;
     wobbly = 0; %if other shape than circle, ignore for now.
 else
-    np = 200;
-    np = 1000;
-    np = 250; 
-    
-    %np = 200; 
-    %np = 100; 
-    %np = 60; 
+    Nc = 200;
+    Nc = 1000;
+    Nc = 250;
+    Nc = 60;
     tol = 1e-14;
-    %tol = 1e-12; 
-    wobbly = 0; 
-    %tol = 1e-10; % tol her[rout,rin,rimage_vec] = get2DImageGrid(Rg,image)e should probably be larger to allow for smaller coefficients, which in turn will improve on the GMRES convergence 
-    %tol = 1e-14;
-    %tol = 1e-5;
-    %tol = 1e-9;
+    tol = 1e-12;
+    wobbly = 0; %other particle shapes...
+    %tol = 1e-10; % tol her should probably be larger to allow for smaller coefficients, which in turn will improve on the GMRES convergence
 end
 
-%% Set grid
+
 %tol = 1e-12;
-sep = (1/np)*log(1/tol);
+sep = (1/Nc)*log(1/tol);
 
-%Rg = 0.9; /(a1+a2+d);
-Rg = max([1-sep,0.01]); %radius of proxy surface
-%Rg = 0.8;
+Rp = max([1-sep,0.01]); %radius of proxy surface
+%Rp = 0.8;
+opt.Rp_c = Rp;
+opt.N_c = Nc;
+opt.pc = 0; %no pair correction
 
-%solve with Stresslets + Potential dipoles
-s = [0 0 1 1];
+%solve with Stresslets + Potential dipoles at image points
+s = [0 0 1 1]; % s = [S R T D]
+opt.s = s; 
 mu = 1; %viscosity
 
-visualise = 1; 
+%% GET GRIDS AND VISUALISE
+%get grids
+[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
 
-[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,Rg,a,np, image);
+%Check coeff magnitude and residual if we solve with a single SVD.
 
-% rout = rout(1:end/2);
-% rin = rin(1:end/2);
-% rimage = rimage(1:end/2);
-% nimage = nimage(1:end/2); 
-% pair_points = pair_points(1,:); 
-% q = q(1); 
-% P = 1; 
+% Nim = getImageKernels2D(rimage,nimage,rout,1,s);
+% N = singleLayer(rin,rout,1);
+%
+% Ntot = [N Nim];
+% [Ytot,Btot]  = getPseudoFactors(Ntot,1e-8,1);
 
 
 if visualise
@@ -77,10 +118,10 @@ if visualise
     axis equal
 end
 
-% Create new grid points for checking residual, for which the accuracy of the solution is
-% to be evaluated. 
+% Create new grid points, in which the accuracy of the solution is
+% to be evaluated.
 rcheck_b = [];
-n_bound = 803;
+n_bound = 1300;
 
 if wobbly
     %ONLY WITHOUT IMAGE POINTS (ignore for now)
@@ -89,39 +130,39 @@ if wobbly
     a = 0.15;
     a = 0.1;
     r0 = 1;
-    nout = 200*2; 
+    nout = 200*2;
     tout = linspace(0,2*pi,nout+1);
-    rout = []; 
+    rout = [];
     rin = [];
-    np = 200; 
+    Nc = 200;
     sep = 0.2; %0.25 worked well
     for k = 1:size(q,1)
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),nout,q(k));  
-        theta = pi*rand(1); 
+        s = wobblycurve(r0-a,a,w(mod(k,3)+1),nout,q(k));
+        theta = pi*rand(1);
         %theta = pi/3;
         x = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
         rout = [rout; x(1,:)'+1i*x(2,:)'+q(k)];
         %create inner points
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),np,q(k)); 
-        
+        s = wobblycurve(r0-a,a,w(mod(k,3)+1),Nc,q(k));
+
         y = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
         nx = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.nx)'; imag(s.nx)'];
         y = y(1,:)'+1i*y(2,:)'+q(k);
         nx = nx(1,:)'+1i*nx(2,:)';
         x = y-sep*s.sp.*nx;
-        rin = [rin; x]; 
+        rin = [rin; x];
         n_part(k) = nout;
-        pair_points(k,2) = nout; 
-        
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),n_bound,q(k)); 
+        pair_points(k,2) = nout;
+
+        s = wobblycurve(r0-a,a,w(mod(k,3)+1),n_bound,q(k));
         x = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
-        rcheck_b = [rcheck_b; x(1,:)'+1i*x(2,:)'+q(k)]; 
+        rcheck_b = [rcheck_b; x(1,:)'+1i*x(2,:)'+q(k)];
     end
 
-    
+
     if visualise
         figure()
-        plot(real(rout),imag(rout),'b.'); 
+        plot(real(rout),imag(rout),'b.');
         hold on
         plot(real(rin),imag(rin),'r.');
         axis equal
@@ -133,40 +174,7 @@ else
     end
 end
 
-%% Construct boundary conditions
-%Set boundary condition for MFS.
-fout = [];
-fb = []; 
-start = 1;
-for k = 1:P
-   
-   %fout = [fout; rhs_f(rout(nout*(k-1)+1:nout*k))];
-   stop = sum(pair_points(1:k,2));
-   if solve_xy
-       rhs_f = @(x) [u(k,1)-omega(k)*(imag(x)-imag(q(k))); u(k,2)+omega(k)*(real(x-q(k)))]; 
-       fout = [fout; rhs_f(rout(start:stop))];
-
-       %test
-       %K = getKmat2D(rout(start:stop),q(k));
-       %uu = K*[u(k,:) omega(k)]';
-
-   else
-       rhs_f = @(x) [u(k,1)-omega(k)*(imag(x)-imag(q(k))) u(k,2)+omega(k)*(real(x-q(k)))]; 
-       fout_temp = rhs_f(rout(start:stop))';
-       fout = [fout; fout_temp(:)];
-
-       fb_true = rhs_f(rcheck_b(n_bound*(k-1)+1:n_bound*k))';
-       fb = [fb; fb_true(:)];
-       
-   end
-
-
-   start = stop+1; 
-
-end
-
-
-%Construct chech boundaries
+%Construct check boundaries
 rcheck_dom = 100+100i;
 
 tt = linspace(0,2*pi)';
@@ -182,28 +190,51 @@ rcheck_dom = 8*cos(tt)+8*1i*sin(tt);
 %     end
 % end
 
+%% PREPARE PRECONDITIONING AND RHS
+%Set boundary condition for MFS.
+fout = [];
+fb = [];
+start = 1;
+for k = 1:P
+
+   %fout = [fout; rhs_f(rout(nout*(k-1)+1:nout*k))];
+   stop = sum(pair_points(1:k,2));
+   if solve_xy
+       rhs_f = @(x) [U(k,1)-W(k)*(imag(x)-imag(q(k))); U(k,2)+W(k)*(real(x-q(k)))];
+       fout = [fout; rhs_f(rout(start:stop))];
+
+       %test
+       %K = getKmat2D(rout(start:stop),q(k));
+       %uu = K*[U(k,:) W(k)]';
+
+   else
+       rhs_f = @(x) [U(k,1)-W(k)*(imag(x)-imag(q(k))) U(k,2)+W(k)*(real(x-q(k)))];
+       fout_temp = rhs_f(rout(start:stop))';
+       fout = [fout; fout_temp(:)];
+
+       fb_true = rhs_f(rcheck_b(n_bound*(k-1)+1:n_bound*k))';
+       fb = [fb; fb_true(:)];
+
+   end
 
 
-% Compute pseodoinverse for single particle
+   start = stop+1;
 
-[Uii,Yii] = getSelfPseudo(rin,rout,rimage,nimage,P,pair_points,solve_xy,s);
-
-
-%% Solve the system 
+end
 
 %If order unknowns with first x, then y instead of x y x y etc
 if solve_xy
     %Rearrange the rhs
     start = 1;
-    foutx = []; fouty = []; 
+    foutx = []; fouty = [];
     for k = 1:P
        stop = start+2*pair_points(k,2)-1;
        foutx = [foutx; fout(start:start+(stop-1-start)/2)];
        fouty = [fouty; fout(start+(stop-1-start)/2+1:stop)];
-        
-    
-       start = stop+1; 
-    
+
+
+       start = stop+1;
+
     end
     fout = [foutx; fouty];
 else
@@ -211,42 +242,47 @@ else
 end
 
 
-%x = rand(size(fout));
+% Compute pseodoinverse for single particle
 
-%res = matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs);
+[Uii,Yii] = getSelfPseudo(P,rin,rout,rimage,nimage,pair_points,s);
 
-% Compute a solution with GMRES
+%% Solve the system
+
+% Compute a solution using GMRES with Krylov preconditioning
 %precond = KrylovPrecond();
-
 %now, try to limit the number of iters for the preconditioner. Does
 %that help?
 % [x_gmres, e2, precond] = precond_gmres(@(x) matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,1);
-%it = length(e2); 
+%it = length(e2);
 %fprintf("iterations = %d\n", length(e2))
-[x_gmres,iters,resvec,real_res] = helsing_gmres_mv(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
-% [x,flag,relres,iter,resvec] = gmres(@(x) matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout,[],gmres_tol,500);
-
-
 %delete precond
 
-P = length(q); 
-N_small = size(rin,1)/P;
+% GMRES with low stagnation control (J.Helsing). 
+[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+% [x,flag,relres,iter,resvec] = gmres(@(x) matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout,[],gmres_tol,500);
+
+% Decay of residual with iteration number
+figure()
+semilogy(resvec)
+title('GMRES convergence resistance, 1-body precond', 'Interpreter','latex')
+xlabel('Iteration number','interpreter','latex')
+
 PM = length(rout);
 
 if solve_xy
-    [tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(x_gmres,rimage,Uii,Yii,P,N_small,PM,pair_points,s);
-    
+    [tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(x_gmres,rimage,Uii,Yii,P,Nc,PM,pair_points,s);
+
     tau_proxy = [tau_stokes_x; tau_stokes_y];
-    tau_image = [tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
-    
+    tau_image = [rot;tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
+
     lambda = [tau_proxy; tau_image];
 end
 
 %And evaluate in new points rcheck_dom and rcheck_b
 
-%% Do the evaluation of the flow in check points with fmm 
-ftest_b = getFMMVelocity(rin,rcheck_b,tau_stokes_x,tau_stokes_y,rimage,nimage,tau_pot_x, tau_pot_y,tau_stress_x,tau_stress_y);
-ftest = getFMMVelocity(rin,rcheck_dom,tau_stokes_x,tau_stokes_y,rimage,nimage,tau_pot_x, tau_pot_y,tau_stress_x,tau_stress_y);
+%% Do the evaluation of the flow in check points  rot,stress_x,stress_y,pot_x,pot_y
+ftest_b = getVelocityField(rin,rcheck_b,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,tau_stress_x,tau_stress_y,tau_pot_x, tau_pot_y);
+ftest = getVelocityField(rin,rcheck_dom,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,tau_stress_x,tau_stress_y,tau_pot_x, tau_pot_y);
 
 %% Compute relative residual
 fbound_x = ftest_b(1:length(rcheck_b));
@@ -255,84 +291,85 @@ fbound_y = ftest_b(length(rcheck_b)+1:end);
 
 fb_x = [];
 fb_y = [];
- 
+
 
 for k = 1:P
-    rhs_f = @(x) [u(k,1)-omega(k)*(imag(x)-imag(q(k))); u(k,2)+omega(k)*(real(x-q(k)))]; 
+    rhs_f = @(x) [U(k,1)-W(k)*(imag(x)-imag(q(k))); U(k,2)+W(k)*(real(x-q(k)))];
     fb_true = rhs_f(rcheck_b(n_bound*(k-1)+1:n_bound*k));
     fb_x = [fb_x; fb_true(1:n_bound)];
-    fb_y = [fb_y; fb_true(n_bound+1:end)];   
+    fb_y = [fb_y; fb_true(n_bound+1:end)];
 end
-err = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
+maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
 
 
-%% Get force and torque 
+%% Get force and torque
+Kin = getKmat2D(rin(1:Nc),q(1));
+
 for k = 1:P
-    lambda_x = lambda(1:end/2);
-    lambda_y = lambda(end/2+1:end);
-    F1(k) = sum(tau_stokes_x((k-1)*np+1:k*np));
-    F2(k) = sum(tau_stokes_y((k-1)*np+1:k*np));
-    T(k) = sum(-tau_stokes_x((k-1)*np+1:k*np).*imag(rin((k-1)*np+1:k*np)-q(k)) + ...
-      tau_stokes_y((k-1)*np+1:k*np).*real(rin((k-1)*np+1:k*np)-q(k)));
+    lambda_x = tau_stokes_x((k-1)*Nc+1:k*Nc);
+    lambda_y = tau_stokes_y((k-1)*Nc+1:k*Nc);
+%     F1(k) = sum(tau_stokes_x((k-1)*Nc+1:k*Nc));
+%     F2(k) = sum(tau_stokes_y((k-1)*Nc+1:k*Nc));
+%     T(k) = sum(-tau_stokes_x((k-1)*Nc+1:k*Nc).*imag(rin((k-1)*Nc+1:k*Nc)-q(k)) + ...
+%         tau_stokes_y((k-1)*Nc+1:k*Nc).*real(rin((k-1)*Nc+1:k*Nc)-q(k)));
+    
+    %Same thing:
+    FT((k-1)*3+1:k*3) = Kin'*[lambda_x; lambda_y];
+
 end
-F = F1+1i*F2;
+%F = F1+1i*F2;
 
-
-
-
-visualise = 0; 
 if visualise
-    figure(9)
-    subplot(2,2,1)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x+fbound_x)),30,log10(abs(fb_x+fbound_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('error in x velocity')
-
-
-    subplot(2,2,2)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_y+fbound_y)),30,log10(abs(fb_y+fbound_y)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('error in y velocity')
-
-    % Visualise the actual velocity
-    subplot(2,2,3)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x)),30,log10(abs(fb_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('x velocity MFS')
-
-    subplot(2,2,4)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('x velocity reference')
-
-
-    sgtitle('Error on boundary','interpreter','latex')
+    %visualise velocity and error component wise
+%     figure(9)
+%     subplot(2,2,1)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x-fbound_x)),30,log10(abs(fb_x-fbound_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('error in x velocity')
+% 
+% 
+%     subplot(2,2,2)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_y-fbound_y)),30,log10(abs(fb_y-fbound_y)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('error in y velocity')
+% 
+%     % Visualise the actual velocity
+%     subplot(2,2,3)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x)),30,log10(abs(fb_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('x velocity MFS')
+% 
+%     subplot(2,2,4)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('x velocity reference')
+%     sgtitle('Error on boundary','interpreter','latex')
 
     % Visualise the error for x and y together
-    figure(10)
+    figure()
     m = max(sqrt(fb_x.^2+fb_y.^2));
-    scatter3(real(rcheck_b),imag(rcheck_b),log10((sqrt((fb_x+fbound_x).^2+(fb_y+fbound_y).^2))./m),...
-        10,log10((sqrt((fb_x+fbound_x).^2+(fb_y+fbound_y).^2))./m),'filled')
+    scatter3(real(rcheck_b),imag(rcheck_b),log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),...
+        10,log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),'filled')
     axis equal
     view(0,90)
     grid off
@@ -344,6 +381,7 @@ if visualise
     set(gca,'TickLabelInterpreter','latex')
     set(gcf,'color','w');
     axis off
+    title('1 body precond resistance')
 
     %% Visualise density
     lambda_x = lambda(1:length(rin));
@@ -351,19 +389,16 @@ if visualise
 
     lambda_image = lambda(2*length(rin)+1:end);
 
-    figure(12)
-    p = length(rin)/length(q);
-
-    clf; 
+    figure()
+    clf;
     lambda_tot = vecnorm([lambda_y lambda_x],2,2);
     for k = 1:length(q)
-        scatter(real(rin((k-1)*p+1:k*p)),imag(rin((k-1)*p+1:k*p)),...
-            20,log10(abs(lambda_tot((k-1)*p+1:k*p))),'filled');
+        scatter(real(rin((k-1)*Nc+1:k*Nc)),imag(rin((k-1)*Nc+1:k*Nc)),...
+            20,log10(abs(lambda_tot((k-1)*Nc+1:k*Nc))),'filled');
         hold on
     end
     %Visualise extra singularities at image points
     if size(rimage,1)
-        i
         lambda_image_1 = lambda_image(1:end/2);
         lambda_image_2 = lambda_image(end/2+1:end);
         lambda_image_x1 = lambda_image_1(1:end/2);
@@ -372,14 +407,14 @@ if visualise
         lambda_image_y2 = lambda_image_2(end/2+1:end);
         lambda_tot1 = vecnorm([lambda_image_x1 lambda_image_y1],2,2);
         lambda_tot2 = vecnorm([lambda_image_x2 lambda_image_y2],2,2);
-       
+
         %scatter(real(rimage),imag(rimage),30,log10(abs(lambda_tot1)),'filled');
         %scatter(real(rimage-0.01i),imag(rimage-0.01i),30,log10(abs(lambda_tot2)),'filled');
 %         else
 %             scatter(real(0.9*(rimage-center)+center),imag(0.9*(rimage-center)+center),...
 %             30,log10(abs(lambda_tot)),'filled');
 %         end
-    
+
 
     end
     c = colorbar;
@@ -396,7 +431,31 @@ if visualise
     set(gca,'TickLabelInterpreter','latex')
     axis off
     set(gcf,'color','w');
-    
+    title('1-body precond resistance')
+
 end
+
+end
+
+function test_solve_res
+
+close all; 
+images = 0; %images not needed for well separated particles
+q = [0; 2.01]; %center coordinates
+U = [1 0; 0 0]; %translational velocities 
+W = [1; 1]; %angular velocities 
+rads = [1; 1]; 
+visualise = 1; 
+[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,visualise);
+
+%compare to a solution with image enhancement
+images = 1; 
+[FT,lambda, it, gmres_tol, err_im] = solve_2D_res(q,U,W,rads,images,visualise);
+
+str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
+disp(str)
+alignfigs; 
+
+
 
 end

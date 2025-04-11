@@ -1,4 +1,4 @@
-function [tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr] = transform_mob_peanut(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck_out,q,U,Y,Lc,pairs,Upf,Ypf,DC_all, YC_all,Lc_pair,Lf_pair)
+function [tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr] = transform_mob_peanut(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck_out,q,U,Y,Lc,pairs,Upf,Ypf,DC_all, YC_all,Cmap,Lc_pair,Lf_pair)
 %Transform coarse \mu -> coarse \lambda using peanut compression, to be
 %used in mobility matvec. 
                                                                               
@@ -149,9 +149,14 @@ for i = 1:P
 
             %now we have beta. Lets do peanut compression from
             %here
+            
+            if opt.cmap
+                tau_peanut_ntot = Cmap{i,p2}*rhs;
+            else
+                tau_peanut_temp = DC_all{i,p2}*tau_mapped_tot;
+                tau_peanut_ntot = YC_all{i,p2}*tau_peanut_temp;
+            end
 
-            tau_peanut_temp = DC_all{i,p2}*tau_mapped_tot;
-            tau_peanut_ntot = YC_all{i,p2}*tau_peanut_temp;
 
             tau_peanut_tot= Lc_pair*tau_peanut_ntot; 
 

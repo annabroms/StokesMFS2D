@@ -1,6 +1,14 @@
-function zmap = create_peanut(q1,q2,Np,debug)
-%CREATE_PEANUT(q1,q2,Np,debug) constructs a discretisation of Np points on
-%a peanut enclosing the two circular particles centered at q1, q2. 
+function z = createPeanut(q1,q2,Np,debug)
+%CREATEPEANUT creates discretisation of separation surface for two circular particles
+%
+% Syntax: z = createPeanut(q1,q2,Np,debug)
+%
+% Input: 
+% q1    - Complex valued center coordinate of circle 1
+% q2    - Complex valued center coordinate of circle 2
+% Np    - Number of discrete points on peanut 
+% debug - Boolean to draw peanut
+%
 
 delta = abs(q1-q2)-2;
 theta = acos(real(q2-q1)/(2+delta));
@@ -24,12 +32,12 @@ alpha = acos((2+delta)/4);
 % %t4 = pi+alpha+h2:h2:2*pi-alpha;
 % t4 = linspace(pi+alpha+h1,2*pi-alpha-h1,Np/4);
 
-%%
-%h1 = (2*pi-2*alpha)/(3*Np)/8; %disc on particle curve 1
+%% The peanut consists of four segments
+%h1 = (2*pi-2*alpha)/(3*Np)/8; %disc of particle curve 1
 %t1 = alpha:h1:2*pi-alpha;
 t1 = linspace(alpha,2*pi-alpha,3*Np/8);
 %t2 = pi+alpha:h1:3*pi-alpha;
-t2 = linspace(pi+alpha,3*pi-alpha,3*Np/8); %disc on particle curve 2
+t2 = linspace(pi+alpha,3*pi-alpha,3*Np/8); %disc of particle curve 2
 %t1 = pi; %debugging
 %t2 = 0;
 %warning('Only two points')
@@ -49,14 +57,6 @@ z2 = 2+delta+cos(t2)+1i*sin(t2);
 z3 = 1+delta/2+cos(t3)+(-2*sin(alpha)+sin(t3))*1i;
 z4 = 1+delta/2+cos(t4)+(2*sin(alpha)+sin(t4))*1i;
 
-% %debug
-% z1 = -1;
-% z2 = 3+delta; 
-% 
-% b = 0;
-% z1 = z1-b;
-% z2 = z2+b; 
-
 z = [z1 z2 z3 z4];
 %z = [z1 z2];
 
@@ -66,7 +66,7 @@ zmap = R*[real(z); imag(z)];
 
 zmap = zmap(1,:)'+1i*zmap(2,:)'; 
 
-zmap = zmap-mean(zmap)+mean([q1,q2]);
+z = zmap-mean(zmap)+mean([q1,q2]);
 
 
 if debug
@@ -80,8 +80,10 @@ if debug
     plot(real(z4),imag(z4),'cs--');
     axis equal
     
-    subplot(1,2,2)
-    plot(real(zmap),imag(zmap),'.')
+    %subplot(1,2,2)
+    figure(2)
+    magenta = [0.8, 0.0, 0.8];
+    plot(real(z),imag(z),'.','Color',magenta)
     axis equal
 end
 

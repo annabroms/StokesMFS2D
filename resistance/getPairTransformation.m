@@ -1,4 +1,4 @@
-function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf)
 %GETPAIRTRANSFORMATION maps data at coarse collocation nodes back to coarse and fine source
 %strengths, in preparation for the resistance matvec.
@@ -37,6 +37,9 @@ tau_pot_y = cell(P);
 
 rimage_k = cell(P,1);
 nimage_k = cell(P,1);
+
+u_corr = zeros(2*PM,1); 
+%Store local fine grid correction
 
 precomp = opt.precomp; 
 
@@ -223,6 +226,71 @@ for i = 1:P
                 %beta for BOTH \chi 1,2 and \chi 2,1.
                 pair_mapped = Upf{i,p2}*coarse_to_fine_tot; 
                 beta_tot = Ypf{i,p2}*pair_mapped; 
+
+  
+                %% Evaluate flow field on the pair itself
+                % Should be computed with the fine grid on the pair
+                rout_pair = [rvec_out((i-1)*N_large+1:i*N_large,:); rvec_out((p2-1)*N_large+1:p2*N_large,:)];
+                       
+                rimage = [rimage_vec{i,p2}; rimage_vec{p2,i}];
+                nimage_pair = [nimage{i,p2}; nimage{p2,i}];
+            
+            
+
+                if two_parts 
+                    % Build matrices explicitly -> slower! 
+                    N_pair = singleLayer([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
+                    if size(rimage,1)
+                        N_image = getImageKernels2D(rimage,nimage_pair,rout_pair,mu,s);
+                    else
+                        N_image = [];
+                    end            
+   
+                    u_pair = [N_pair N_image]*[tau_mapped+ tau_mapped2];
+                else
+                    %Avoid constructing matrices explicitly. 
+                    rim = length(rimage);
+                    
+                    %get contribution from image points 
+                    u_stress = getStresslets(beta_tot(4*opt.N_f+1:4*opt.N_f+rim),...
+                        beta_tot(4*opt.N_f+1+rim:4*opt.N_f+2*rim),rimage,...
+                        rout_pair,real(nimage_pair),imag(nimage_pair));
+    
+                    u_pot = getPotdip(beta_tot(4*opt.N_f+1+2*rim:4*opt.N_f+3*rim),...
+                        beta_tot(4*opt.N_f+1+3*rim:4*opt.N_f+4*rim),rimage,rout_pair);
+    
+                    %... and from fine grid of Stokeslets 
+                    rin_pair = [rbase_in_f+q(i); rbase_in_f+q(p2)];
+    
+                    [u1,v1] = StokesletDirect(real(rin_pair),imag(rin_pair),...
+                        real(rout_pair),imag(rout_pair),...
+                        beta_tot(1:2*opt.N_f),beta_tot(2*opt.N_f+1:4*opt.N_f),2*opt.N_f);
+                    u_stok = [u1; v1];
+                    u_pair = u_stress+u_pot+u_stok;
+    
+                    
+                end
+                ind1x = (i-1)*N_large+1:i*N_large;
+                ind2x =  (p2-1)*N_large+1:p2*N_large;
+                ind1y = (i-1)*N_large+PM+1:i*N_large+PM;
+                ind2y = (p2-1)*N_large+PM+1:p2*N_large+PM;
+                pair_ind = [ind1x ind2x ind1y ind2y]'; 
+
+                u_corr(pair_ind) = u_corr(pair_ind)+u_pair; 
+               
+
+                %also subtract self-interaction on other.
+                N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+                u2 = N2*tau_mapped;
+
+                N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+                u1 = N1*mapped; 
+
+                u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);
+                u_corr(ind2x) = u_corr(ind2x)+u2(1:end/2);
+                u_corr(ind1y) = u_corr(ind1y)+u1(end/2+1:end);
+                u_corr(ind2y) = u_corr(ind2y)+u2(end/2+1:end);
+                
 
                 %Store source strengths for later evaluation.
                 if isempty(tau_stokes_fine_x{i})

@@ -1,21 +1,13 @@
 function u = getPotdip(lambda_x,lambda_y,x,y)
-%GETPOTDIP(lambda_x,lambda_y,x,y) returns flow field from potential dipole
+%GETPOTDIP(lambda_x,lambda_y,x,y) returns flow field evaluated at y from
+%potential dipoles located at x with strengths lambda_x, lambda_y
 
-
+% Loop over targets
 % r = bsxfun(@minus, y, x.'); 
 % irr = 1./(conj(r).*r); %1/r^2
 % %irr_b = 1./abs(r).^2; %same thing
 % irrrr = irr.*irr;
 % d1 = real(r); d2 = imag(r); 
- 
-
-c = 1/(2*pi);
-
-N = length(lambda_x);
-M = numel(y(:));
-u1 = zeros(M,1);
-u2 = zeros(M,1);
-
 
 % for k = 1:M
 %             
@@ -30,6 +22,14 @@ u2 = zeros(M,1);
 %     u1(k) = sum((-irr+2*d1.^2.*irrrr).*lambda_x+A12);
 %     u2(k) = sum((-irr+2*d2.^2.*irrrr).*lambda_y+A21);
 % end
+ 
+% Faster to loop over sources.
+c = 1/(2*pi);
+
+N = length(lambda_x);
+M = numel(y(:));
+u1 = zeros(M,1);
+u2 = zeros(M,1);
 
 for k = 1:N
             

@@ -1,4 +1,4 @@
-function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,Lc,Lf,pairs,Upf,Ypf)
 %GETPAIRTRANSFORMATION maps data at coarse collocation nodes back to coarse and fine source
 %strengths, in preparation for the mobility matvec. This is very similar to
@@ -29,6 +29,8 @@ rvec_in = [];
 rimage_in = []; 
 nimage_in = []; 
 
+
+
 coarse_ind = cell(P,1); 
 tau_stokes_fine_x = cell(P,1); 
 tau_stokes_fine_y = cell(P,1); 
@@ -44,6 +46,9 @@ tau_pot_y = cell(P);
 
 rimage_k = cell(P,1);
 nimage_k = cell(P,1);
+
+u_corr = zeros(2*PM,1); 
+%Store local fine grid correction
 
 
 for i = 1:P
@@ -64,30 +69,27 @@ for i = 1:P
     %if isempty(neigh) %has no neighbours 
     step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other?
     tau_mapped = Y{1}*step1; %this is the mapped density for this particle to throw in to the kernel
-%         tau_stokes_x((i-1)*N_small+1:i*N_small) = tau_mapped(1:N_small);
-%         tau_stokes_y((i-1)*N_small+1:i*N_small) = tau_mapped(N_small+1:2*N_small);
     
     %check residual for the self-interaction only
     %NN = singleLayer(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
     %disp('Self-interaction error')
     %norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
     %norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
-    %norm(tau_mapped,inf)
+    %norm(tau_mapped,inf) %large magnitude?
+
     tau_stokes_nonpx = [tau_stokes_nonpx; tau_mapped(1:N_coarse)];
     tau_stokes_nonpy = [tau_stokes_nonpy; tau_mapped(N_coarse+1:end)];
 
     start_ind = size(tau_stokes_x,1);   
-    %if solve
-        tau_i_x = tau_mapped(1:N_coarse);
-        tau_i_y = tau_mapped(N_coarse+1:end);
-        tau_mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
-    %end
+    
+    tau_i_x = tau_mapped(1:N_coarse);
+    tau_i_y = tau_mapped(N_coarse+1:end);
+    tau_mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
+    
 
     %debug mode to comment out here
     tau_stokes_x = [tau_stokes_x; tau_mapped(1:N_coarse)];
     tau_stokes_y = [tau_stokes_y; tau_mapped(N_coarse+1:end)];
-    %tau_stokes_x = [tau_stokes_x; tau_stokes(1:end/2)]; %same thing!
-    %tau_stokes_y = [tau_stokes_y; tau_stokes(end/2+1:end)];
 
     %store indices to later subtract self-interaction blocks in the matvec
     coarse_ind{i} = start_ind+1:start_ind+N_coarse; 
@@ -272,6 +274,73 @@ for i = 1:P
 
             tau_mapped_proj_i = [tau_mapped_tot_xi;tau_mapped_tot_yi]-Lf*[tau_mapped_tot_xi;tau_mapped_tot_yi];
             tau_mapped_proj_p2 = [tau_mapped_tot_xp2;tau_mapped_tot_yp2]-Lf*[tau_mapped_tot_xp2;tau_mapped_tot_yp2];
+
+            %% Evaluate flow field on the pair itself
+            % Should be computed with the fine grid on the pair
+            rout_pair = [rvec_out((i-1)*N_large+1:i*N_large,:); rvec_out((p2-1)*N_large+1:p2*N_large,:)];
+                   
+            rimage = [rimage_vec{i,p2}; rimage_vec{p2,i}];
+            nimage_pair = [nimage{i,p2}; nimage{p2,i}];
+        
+        
+
+            if two_parts 
+                % Build matrices explicitly -> slower! 
+                N_pair = singleLayer([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
+                if size(rimage,1)
+                    N_image = getImageKernels2D(rimage,nimage_pair,rout_pair,mu,s);
+                else
+                    N_image = [];
+                end            
+
+                u_pair = [N_pair N_image]*[tau_mapped+ tau_mapped2];
+            else
+                %Avoid constructing matrices explicitly. 
+                rim = length(rimage);
+                
+                %get contribution from image points 
+                u_stress = getStresslets(beta_tot(4*opt.N_f+1:4*opt.N_f+rim),...
+                    beta_tot(4*opt.N_f+1+rim:4*opt.N_f+2*rim),rimage,...
+                    rout_pair,real(nimage_pair),imag(nimage_pair));
+
+                u_pot = getPotdip(beta_tot(4*opt.N_f+1+2*rim:4*opt.N_f+3*rim),...
+                    beta_tot(4*opt.N_f+1+3*rim:4*opt.N_f+4*rim),rimage,rout_pair);
+
+                %... and from fine grid of Stokeslets 
+                rin_pair = [rbase_in_f+q(i); rbase_in_f+q(p2)];
+
+%                 [u1,v1] = StokesletDirect(real(rin_pair),imag(rin_pair),...
+%                     real(rout_pair),imag(rout_pair),...
+%                     beta_tot(1:2*opt.N_f),beta_tot(2*opt.N_f+1:4*opt.N_f),2*opt.N_f);
+                [u1,v1] = StokesletDirect(real(rin_pair),imag(rin_pair),...
+                    real(rout_pair),imag(rout_pair),...
+                    [tau_mapped_proj_i(1:end/2); tau_mapped_proj_p2(1:end/2)],...
+                    [tau_mapped_proj_i(end/2+1:end); tau_mapped_proj_p2(end/2+1:end)],2*opt.N_f);
+                u_stok = [u1; v1];
+                u_pair = u_stress+u_pot+u_stok;
+
+                
+            end
+            ind1x = (i-1)*N_large+1:i*N_large;
+            ind2x =  (p2-1)*N_large+1:p2*N_large;
+            ind1y = (i-1)*N_large+PM+1:i*N_large+PM;
+            ind2y = (p2-1)*N_large+PM+1:p2*N_large+PM;
+            pair_ind = [ind1x ind2x ind1y ind2y]'; 
+
+            u_corr(pair_ind) = u_corr(pair_ind)+u_pair; 
+           
+
+            %also subtract self-interaction on other.
+            N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+            u2 = N2*tau_mapped;
+
+            N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+            u1 = N1*mapped; 
+
+            u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);
+            u_corr(ind2x) = u_corr(ind2x)+u2(1:end/2);
+            u_corr(ind1y) = u_corr(ind1y)+u1(end/2+1:end);
+            u_corr(ind2y) = u_corr(ind2y)+u2(end/2+1:end);
 
             %% Store source strengths at source points for the different
              % source types corresponding to the fine grid.          

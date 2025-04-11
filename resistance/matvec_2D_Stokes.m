@@ -9,7 +9,7 @@ PM = length(rvec_out);
 mu = 1; 
 
 %Transform density mu -> lambda
-[tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s);
+[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s);
 
 if isempty(rimage)
     images = 0;
@@ -17,36 +17,11 @@ else
     images = 1; 
 end
 
-res = tau; 
+%get velocity field from all source types
+res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,...
+    tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
 
-%Apply all stokeslets
-
-%For debugging... 
-%NS = singleLayer(rvec_in,rvec_out,mu);
-%U_proxy = NS*[tau_stokes_x; tau_stokes_y]; %I think this vector has to be ordered differently
-
-
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...
-        0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
-  
-%NOTE! Errors might accumulate in the FMM if density norm is large!  
-
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),tau_stokes_x,tau_stokes_y,length(rvec_out));
-% See the SLP FMM test in the fast tools folder
-
-
-if ~images
-    res = res+[ufmm; vfmm];
-    %res = res+[udirect'/4/pi; vdirect'/4/pi];
-else
-
-    u_stress = getStresslets(tau_stress_x,tau_stress_y,rimage,rvec_out,real(nimage),imag(nimage));
-    u_pot = getPotdip(tau_pot_x, tau_pot_y,rimage,rvec_out);
-   
-    %res = res + [udirect'/4/pi; vdirect'/4/pi]+U_image;
-
-    res = res + [ufmm; vfmm]+u_stress + u_pot; 
-end
+res = res+tau; %add identity
 
 %Need to subract off the part computed twice for the one-body interactions
 start_colloc = 0; 

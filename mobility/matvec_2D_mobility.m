@@ -11,7 +11,7 @@ mu = 1;
 
 
 %Transform density mu -> lambda
-[tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s,ver1);
+[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(tau,rimage,Uii,Yii,P,N_small,PM,pairs,s,ver1);
 
 %Transform with L matrix
 if ver1
@@ -64,50 +64,22 @@ else
     images = 1; 
 end
 
+rot = []; %deal with rotlets?
 
-%Apply all stokeslets
+%% Get velocity field from all source types
 
-%For debugging... 
-%NS = singleLayer(rvec_in,rvec_out,mu);
-%U_proxy = NS*[tau_stokes_x; tau_stokes_y]; %I think this vector has to be ordered differently
-
-
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_check),imag(rvec_check),...
-        0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
-  
-%NOTE! Errors might accumulate in the FMM if density norm is large!  
-
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),tau_stokes_x,tau_stokes_y,length(rvec_out));
-% See the SLP FMM test in the fast tools folder
-
-
-if ~images
-    %no image points are used
-    %res = res + U_proxy;
-    res = [ufmm; vfmm];
-    %res = res+[udirect'/4/pi; vdirect'/4/pi];
-else    
-    %want to do this with a matrix vector multiply instead!
-    %Nim =  getImageKernels2D(rimage,nimage,rvec_check,mu,s); 
-    u_stress = getStresslets(tau_stress_x,tau_stress_y,rimage,rvec_check,real(nimage),imag(nimage));
-    %We assume a small number of images and do this with a dense matrix for
-    %now. 
-    %U_image = Nim*[tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
-    u_pot = getPotdip(tau_pot_x, tau_pot_y,rimage,rvec_check);
-
-    %for debugg purposes
-    %Nim_temp =  getImageKernels2D(rimage,nimage,rvec_check,mu,[0 0 0 1]); 
-    %U_image_temp = Nim_temp*[tau_pot_x; tau_pot_y]; 
-    %res = [ufmm; vfmm]+U_image;
-    res = [ufmm; vfmm]+u_stress+u_pot; 
-    %res = res + [udirect'/4/pi; vdirect'/4/pi]+U_image;
-end
-    
 if solve
-    res = res + tau;
+    res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,...
+        tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
+     res = res + tau;
+else
+    %compute sol in checkpoints
+    res = getVelocityField(rvec_in,rvec_check,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,...
+        tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
 end
 
-%Need to subract off the part computed twice for the one-body interactions
+
+%% Subtract off one-body interactions (computed twice) 
 start_colloc = 0; 
 start_im= 0; 
 

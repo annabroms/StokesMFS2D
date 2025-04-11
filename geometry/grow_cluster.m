@@ -1,6 +1,7 @@
 function [q,B] = grow_cluster(P,delta,dim)
-%N is the number of spheres in the cluster, delta is the separation distance
-%Anna Broms 4/12/24
+%GROW_CLUSTER(P,delta,dim) grows a cluster of P spheres with each sphere
+%delta away from at least one neighbour. dim can be set to 2 or 3 for 2D or 3D
+% Anna Broms 4/12/24
 
 if nargin<3
     dim = 3;
@@ -10,6 +11,7 @@ end
 %set position of first sphere;
 if dim == 3
     q = [0 0 0];
+    c = 0;
 else 
     c = 1; 
     q = [0 0];
@@ -81,7 +83,7 @@ if visualise && (dim==3)
     [X,Y,Z] = sphere(15);
     
     figure()
-    for k = 1:N
+    for k = 1:P
         surf(q(k,1)+X,q(k,2)+Y,q(k,3)+Z,'EdgeColor','flat');
         hold on
     end

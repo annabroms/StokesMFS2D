@@ -1,85 +1,131 @@
-function [F,T,err,it,ftest,precond] = solve_precond_peanut(q,u,omega,rads,N_peanut,rcheck_dom,precond,delta_pair)
-%Solves the resistance problem with peanut compression. Tests and MFS generalisation of the Cheng-Greengard idea. 
-%This is aimed to be the cleaned up version of the peanut compression. 
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise)
+%SOLVE_RES_PRECOND_PEANUT Solves a 2D Stokes resistance problem with circular
+%particles using a 2-body preconditioned MFS formulation. A
+%fine grid enhanced with approximate image points is used locally for every
+%close pair of particles to resolve challenging interactions. This fine grid is
+%compressed so that only coarse sources and collocation points are needed to 
+%solve the problem iteratively, effectively preconditioning the system.
+%
+% Syntax:
+%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_res_precond_peanut(q, U, W, rads, delta_pair, N_peanut, visualise)
+%
+% Inputs:
+%   q          - Vector of length P, complex-valued center coordinates for the particles
+%   U          - Px2 matrix of net force vectors (columns: x and y components)
+%   W          - Px1 column vector of torques acting on the particles
+%   rads       - Px1 vector of particle radii
+%   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
+%   N_peanut   - Number of points on the peanut separation surface between
+%                every close pair of particles. The peanut boundary is used
+%                to map fine sources to effective coarse sources, giving the
+%                same flow field exterior to the close pair of particles.
+%   visualise  - Logical flag: plot the configuration and solution details
+%
+% Outputs:
+%   FT         - 3P×1 vector of computed net forces and torques 
+%   lambda_proxy     - Solution vector of coarse source strengths
+%   it         - Number of GMRES iterations required
+%   gmres_tol  - Set GMRES tolerance
+%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%
+% Description:
+%   The FMM is used for Stokeslet evaluation. No other source types are
+%   needed thanks to compression of the local fine grid.
+%
+% Notes:
+%   - Intended to match solve_precond_peanut, but applied to a mobility problem rather than resistance.
+%   - Aims to test an MFS generalisation of the idea presented by Cheng-Greengard (1998)
+%
+% See also:
+%   solve_2D_res              - 1-body preconditioned resistance solver
+%   solve_res_precond_images - 2-body preconditioner without peanut compression
+%   solve_mob_precond_peanut   - 2-body preconditioned mobility solver
+%   with peanut compression
+%
+% To test: Call without arguments.
+%
+% Anna Broms, April 10, 2025
+
+if nargin==0, test_solve_res; 
+    return; end
+
+P = length(q); % number of particles
+
+%% Checks 
+
+assert(size(W,1)==P,'Wrong size of angular velocity vector')
+assert(size(U,1)==P,'Wrong size of trans vel vector')
+assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordinates')
 
 
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-%gmres_tol = 1e-6; %not enough given the residual we seek
+gmres_tol = 1e-6; %not enough given the residual we seek
 gmres_tol = 1e-10; 
 
 % Grid params
-P = length(q); 
 %Set coarse and fine grid. 
 
 %Play with N_c, N_f, a (a_f). 
-N_c = 60;  %100 better here? 
-%N_c = 100; 
-%N_c = 100; 
-%N_c = 200; 
-N_f = 100; 
+N_c = 80;  %100 better here? 
+%N_c = 50;
+
+N_f = 150; 
 %N_f = N_c; %debug
-%N_c = 2; 
-%N_c = 150; 
 
 %N_c = 250; 
-a_c = 1.2;
-%a_c = 2.5;
-
+a_c = 1.2; %upsampling for coarse grid
 
 %a_c = 5;
 %a_c = 1.2; %results in horrible fourier decay if we 
            % evaluate on a particle close by in coarse colloc points 
-%a = 2; 
+
 a_f = 1.2; %upsampling factor for the fine grid
-%a = 2; 
-%a2 = 0.6; 
-%a2 = a; 
 
-tol_c = 1e-12; %I think this works reasonably
-tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
-tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
-% But smoother coarse 1-body basis to evaluate on neighbour
+tol_c = 1e-10; %I think this works reasonably
+tol_c = 1e-12;
+%tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
+%tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
 
 
-s = [0 0 1 1]; %set type of singularities at image points
+s = [0 0 1 1]; %set type of singularities at image points [S R T D]
 %s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
 %be changed!
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rg_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
-Rg_f = max([1-sep_f,0.01]);  % and fine grid
-%Rg_c = 0.7;
-%Rg_f = Rg_c; %debug
+Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
+Rp_f = max([1-sep_f,0.01]);  % and fine grid
+%Rp_c = 0.8;
+%Rp_f = Rp_c; %debug
 
-%Rg_c = 0.2; %debug! 
-%Rg_c = 0.01; 
 
-%To be sent to solver/matvec later
+%accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
+accstop = (1-Rp_c)^2/Rp_c;  
+
+if nargin < 6
+    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
+end
+
+opt = get2Dparams(); 
+opt.s = s;
+opt.Rp_c = Rp_c;
+opt.Rp_f = Rp_f;
 opt.a_c = a_c; 
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
 opt.rads = rads; 
+opt.N_peanut = N_peanut;
 opt.s = s; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
- 
-%accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
-accstop = (1-Rg_c)^2/Rg_c;  
+% %Less storage required.
+opt.pc = 1; %prepare grid to do pair corrections
+opt.delta_pair = delta_pair; 
 
-if nargin < 6
-    rcheck_dom = 100i*100;
-    delta_pair = accstop;
-    precond = [];
-elseif nargin <7
-    precond = []; 
-    delta_pair = accstop;
-elseif nargin < 8
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
-end
+opt.cmap = 1; 
 
 
 %% CREATE GRID
@@ -92,24 +138,25 @@ rbase_out_f = cos(tout_f)+1i*sin(tout_f);
 rbase_out_c = cos(tout_c)+1i*sin(tout_c);
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
-rbase_in_c = Rg_c*cos(tin)+Rg_c*1i*sin(tin); 
+rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin); 
 rvec_in_c = [];
 for k = 1:P
     rvec_in_c = [rvec_in_c; q(k)+rbase_in_c];
 end
 
 %Construct image grid
-basic = 1; %return only the basic outer grid, else refined outer grid 
-[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
+%Will return only the basic outer grid, else refined outer grid 
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
 %Get pair basis
-[UB_all,YB_all,UC_all,YC_all,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,N_peanut);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
-[U,Y] = getSelfPseudo(rbase_in_c,rbase_out_c);
+[UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
+
 
 %Visualise 1-body and pair-basis
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,UU,YY,[],[],N_c, N_f,a_c,a_f,rads)
 
 %% Construct rhs
 
@@ -118,8 +165,8 @@ basic = 1; %return only the basic outer grid, else refined outer grid
 foutx = [];
 fouty = [];
 for k = 1:P
-   rhs_x = @(x) u(k,1)-omega(k)*(imag(x)-imag(q(k)));
-   rhs_y = @(x) u(k,2)+omega(k)*(real(x-q(k)));
+   rhs_x = @(x) U(k,1)-W(k)*(imag(x)-imag(q(k)));
+   rhs_y = @(x) U(k,2)+W(k)*(real(x-q(k)));
    foutx = [foutx; rhs_x(rout((k-1)*ceil(a_c*N_c)+1:k*ceil(a_c*N_c)))];
    fouty = [fouty; rhs_y(rout((k-1)*ceil(a_c*N_c)+1:k*ceil(a_c*N_c)))];  
 end
@@ -151,7 +198,7 @@ if debug
         x(:) = 0; 
         x(k) = 1; 
         uu = matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
-            refine,rimage_vec,nimage,opt,rout,q,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,debug);
+            refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Cmap_F,debug);
         CC(:,k) = uu;
     end
     toc
@@ -160,43 +207,53 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     skeel(CC)
-end
-%[ftest, ftest_b,lambda_proxy,it,precond] = solveStokes(rbase_in_c, rbase_in_f,rbase_out_f,rout,refine,rimage_vec,nimage,opt,rcheck_dom,rcheck_b,fout,q,U,Y,UB_all,YB_all,DC_all, YC_all,pairs,pairs_far,precond,gmres_tol);
 
-%[tau1, e1, precond] = precond_gmres(@(x) matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,UB_all,YB_all,DC_all, YC_all,debug), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond);
+    [~,D] = eig(CC);
+    D = diag(D); 
+    plot(real(D),imag(D),'b+')
+end
+
+% To test with Krylov precond, do something like
+%[tau1, e1, precond] = precond_gmres(@(x) matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,DC_all, YC_all,debug), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond);
 %fprintf("iterations = %d\n", length(e1))
 
 % 
 % figure()
 % semilogy(e2)
 debug = 0; 
-[tau,it,resvec,real_res] = helsing_gmres_mv(@(x) matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,debug),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 %[tau,flag,relres,iter,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
 figure()
 semilogy(resvec); 
 title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
 
-visualise = 0; 
 if visualise
     %check residual
-    restot = (matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,debug)-fout)./fout;
+    restot = (matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)-fout);
     figure()
     semilogy(abs(restot))
-    title('Convergence resistance with peanut compression')
+    title('Res at colloc points, peanut resistance')
 end
 % hold on
 % semilogy(resvec2); 
 
 %Prepare for evaluating flow field and evaluate in new points rcheck_dom and rcheck_b
-[tau_stokes_x, tau_self_x, tau_beta_x,tau_stokes_y,tau_self_y,tau_beta_y,u_corr] = transform_peanut(tau,...
-    rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,0,0);
+[tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = transform_peanut(tau,...
+    rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0,0);
 lambda_proxy = [tau_stokes_x; tau_stokes_y];
+
+warning('Check what sources to report')
 
 %Not yet adopted to random evaluation points. 
 
-%% Do the evaluation of the flow in check points with fmm instead
-ftest_b = getFMMVelocity(rvec_in_c,rcheck_b,tau_stokes_x, tau_stokes_y);
-ftest = getFMMVelocity(rvec_in_c,rcheck_dom,tau_stokes_x, tau_stokes_y);
+%% Do the evaluation of the flow in check points 
+%ftest_b = getFlowVelocity(rvec_in_c,rcheck_b,tau_stokes_x, tau_stokes_y);
+%ftest = getFlowVelocity(rvec_in_c,rcheck_dom_b,tau_stokes_x, tau_stokes_y);
+ftest_b = getVelocityField(rvec_in_c, rcheck_b, tau_stokes_x, tau_stokes_y, [], [], ...
+                           [],[],[],[],[]);
+%ftest = getVelocityField(rvec_in_c, rcheck_dom, tau_stokes_x, tau_stokes_y,[], [], ...
+   %                        [], [], [],[], []);
+
 
 ftest_b = ftest_b+u_corr; 
 
@@ -210,13 +267,13 @@ fb_y = [];
  
 
 for k = 1:P
-    rhs_f = @(x) [u(k,1)-omega(k)*(imag(x)-imag(q(k))); u(k,2)+omega(k)*(real(x-q(k)))]; 
+    rhs_f = @(x) [U(k,1)-W(k)*(imag(x)-imag(q(k))); U(k,2)+W(k)*(real(x-q(k)))]; 
     fb_true = rhs_f(rcheck_b(n_bound*(k-1)+1:n_bound*k));
     fb_x = [fb_x; fb_true(1:n_bound)];
     fb_y = [fb_y; fb_true(n_bound+1:end)];   
 end
 
-err = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
 
 % % For debuggin: 
 % fbound_x2 = ftest_b2(1:length(rcheck_b));
@@ -240,63 +297,77 @@ for i = 1:length(has_neigh)
         tau_beta_y((k-1)*N_f+1:k*N_f)];
 end
 
-%extract force and torque separately
-for k = 1:P
-    F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
-    T(k) = FT(3*k); 
-end
+% % Alternative way to account for all the fine sources
+% for i = 1:length(has_neigh)
+%     k = has_neigh(i); 
+%     FT2((k-1)*3+1:3*k) = K'*[tau_stokes_x((k-1)*N_c+1:k*N_c); 
+%         tau_stokes_y((k-1)*N_c+1:k*N_c)];
+% end
+% 
+% %extract force and torque separately
+% for k = 1:P
+%     F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
+%     T(k) = FT(3*k); 
+%     F2(k) = FT2((k-1)*3+1) + 1i*FT2((k-1)*3+2);
+%     T2(k) = FT2(3*k); 
+% end
 
-
-visualise = 1; 
 if visualise
-    figure(9)
-    subplot(2,2,1)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x-fbound_x)),30,log10(abs(fb_x-fbound_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('error in x velocity')
 
+    figure()
+    plot(ftest_b)
+    hold on
+    plot([fb_x; fb_y])
+    title('Velocity rhs and lhs, peanut resistance')
 
-    subplot(2,2,2)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_y-fbound_y)),30,log10(abs(fb_y-fbound_y)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('error in y velocity')
-
-    % Visualise the actual velocity
-    subplot(2,2,3)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x)),30,log10(abs(fb_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('x velocity MFS')
-
-    subplot(2,2,4)
-    scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
-    colorbar
-    axis equal
-    view(0,90)
-    grid off
-    set(gca,'xtick',[])
-    set(gca,'ytick',[])
-    title('x velocity reference')
-
-
-    sgtitle('Error on boundary','interpreter','latex')
+    %Check each component
+%     figure(9)
+%     subplot(2,2,1)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x-fbound_x)),30,log10(abs(fb_x-fbound_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('error in x velocity')
+% 
+% 
+%     subplot(2,2,2)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_y-fbound_y)),30,log10(abs(fb_y-fbound_y)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('error in y velocity')
+% 
+%     % Visualise the actual velocity
+%     subplot(2,2,3)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fb_x)),30,log10(abs(fb_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('x velocity MFS')
+% 
+%     subplot(2,2,4)
+%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
+%     colorbar
+%     axis equal
+%     view(0,90)
+%     grid off
+%     set(gca,'xtick',[])
+%     set(gca,'ytick',[])
+%     title('x velocity reference')
+%
+%     sgtitle('Error on boundary','interpreter','latex')
 
     % Visualise the error for x and y together
-    figure(10)
+    figure()
     m = max(sqrt(fb_x.^2+fb_y.^2));
     scatter3(real(rcheck_b),imag(rcheck_b),log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),...
         30,log10((sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./m),'filled')
@@ -311,6 +382,7 @@ if visualise
     set(gca,'TickLabelInterpreter','latex')
     set(gcf,'color','w');
     axis off
+    title('Resistance peanut')
 
     %% Visualise density
     figure()
@@ -357,66 +429,6 @@ end
 
 
 %OLD FUNCTIONS... 
-
-function [U,Y] = getBetaBlock_fine(rout_f,rin_pair_f)
-
-mu = 1; 
-
-Nf = singleLayer(rin_pair_f,rout_f,mu);
-[UU,S,V] = svd(Nf); 
-S = diag(S);
-
-% figure(102)
-% clf;
-% semilogy(S)
-
-%tol = 1e-6;
-tol = 1e-12; 
-%tol = 1e-8; 
-
-%use relative tolerance 
-ra = sum(S>max(S)*tol); 
-S = S(1:ra);  
-iS = 1./S; % rank
-Y = V(:,1:ra)*diag(iS); 
-U = UU(:,1:ra);
-
-end
-
-
-
-
-
-function  [DC,YC] = getPeanutBlock_fine(rin_pair,rout_peanut,rin_pair_f)
-
-mu = 1; 
-
-Ntot = singleLayer(rin_pair_f,rout_peanut,mu);
-
-%Ntot = [N Nimage]; %This is the matrix in the rhs
-
-% Get peanut matrix
-Npeanut = singleLayer(rin_pair,rout_peanut,mu);
-
-[UU,S,V] = svd(Npeanut); 
-S = diag(S);
-
-%tol = 1e-6;
-tol = 1e-12; 
-%tol = 1e-8; 
-
-%use relative tolerance 
-ra = sum(S>max(S)*tol); 
-S = S(1:ra);  
-iS = 1./S; % rank
-YC = V(:,1:ra)*diag(iS); 
-DC = UU(:,1:ra)'*Ntot;
-
-
-
-end
-
-
 
 function doPairBasisTest(Upf,Ypf,i,p2,q,U,Y,rbase_in_c,rbase_out_f,rpair_fine)
 %Test pair basis with a smooth coarse density
@@ -533,6 +545,47 @@ function doPairBasisTest(Upf,Ypf,i,p2,q,U,Y,rbase_in_c,rbase_out_f,rpair_fine)
         plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2)))
         plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end)))
 
+
+end
+
+function test_solve_res
+
+close all; 
+delta = 0.001;
+q = [0; 2+delta; (2+delta)*1i]; %center coordinates
+
+%or, instead, three cireles in triangle - this DOES NOT converge to a good
+%sol! 
+% x = 1+delta/2;
+% y = sqrt((2+delta)^2-(1+delta/2)^2);
+% q = [0; 2+delta; x+1i*y];
+
+
+U = [1 0; 0 0; 0 1]; %translational velocities for particles
+W = [1; 1; 1]; %angular velocities
+% U = U*1e-5;
+% W = W*1e-5;
+rads = [1; 1; 1]; 
+visualise = 1; 
+delta_pair = 0.2; 
+N_peanut = 400; 
+[FT,lambda,it1,gmres_res, err1] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise);
+F = [FT(1:3:end) FT(2:3:end)];
+T = FT(3:3:end); 
+[UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
+Ures = [U W]';
+
+
+% Compare to solution with pair corrections but without peanut compression
+visualise = 0; 
+[FTp,lambda,it2,gmres_tol, err2] = solve_res_precond_images(q,U,W,rads,delta_pair,visualise);
+
+str = sprintf('Two way error is %1.3e',norm(Ures(:)-UW));
+disp(str); 
+str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err2,err1,it2,it1);
+disp(str)
+
+alignfigs(4);
 
 end
 

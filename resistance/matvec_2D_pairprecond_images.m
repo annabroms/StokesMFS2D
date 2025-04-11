@@ -2,7 +2,7 @@ function res = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rim
 
 
 %Transform data at collocation points to data at source points. 
-[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf); 
  
 P = length(q); 
@@ -11,25 +11,15 @@ mu = 1;
 PM = length(rvec_out);
 
 
-%Apply all sources
+%% Get velocity field from all source types 
 
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...
-         0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
+rot = []; %for now, no rotlets are in play at image points
 
-res = [ufmm; vfmm];
+res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,...
+    tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y);
 
-%NOTE! Errors might accumulate from the fmm if large coeff norm
-    
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),tau_stokes_x,tau_stokes_y,length(rvec_out));
-% See the SLP FMM test in the fast tools folder
+two_corr = 1; 
 
-if size(rimage_in,1)
-
-    u_stress = getStresslets(tau_stress_all_x,tau_stress_all_y,rimage_in,rvec_out,real(nimage_in),imag(nimage_in));
-    u_pot = getPotdip(tau_pot_all_x, tau_pot_all_y,rimage_in,rvec_out);
-
-    res = res+u_stress+u_pot; 
-end
 
 %Need to subract off self-interactions and replace with identity diagonals
 rout = rvec_out(1:N_large)-q(1,:);
@@ -46,13 +36,20 @@ for i = 1:P
     uii = Nii*tau_xy;
 
     %subract contribution in x
-    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2)+tau((i-1)*N_large+1:i*N_large);
+    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2);%+tau((i-1)*N_large+1:i*N_large);
 
     %subract contribution in y
     res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-        uii(end/2+1:end)+tau((i-1)*N_large+PM+1:i*N_large+PM);
+        uii(end/2+1:end);%+tau((i-1)*N_large+PM+1:i*N_large+PM);
    
 end
+
+if two_corr
+    res = res-u_corr;
+end 
+
+
+res = res+tau;
 
 
 

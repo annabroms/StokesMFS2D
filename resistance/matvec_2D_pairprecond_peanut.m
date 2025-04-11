@@ -1,4 +1,4 @@
-function res = matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up, Yp,debug)
+function res = matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up, Yp,Cmap,debug)
 %Resistance matvec with peanut compressions for the pair corrections
 
 % Us, Ys SVD factors for self-interaction block
@@ -13,8 +13,8 @@ PM = length(rvec_out);
 N_c = opt.N_c;
 
 %Transform coarse \mu -> coarse \lambda
-[tau_stokes_x, tau_self_x, ~,tau_stokes_y,tau_self_y,~,u_corr] = transform_peanut(tau,rbase_in_c,...
-    rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up,Yp,debug);
+[tau_stokes_x, tau_self_x, ~,~,tau_stokes_y,tau_self_y,~,~,u_corr] = transform_peanut(tau,rbase_in_c,...
+    rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up,Yp,Cmap,debug);
 
 
 [ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...

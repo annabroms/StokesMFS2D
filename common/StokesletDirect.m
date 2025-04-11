@@ -1,4 +1,9 @@
 function [udirect,vdirect] = StokesletDirect(xsrc,ysrc,xtar,ytar,f1,f2,N)
+%STOKESLETDIRECT(xsrc,ysrc,xtar,ytar,f1,f2,N) computes contribution from
+%N sources located at xsrc, ysrc, with strengths fx, fy in specified targetpoints xtar,ytar.
+%Returns x component of the flow in udirect and y component of the flow in
+%vdirect. 
+
 %     srcEqualsTar = 0; 
      Ntarg = length(xtar); 
      udirect = zeros(Ntarg,1);

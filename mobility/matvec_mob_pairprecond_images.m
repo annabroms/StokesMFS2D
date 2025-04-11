@@ -1,10 +1,7 @@
 function res = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,U,Y,Lc,Lf,pairs,Upf,Ypf)
 
-%Same as matvec_2D_pairprecond_images, but without assuming image points
-%are the same for multiple contacts (as they are not!)
 
-
-[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,Lc,Lf,pairs,Upf,Ypf); 
  
 P = length(q); 
@@ -16,25 +13,16 @@ N_f = opt.N_f;
 
 
 
-%Apply all sources
 
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),...
-         0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
+%% Get flow field from all source types
 
-res = [ufmm; vfmm];
+rot = []; % no rotlets at image points so far
 
-%NOTE! Errors might accumulate from the fmm if large coeff norm
-    
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),tau_stokes_x,tau_stokes_y,length(rvec_out));
-% See the SLP FMM test in the fast tools folder
+res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,...
+    tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y);
 
-if size(rimage_in,1)
 
-    u_stress = getStresslets(tau_stress_all_x,tau_stress_all_y,rimage_in,rcheck,real(nimage_in),imag(nimage_in));
-    u_pot = getPotdip(tau_pot_all_x, tau_pot_all_y,rimage_in,rcheck);
-
-    res = res+u_stress+u_pot; 
-end
+two_corr = 0;
 
 if isequal(rcheck,rvec_out)
 
@@ -49,14 +37,18 @@ if isequal(rcheck,rvec_out)
     % end
     
     %Have not taken care of this part. 
-    has_neigh = sort(unique(pairs(:)));
-    for i = 1:length(has_neigh)
-        k = has_neigh(i); 
-        bcvec = B*K'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
-            tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
     
-        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
-        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
+    if ~two_corr
+
+        has_neigh = sort(unique(pairs(:)));
+        for i = 1:length(has_neigh)
+            k = has_neigh(i); 
+            bcvec = B*K'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
+                tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
+        
+            res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
+            res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
+        end
     end
 
 
@@ -97,6 +89,10 @@ if isequal(rcheck,rvec_out)
     
         
     end
+
+    if two_corr
+        res = res-u_corr;
+    end 
 
 end
 

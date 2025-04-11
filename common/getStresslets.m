@@ -1,6 +1,6 @@
 function u = getStresslets(lambda_x,lambda_y,x,y,n1,n2)
 %GETSTRESSLETS(lambda_x,lambda_y,x,y,n1,n2) returns flow field evaluated at y from
-%stresslets centered at x with normal components n1,n2 and strengths
+%stresslets centered at x with directions n1,n2 and strengths
 %lambda_x, lambda_y. 
 fmm = 0;
 if fmm
@@ -11,7 +11,8 @@ else
     N = length(lambda_x);
     u1 = zeros(M,1);
     u2 = zeros(M,1);
-    
+
+% Loop over targets
 %     for k = 1:M
 %                         
 %         rx = real(x - y(k));
@@ -25,6 +26,7 @@ else
 %         u2(k) = 4*sum(rdotn.*rdotq./rho4.*ry);
 %     end
 
+%Faster to loop over sources
     for k = 1:N
                         
         rx = real(x(k) - y);
