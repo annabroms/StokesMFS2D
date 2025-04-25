@@ -25,27 +25,37 @@ function res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,rot,s
 %
 % Description:
 %   Computes the 2D Stokes velocity field at given target points due to:
-%   - Direct Stokeslets at `rvec_in`
+%   - Direct Stokeslets at `rvec_in, using fmm2d
 %   - Stresslets and potential dipoles at `rimage` 
 %   Multiple source contributions are combined into a total velocity field.
 %
 % See also:
 %   getPotdip, getStresslets, 
 %
-% Anna Broms, April 8, 2025
+% Anna Broms, April 25, 2025
 
-    [ufmm,vfmm] = stokesSLPfmm(stok_x,stok_y,real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),...
-            0,5);
-    res = [ufmm; vfmm];
+eps = 1e-6;
 
-    if nargin > 4
-        %Not computed with FMM... to be replaced
+targ = [real(rcheck)';imag(rcheck)'];
+srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
+srcinfo.stoklet = [stok_x'; stok_y'];
+U = stfmm2d(eps, srcinfo, 0, targ, 1); % might want to change eps here
+res = [U.pottarg(1,:)';U.pottarg(2,:)']/2/pi;
+   
 
-        u_rot = getRotlets(rot,rimage,rcheck); 
-        u_stress = getStresslets(stress_x,stress_y,rimage,rcheck,real(nimage),imag(nimage));
-        u_pot = getPotdip(pot_x, pot_y,rimage,rcheck);
-    
-        res = res+u_rot+u_stress+u_pot; 
-    end
+% With the old FMM from Lukas Bystricky
+% [ufmm,vfmm] = stokesSLPfmm(stok_x,stok_y,real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),...
+%        0,5); % 5 sets high accuracy
+%res = [ufmm; vfmm];
+
+if nargin > 4
+    %Not computed with FMM... to be replaced
+
+    u_rot = getRotlets(rot,rimage,rcheck); 
+    u_stress = getStresslets(stress_x,stress_y,rimage,rcheck,real(nimage),imag(nimage));
+    u_pot = getPotdip(pot_x, pot_y,rimage,rcheck);
+
+    res = res+u_rot+u_stress+u_pot; 
+end
 
 end
