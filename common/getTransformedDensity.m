@@ -13,11 +13,26 @@ else
 end
  
 %assuming stresslets and potential dipoles at image
-rot = zeros(sum(pairs(:,1)),1);
-tau_stress_x = zeros(sum(pairs(:,1)),1); 
-tau_stress_y = zeros(sum(pairs(:,1)),1); 
-tau_pot_x = zeros(sum(pairs(:,1)),1); 
-tau_pot_y = zeros(sum(pairs(:,1)),1); 
+if s(2)
+    rot = zeros(sum(pairs(:,1)),1);
+else
+    rot = [];
+end
+if s(3)
+    tau_stress_x = zeros(sum(pairs(:,1)),1); 
+    tau_stress_y = zeros(sum(pairs(:,1)),1); 
+else
+    tau_stress_x = [];
+    tau_stress_y = [];
+end
+
+if s(4)
+    tau_pot_x = zeros(sum(pairs(:,1)),1); 
+    tau_pot_y = zeros(sum(pairs(:,1)),1); 
+else
+    tau_pot_x = [];
+    tau_pot_y = [];
+end
 
 % tau_rot_x = zeros(sum(pairs(:,1)),1); 
 % tau_rot_y = zeros(sum(pairs(:,1)),1); 
