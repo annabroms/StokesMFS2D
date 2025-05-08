@@ -96,7 +96,7 @@ mu = 1; %viscosity
 
 %% GET GRIDS AND VISUALISE
 %get grids
-[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
+[rout,wout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
 
 %Check coeff magnitude and residual if we solve with a single SVD.
 
@@ -248,6 +248,9 @@ end
 
 %% Solve the system
 
+
+
+
 % Compute a solution using GMRES with Krylov preconditioning
 %precond = KrylovPrecond();
 %now, try to limit the number of iters for the preconditioner. Does
@@ -277,6 +280,41 @@ if solve_xy
 
     lambda = [tau_proxy; tau_image];
 end
+
+
+% Does i matter if we rescale the least squares problem? 
+Nio = singleLayer(rin,rout,mu); 
+Nimage = getImageKernels2D(rimage,nimage,rout,mu,s); 
+   
+Nii = [Nio Nimage];
+
+w2 = vecnorm(Nii);
+W2 = diag(1./w2);
+
+W1 = blkdiag(diag(sqrt(wout)),diag(sqrt(wout)));
+
+%[Y,Bi]  = getPseudoFactors(W1*Nii*W2,tol,visualise);
+[Y,Bi]  = getPseudoFactors(Nii*W2,tol,visualise);
+lambda2 = W2*Y*(Bi'*fout);
+
+[Y,Bi]  = getPseudoFactors(Nii,tol,visualise);
+lambda3 = Y*(Bi'*fout);
+
+[Y,Bi]  = getPseudoFactors(W1*Nii, tol,visualise);
+lambda4 = Y*(Bi'*W1*fout);
+
+[Y,Bi]  = getPseudoFactors(W1*Nii*W2,tol,visualise);
+lambda5 = W2*Y*(Bi'*W1*fout);
+
+lambda = lambda4;
+tau_stokes_x = lambda(1:opt.N_c*P);
+tau_stokes_y = lambda(opt.N_c*P+1:2*opt.N_c*P);
+tau_stress_x = lambda(2*opt.N_c*P+1:2*opt.N_c*P+size(rimage,1));
+tau_stress_y = lambda(2*opt.N_c*P+size(rimage,1)+1:2*opt.N_c*P+2*size(rimage,1));
+tau_pot_x =  lambda(2*opt.N_c*P+2*size(rimage,1)+1:2*opt.N_c*P+3*size(rimage,1));
+tau_pot_y =  lambda(2*opt.N_c*P+3*size(rimage,1)+1:2*opt.N_c*P+4*size(rimage,1));
+
+
 
 %And evaluate in new points rcheck_dom and rcheck_b
 
@@ -440,13 +478,14 @@ end
 function test_solve_res
 
 close all; 
+rng(6)
 images = 0; %images not needed for well separated particles
 q = [0; 2.01]; %center coordinates
 U = [1 0; 0 0]; %translational velocities 
 W = [1; 1]; %angular velocities 
 rads = [1; 1]; 
 visualise = 1; 
-[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,visualise);
+%[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,visualise);
 
 %compare to a solution with image enhancement
 images = 1; 

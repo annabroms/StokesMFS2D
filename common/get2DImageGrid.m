@@ -1,4 +1,4 @@
-function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+function [rout, wout,rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
 %GET2DIMAGEGRID Distributes source, collocation, and image points for circular particles in 2D
 %
 % Syntax:
@@ -27,6 +27,8 @@ function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, r
 % Outputs:
 %   rout         - Complex vector of collocation points on all particles:
 %                  body1, body2, ... , body P
+%   wout         - Vector of weights at collocation points (approximate
+%                  parameter spacing), to be used in left preconditioning
 %   rin          - Complex vector of source points on all particles, body1, body2, ... , body P
 %   rimage       - Complex vector of image source locations for all
 %                  particles
@@ -36,6 +38,7 @@ function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, r
 %   rimage_pairs - Cell array {i,j} of image points for particle i near particle j
 %   refine       - Cell array {i,j} of parameter values (on [0,2π)) for collocation points on particle i near j
 %   rin_base     - Vector of proxy source points for a reference particle centered at the origin (fine grid)
+
 %
 % Description:
 %   Constructs MFS discretization geometry for a system of circular particles.
@@ -231,6 +234,7 @@ rin = [];
 rimage = [];
 nimage = [];
 rout = []; 
+wout = [];
 
 Mf = ceil(a_f*N_f); 
 
@@ -274,7 +278,8 @@ for k = 1:P
         end
         
         if ~pc 
-            t = [t; t_extra];    
+            t = [t; t_extra]; 
+            t = mod(t,2*pi);
             t = sort(t);
         else 
             %return only the uniform discretization
@@ -295,6 +300,8 @@ for k = 1:P
     
     
     rout_part = q(k)+rads(k)*(cos(t)+1i*sin(t));
+    wout2 = [wout; abs(diff(t)); abs(t(end)-2*pi-t(1))];
+    wout = [wout; abs(diff(rout_part)); abs(rout_part(1)-rout_part(end))];
     rout = [rout; rout_part]; %add to global list
 
 end
