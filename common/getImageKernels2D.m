@@ -38,6 +38,24 @@ if s(3)
     Nimage = [Nimage T];
 end
 
+%Stresslets
+if s(5)
+    nimage = ones(size(rimage)); %normal in x direction
+    rdotny = real(conj(r).*nimage.');                % r.n_y
+    rdotnir4 = (1/pi) * rdotny.*irrrr;      % w/ overall prefac
+    T = [real(r).*real(r).*rdotnir4, real(r).*imag(r).*rdotnir4; 
+         imag(r).*real(r).*rdotnir4, imag(r).*imag(r).*rdotnir4];
+    Nimage = [Nimage T];
+
+    nimage = 1i*ones(size(rimage)); %normal in y direction
+   % nimage = zeros(size(nimage));
+    rdotny = real(conj(r).*nimage.');                % r.n_y
+    rdotnir4 = (1/pi) * rdotny.*irrrr;      % w/ overall prefac
+    T = [real(r).*real(r).*rdotnir4, real(r).*imag(r).*rdotnir4; 
+         imag(r).*real(r).*rdotnir4, imag(r).*imag(r).*rdotnir4];
+    Nimage = [Nimage T];
+end
+
 % Potential diples
 if s(4)
     c = 1/(2*pi);
@@ -45,6 +63,8 @@ if s(4)
     D = c*[-irr+2*d1.^2.*irrrr, A12; A12 -irr+2*d2.^2.*irrrr]; %-delta_ij/r^2+2\hat x_i\hat x_i/r^4
     Nimage = [Nimage D];
 end
+
+
 
 
 

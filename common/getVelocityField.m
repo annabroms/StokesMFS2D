@@ -34,13 +34,17 @@ function res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,rot,s
 %
 % Anna Broms, April 25, 2025
 
-eps = 1e-6;
-
-targ = [real(rcheck)';imag(rcheck)'];
-srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
-srcinfo.stoklet = [stok_x'; stok_y'];
-U = stfmm2d(eps, srcinfo, 0, targ, 1); % might want to change eps here
-res = [U.pottarg(1,:)';U.pottarg(2,:)']/2/pi;
+if size(rvec_in,1)
+    eps = 1e-10;
+    
+    targ = [real(rcheck)';imag(rcheck)'];
+    srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
+    srcinfo.stoklet = [stok_x'; stok_y'];
+    U = stfmm2d(eps, srcinfo, 0, targ, 1); % might want to change eps here
+    res = [U.pottarg(1,:)';U.pottarg(2,:)']/2/pi;
+else
+    res = zeros(size(rcheck,1)*2,1);
+end
    
 
 % With the old FMM from Lukas Bystricky

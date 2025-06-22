@@ -47,7 +47,7 @@ end
 solve_xy = 1; %order unknowns as x, then y globally
 
 mu = 1; 
-visualise = 0; 
+visualise = 1; 
 
 N = size(rin_vec,1)/P;
 

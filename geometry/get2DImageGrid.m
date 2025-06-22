@@ -1,4 +1,4 @@
-function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+function [rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
 %GET2DIMAGEGRID Distributes source, collocation, and image points for circular particles in 2D
 %
 % Syntax:
@@ -46,7 +46,7 @@ function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, r
 %   - For 1-body preconditioning, we set a_f = a_c and N_f = N_c
 %   - For 2-body preconditioning (pair corrections), set pc = true.
 %     In this case, image-related outputs (rimage, nimage) will not be used.
-%   - The "image points" are approximations and discritise the line of images from the
+%   - The "image points" are approximations and discretise the line of images from the
 %     image accumulation point to the fine proxy radius for each interaction with
 %     half a Chebyshev grid clustered towards the accumulation point.
 %   - A graded periodic trapezoid rule is used for extra collocation points
@@ -66,8 +66,9 @@ image = opt.image;
 pc = opt.pc; 
 delta_pair = opt.delta_pair;
 M_image = opt.M_image; 
-im_types = length(opt.s); %the number of source types at the image points will also determine the number of extra collocation points
-
+if opt.image
+    im_types = length(opt.s); %the number of source types at the image points will also determine the number of extra collocation points
+end
 
 if ~pc
     N_f = N_c;
@@ -78,6 +79,9 @@ end
 
 P = length(q); %Number of particles
 
+pairs = [];
+rimage_pairs = [];
+refine = [];
 
 
 if image
@@ -106,7 +110,8 @@ if image
     %store image points per pairs, refined collocation points per pair
     rimage_pairs = cell(P,P);
     refine = cell(P,P);
-    pairs = [];
+    
+    accstop_fine = 1; %debug; 
   
     for i = 1:P
         ind = setdiff(1:P,i); %check neighbours with everyone else
@@ -114,6 +119,7 @@ if image
             delta = abs(q(i)-q(k))-rads(k)-rads(i);
             d = delta/rads(i);
             %if delta< Rp*rads(i)
+           
             if delta < accstop_fine*rads(i)
                 %new close pair detected
                 if i<k
@@ -123,6 +129,10 @@ if image
                 %get number of image locations to be generated, from empiric
                 %relationship
                 sample_nbr = ceil(slope*log10(d)+m); 
+                sample_nbr = opt.n_clusters; 
+                %sample_nbr = 1; 
+                %sample_nbr = 120;
+                
         
                 %generate points from Rp out to the accumulation point.
                 %first determine accumulation point            
@@ -146,16 +156,78 @@ if image
 %                 [xx2, ~] = gradedptr(n, beta);
 %                 xx2 = real(xx2)/(pi);
 %                 xx = xx2(end/2+2:end)'-1;
+
                 
-                aa = rads(i)*Rp_f*1.01; %start just exterior to the proxy grid               
+                
+                aa = rads(i)*Rp_f*1.01; %start just exterior to the proxy grid     
+                aa = rads(i)*Rp_f*1.05;
+                aa = 0.6; %test
                 
                 %Rescale image line to be exactly between the end points
                 % (aa, accumulation point)
-                t = ((xx - 0) * (acc - aa) / (max(xx) - 0)) + aa;
+
+               % acc = acc+0.01; % Only for debugging purposes!
+               % acc = 0.99;
+
+                %different sampling
+                xx = logspace(2*log10(sqrt(delta)),0,sample_nbr)';
+
+                %different sampling
+                % s = sqrt(1:sample_nbr) - sqrt(sample_nbr);
+                % A_clust = 0.6;
+                % sigma = 4;
+                % xx = A_clust * exp(sigma*s)';
+
+                xx = xx.*(acc-aa);
+                %t = ((xx - 0) * (acc-aa) / (max(xx) - 0)) + aa;
+                t = acc-xx+xx(1);
+
+
+                %t = ((xx - 0) * (acc - aa) / (max(xx) - 0)) + aa;
+
+
+                %xx = aa*logspace(2*log10(sqrt(delta)),0,sample_nbr)';
+                %t = [acc; acc-xx]; %large resiudal
+
+                mid = (acc+aa)/2;
+                
+             
+                % If assigning two lines of image points, meeting at an
+                % angle alphas
+                alpha = opt.alpha; %pi-alpha;
+                t_new = t*cos(alpha)+1i*sin(alpha)*t+mid;
+                t_new = t_new-t_new(1)+t(1);
+                %figure()
+                %plot(real(t_new),imag(t_new),'+')
+
+
+                %t = acc; %debug
 
                 % Assign image poins on particle i, close to touching
                 % particle k
-                rimage_pairs{i,k} = q(i)+t*(q(k)-q(i))./abs(q(k)-q(i));
+                line = q(i)+t*(q(k)-q(i))./abs(q(k)-q(i));
+                line1 = q(i)+t_new*(q(k)-q(i))./abs(q(k)-q(i));
+                line2 = q(i)+conj(t_new)*(q(k)-q(i))./abs(q(k)-q(i));
+               % line2 = []; 
+               % hold on
+               % plot(real(line1),imag(line1),'*')
+               % plot(real(line2),imag(line2),'*')
+
+               %% Test to put the extra sources along an arc instead.
+               %t = logspace(-6,log10(alpha),sample_nbr)';
+              % t = [-t; 0; t];
+               %line = q(i)+acc*(cos(t)+1i*sin(t))*(q(k)-q(i))./abs(q(k)-q(i));
+
+               %% Store
+                
+                 % figure()
+                 % plot(real(line),imag(line),'*');
+                 % axis equal
+                rimage_pairs{i,k} = line;
+                %rimage_pairs{i,k} = [line1; line2];
+
+
+
         
                 %% Assign collocation points
                 %Need to store also the number of extra collocation  points
@@ -192,13 +264,17 @@ if image
 %                 t = [tstar-strip tstar+strip];
 %                 t = sort(t);
 
-                %% Instead, use a graded PTR (see Alex's BIE book, Chapter 4
+                %% Instead, use a graded PTR (see Alex's BIE book, Chapter 4)
                % beta = log(3/sqrt(delta));
                 %beta = log(3/delta);
                 beta = log(5/sqrt(delta));
                 N = M_image*round(beta);
                 N = max([N,ceil(1.2*im_types*sample_nbr)]);
                 [t, ~] = gradedptr(N, beta);
+
+                %test alternative
+                M_clust = sample_nbr*4*sum(opt.s);
+                t = 0.5*[logspace(-6,0,M_clust) -logspace(-6,0,M_clust)];
                 %must be rotated
                 t = t+tstar;
 
@@ -231,6 +307,7 @@ rin = [];
 rimage = [];
 nimage = [];
 rout = []; 
+weights = [];
 
 Mf = ceil(a_f*N_f); 
 
@@ -273,9 +350,11 @@ for k = 1:P
             t_extra = [t_extra; tki];           
         end
         
-        if ~pc 
+        if ~pc %if no pair corrections (fine grid to be returned)
             t = [t; t_extra];    
+            t = mod(t,2*pi);
             t = sort(t);
+            w_k = [diff(t); abs(t(end)-(t(1)+2*pi))]; %weights to be used in left preconditioning
         else 
             %return only the uniform discretization
             t = linspace(0,2*pi,a_c*N_c+1);
@@ -296,6 +375,7 @@ for k = 1:P
     
     rout_part = q(k)+rads(k)*(cos(t)+1i*sin(t));
     rout = [rout; rout_part]; %add to global list
+    weights = [weights; w_k];
 
 end
 
