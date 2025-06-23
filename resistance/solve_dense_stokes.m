@@ -1,8 +1,8 @@
-function [x, reserr, coefnorm] = solve_dense_stokes(rin, rout, rimage, nimage, s, b, regtol, scalecols)
+function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, nimage, s, b, regtol, scalecols,w)
 %SOLVE_DENSE_STOKES  Solve a Stokes resistance BVP using direct pseudo-inverse for the
 %entire system. 
 %
-%   [x, reserr, coefnorm] = SOLVE_DENSE_STOKES(rin, rout, rimage, nimage, s, b, regtol, scalecols)
+%   [x, reserr, coefnorm,solres] = SOLVE_DENSE_STOKES(rin, rout, rimage, nimage, s, b, regtol, scalecols,w)
 %
 %   Constructs and solves a dense linear system for the 2D Stokes single-layer
 %   potential representation, possibly including image contributions from
@@ -20,17 +20,22 @@ function [x, reserr, coefnorm] = solve_dense_stokes(rin, rout, rimage, nimage, s
 %     b         - 2M right-hand side vector (target velocities).
 %     regtol    - Regularization parameter for truncated SVD
 %     scalecols - Logical flag, whether to precondition from the right with
-%     column size of the system matrix.
+%                 column size of the system matrix.
+%     w         - (optional) weights to be used in preconditioning from the
+%                 left
 %
 %   OUTPUTS:
 %     x         - Solution vector (density coefficients).
+%     solres    - Residual Ax-b after regularization
 %     reserr    - Residual error ‖A*x - b‖_∞ after regularization.
 %     coefnorm  - Infinity norm of the solution vector ‖x‖_∞ 
 %
 %   NOTES:
 %     - If column scaling is enabled, the solution is rescaled at the end.
 
-
+    if nargin < 9
+        w = ones(size(rout));
+    end
                                          
     %% Prepare system matrix
     mu = 1; %viscosity
@@ -46,6 +51,8 @@ function [x, reserr, coefnorm] = solve_dense_stokes(rin, rout, rimage, nimage, s
     end
     
     Ntot = [Nio Nimage];
+
+    W = diag(repmat(sqrt(w),2,1));
     
     if scalecols
         col_norms = vecnorm(Ntot);
@@ -54,11 +61,14 @@ function [x, reserr, coefnorm] = solve_dense_stokes(rin, rout, rimage, nimage, s
         NtotD = Ntot*D;
         
     end
+    NtotD = W*NtotD;
+    b = W*b;
 
     %Possibly, do also preconditioning from the left
     [Y, U] = getPseudoFactors(NtotD, regtol, 0);
     x = Y*(U'*b);
-    reserr = norm(NtotD*x-b,inf);
+    solres = NtotD*x-b;
+    reserr = norm(solres,inf);
     coefnorm = norm(x,inf); %more reasonable to look at largest coeff 
     if scalecols
         x = D*x;
