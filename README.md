@@ -1,7 +1,7 @@
 # StokesMFS2D
 Solves the Stokes resistance and mobility BVPs in 2D using the method of fundamental solutions.
 
-## Close-to-touching discs
+## Close-to-touching disks
 We investigate preconditioning ideas based on pair corrections and peanut compression.
 Test examples in demo/ and by running solver functions without arguments.
 
