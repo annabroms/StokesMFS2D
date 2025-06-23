@@ -29,7 +29,7 @@ P2 = [1+2i 1/2+1i/2 1+2/3+2i/3 2+2i];
 square = 0; 
 
 P = P1;  % for a non-convex polygon
-P = P2;  % for a convex polygon
+%P = P2;  % for a convex polygon
 
 n_sides = length(P);
 
@@ -49,7 +49,7 @@ vert_tangents = exp(1i*(angle(vert_normals)-pi/2));
 %% Parameters of the problem
 n_smooth = 200;
 n_smooth = 50; 
-n_clust = 150; %takes a long time and requires a lot of RAM
+n_clust = 150; %150 takes a long time... 
 %n_clust = 0; 
 
 %n_clust = 0; 
@@ -67,7 +67,7 @@ if square
     r_proxy = 0.7;
 else
     r_proxy = 0.25;
-    r_proxy = 0.35;
+   % r_proxy = 0.35;
 end
 
 %% Computation of the centers
@@ -96,11 +96,11 @@ end
 theta = linspace(0, 2*pi, n_smooth+1)';
 theta(end) = [];
 
-% centers_smooth = 1.2+1.2i + r_proxy * exp(1i*theta);
-% centers_smooth_int = 1.2+1.2i + 2 * exp(1i*theta);
+centers_smooth = 1.2+1.2i + r_proxy * exp(1i*theta);
+centers_smooth_int = 1.2+1.2i + 2 * exp(1i*theta);
 
-centers_smooth = 1.25+1.25i + r_proxy * exp(1i*theta);
-centers_smooth_int = 1.25+1.25i + 2 * exp(1i*theta);
+%centers_smooth = 1.25+1.25i + r_proxy * exp(1i*theta);
+%centers_smooth_int = 1.25+1.25i + 2 * exp(1i*theta);
 
 % centers_smooth = mean(P) + r_proxy * exp(1i*theta);
 % centers_smooth_int = mean(P) + 2 * exp(1i*theta);
@@ -183,14 +183,22 @@ if svec(5)
 end
 u = eval_Stokes_solution(x_out,centers_smooth,bndpts_b,centers_clust,dir,svec,n_smooth);
 diff_vec = u-u_ref;
-diff_vec = diff_vec(1:end/2)+1i*diff_vec(end/2+1:end);
-err_ext = max(abs(diff_vec));
+diff_vec_c = diff_vec(1:end/2)+1i*diff_vec(end/2+1:end);
+err_ext = max(abs(diff_vec_c));
 
 %Look at solution
 % figure()
 % semilogy(abs(u))
 % hold on
 % semilogy(abs(u_ref))
+
+figure()
+subplot(1,2,1)
+scatter(real(bndpts_b),imag(bndpts_b),5,log10(abs(diff_vec(1:end/2))),'filled')
+colorbar
+subplot(1,2,2)
+scatter(real(bndpts_b),imag(bndpts_b),5,log10(abs(diff_vec(end/2+1:end))),'filled')
+colorbar
 
 
 %% Solve interior problem
@@ -201,13 +209,21 @@ if solve_int
     u = eval_Stokes_solution(x,centers_smooth_int,bndpts_b,centers_clust_int,dir,svec,n_smooth);
     
     diff_vec = u-u_ref;
-    diff_vec = diff_vec(1:end/2)+1i*diff_vec(end/2+1:end);
+    diff_vec_c = diff_vec(1:end/2)+1i*diff_vec(end/2+1:end);
     err_int = max(abs(diff_vec));
     
     % figure()
     % semilogy(abs(u))
     % hold on
     % semilogy(abs(u_ref))
+
+    figure()
+    subplot(1,2,1)
+    scatter(real(bndpts_b),imag(bndpts_b),5,log10(abs(diff_vec(1:end/2))),'filled')
+    colorbar
+    subplot(1,2,2)
+    scatter(real(bndpts_b),imag(bndpts_b),5,log10(abs(diff_vec(end/2+1:end))),'filled')
+    colorbar
 end
 
 
