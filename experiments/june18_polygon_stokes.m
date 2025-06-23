@@ -10,7 +10,7 @@ function [err_ext,reserr_ext,coefnorm_ext] = june18_polygon_stokes(svec,plotdoma
 
 if nargin<1
     close all
-    svec = [1 0 0 1 1]; %S R Tr, D, T. For n_clust = 150, this setting gives 
+    svec = [1 1 0 1 1]; %S R Tr, D, T. For n_clust = 150, this setting gives 
                         %large resiudal in new points for the interior
                         %problem! The resiudal at the collocation points is
                         %still small.
@@ -24,8 +24,9 @@ elseif nargin<2
 end
 
 regtol = 1e-13;
+regtol = 1e-10; 
 
-solve_int = 1; 
+solve_int = 0; %solve interior problem? 
 
 %% Definition of the polygon
 
@@ -54,8 +55,9 @@ vert_normals = vert_normals ./ abs(vert_normals);
 vert_tangents = exp(1i*(angle(vert_normals)-pi/2));
 
 %% Parameters of the problem
-n_smooth = 200;
-n_smooth = 50; 
+%n_smooth = 200;
+n_smooth = 150; 
+n_smooth = 100; 
 n_clust = 150; %150 takes a long time... 
 %n_clust = 0; 
 
@@ -64,6 +66,7 @@ n_clust = 150; %150 takes a long time...
 %n_clust = 100; 
 A_clust = 0.6;
 sigma = 4;
+%sigma = 2; 
 
 osf = 3;    % oversampling factor
 
@@ -72,7 +75,7 @@ if square
     r_proxy = 0.7;
 else
     r_proxy = 0.25;
-   % r_proxy = 0.35;
+    r_proxy = 0.35;
 end
 
 %% Computation of the centers
@@ -80,8 +83,9 @@ end
 % the clustering centers
 s = sqrt(1:n_clust) - sqrt(n_clust);
 d = A_clust * exp(sigma*s);
-%d = d(d>1e-15);
+d = d(d>1e-15);
 d = d(d>1e-14);
+%d = d(d>1e-12);
 
 centers_clust = [];
 dirs = [];
@@ -105,8 +109,9 @@ theta(end) = [];
 centers_smooth = 1.2+1.2i + r_proxy * exp(1i*theta);
 centers_smooth_int = 1.2+1.2i + 2 * exp(1i*theta);
 
-%centers_smooth = 1.25+1.25i + r_proxy * exp(1i*theta);
-%centers_smooth_int = 1.25+1.25i + 2 * exp(1i*theta);
+% works well for the non-convex polygon
+centers_smooth = 1.25+1.1i + r_proxy * exp(1i*theta);
+centers_smooth_int = 1.25+1.1i + 2 * exp(1i*theta);
 
 % centers_smooth = mean(P) + r_proxy * exp(1i*theta);
 % centers_smooth_int = mean(P) + 2 * exp(1i*theta);
@@ -125,6 +130,7 @@ centers_int = [centers_clust_int centers_smooth_int.'].';
 %% Computation of boundary points
 pts1 = clustered_points(round(n_smooth/n_sides), n_clust, sigma);
 pts = oversample_points(pts1, osf);
+pts = [-1 pts 1]; %add corner points 
 
 bndpts = [];
 for k = 1:n_sides
@@ -142,6 +148,7 @@ if plotdomain
     plot(centers, 'ro')
     plot(centers_int, 'gx')
     hold off
+    axis equal
 end
 
 %%
