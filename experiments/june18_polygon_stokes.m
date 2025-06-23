@@ -10,13 +10,7 @@ function [err_ext,reserr_ext,coefnorm_ext] = june18_polygon_stokes(svec,plotdoma
 
 if nargin<1
     close all
-    svec = [1 1 0 1 1]; %S R Tr, D, T. For n_clust = 150, this setting gives 
-                        %large resiudal in new points for the interior
-                        %problem! The resiudal at the collocation points is
-                        %still small.
-                        % Something seems wrong at the corners. Everything
-                        % works well for smaller n_clust. If I change d =
-                        % d(d>1e-15); to d = d(d>1e-14); all seems fine.
+    svec = [1 1 0 1 1]; %S R Tr, D, T. [1 1 0 1 1] works for the non-convex polygon exterior/interior problem
                         
     plotdomain = 1;
 elseif nargin<2
@@ -65,7 +59,7 @@ n_clust = 150; %150 takes a long time...
 
 %n_clust = 100; 
 A_clust = 0.6;
-sigma = 4;
+sigma = 4; %Will impact accuracy!
 %sigma = 2; 
 
 osf = 3;    % oversampling factor
@@ -83,9 +77,15 @@ end
 % the clustering centers
 s = sqrt(1:n_clust) - sqrt(n_clust);
 d = A_clust * exp(sigma*s);
-d = d(d>1e-15);
+%d = d(d>1e-15);
 d = d(d>1e-14);
 %d = d(d>1e-12);
+
+%For n_clust = 150, d = d(d>1e-15) gives 
+%large resiudal in new points for the interior
+%problem! The resiudal at the collocation points is
+%still small. Everything works well for smaller n_clust. If I change d =
+% d(d>1e-15); to d = d(d>1e-14); all seems fine.
 
 centers_clust = [];
 dirs = [];
@@ -102,7 +102,7 @@ for k = 1:n_sides
     centers_clust_int = [centers_clust_int c];
 end
 
-% the smooth centers
+% the smooth centers -- will impact acuracy!
 theta = linspace(0, 2*pi, n_smooth+1)';
 theta(end) = [];
 
