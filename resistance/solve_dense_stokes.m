@@ -58,10 +58,10 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
         col_norms = vecnorm(Ntot);
         D = diag(1 ./ col_norms);
         
-        NtotD = Ntot*D;
+        Ntot = Ntot*D;
         
     end
-    NtotD = W*NtotD;
+    NtotD = W*Ntot;
     b = W*b;
 
     %Possibly, do also preconditioning from the left
