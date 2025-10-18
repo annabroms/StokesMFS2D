@@ -4,6 +4,8 @@ function [udirect,vdirect] = stokesletDirect(xsrc,ysrc,xtar,ytar,f1,f2,N)
 %Returns flow udirect,vdirect, the x and y components of the flow. Sources
 %and targets assumed to be different points.
 
+%Todo: write to support multi d source
+
 assert(numel(xsrc)==N,'Wrong number of x sources');
 assert(numel(ysrc)==N,'Wrong number of y sources');
 assert(numel(f1)==N,'Wrong number of x source strengths');

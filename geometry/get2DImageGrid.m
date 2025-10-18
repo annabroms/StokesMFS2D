@@ -111,7 +111,7 @@ if image
     rimage_pairs = cell(P,P);
     refine = cell(P,P);
     
-    accstop_fine = 1; %debug; 
+    %accstop_fine = 1; %debug; 
   
     for i = 1:P
         ind = setdiff(1:P,i); %check neighbours with everyone else
@@ -126,12 +126,16 @@ if image
                     pairs = [pairs; i k]; 
                 end
                 %% Assign image points    
-                if isfield(structure, 'n_clusters')
+                if isfield(opt, 'n_clusters')
                     sample_nbr = opt.n_clusters; 
                 else
                     %get number of image locations to be generated, from empiric
                     %relationship
-                    sample_nbr = ceil(slope*log10(d)+m); 
+                    sample_nbr = max(ceil(slope*log10(d)+m),0); 
+                end
+
+                if ~sample_nbr
+                    continue;
                 end
         
                 %generate points from Rp out to the accumulation point.
@@ -161,7 +165,7 @@ if image
                 
                 aa = rads(i)*Rp_f*1.01; %start just exterior to the proxy grid     
                 aa = rads(i)*Rp_f*1.05;
-                aa = 0.6; %test
+                %aa = 0.6; %test
                 
                 %Rescale image line to be exactly between the end points
                 % (aa, accumulation point)
@@ -206,8 +210,10 @@ if image
                 % Assign image poins on particle i, close to touching
                 % particle k
                 line = q(i)+t*(q(k)-q(i))./abs(q(k)-q(i));
-                line1 = q(i)+t_new*(q(k)-q(i))./abs(q(k)-q(i));
-                line2 = q(i)+conj(t_new)*(q(k)-q(i))./abs(q(k)-q(i));
+                %line1 = q(i)+t_new*(q(k)-q(i))./abs(q(k)-q(i));
+                %line2 = q(i)+conj(t_new)*(q(k)-q(i))./abs(q(k)-q(i));
+
+
                % line2 = []; 
                % hold on
                % plot(real(line1),imag(line1),'*')
@@ -375,7 +381,7 @@ for k = 1:P
     
     rout_part = q(k)+rads(k)*(cos(t)+1i*sin(t));
     rout = [rout; rout_part]; %add to global list
-    weights = [weights; w_k];
+   % weights = [weights; w_k];
 
 end
 
