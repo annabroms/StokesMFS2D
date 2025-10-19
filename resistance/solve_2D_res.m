@@ -52,7 +52,7 @@ end
 %% SET PARAMS
 % GMRES PARAMS
 maxit = 1600;
-maxit = 100;
+%maxit = 500;
 gmres_tol = 1e-6;
 %gmres_tol = 1e-10; %don't choose too large! It will impact the force resolution!
 %gmres_tol = 1e-16;
@@ -370,7 +370,7 @@ end
 %% Experiment with left preconditioner based on deflation
 solve = 1;
 if lr
-    [Rinv,AN,AM,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
+    [Rinv,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
     %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
     opt.db = db;
     tau_coarse = getCoarseSource(fout,Rinv,Nx,Ny,Mx,Z,Y,db,P,Nc,a);
@@ -542,7 +542,7 @@ end %[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_
     if lr
         %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
         if solve
-            tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM,Nx,Ny,Mx,Z,Y,opt);        
+            tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,Nx,Ny,Mx,Z,Y,opt);        
             tau_stokes_x = tau_coarse(1:end/2)+tau_stokes(1:end/2);
             tau_stokes_y = tau_coarse(end/2+1:end)+tau_stokes(end/2+1:end);    
         else
@@ -797,10 +797,10 @@ function test_solve_res2
 
 close all; 
 images = 0; %images not needed for well separated particles
-delta = 10; 
+delta = 0.1; 
 rng(8); 
 
-P = 20;
+P = 5;
 [q,B] = grow_cluster(P,delta,2);
 %q = 0; 
 %q = [0; 2+delta]; %center coordinates
@@ -808,7 +808,7 @@ U = rand(P,2); %translational velocities
 W = rand(P,1); %angular velocities 
 rads = ones(P,1);
 visualise = 0; 
-lr = 5; %lr = 3  %discretization dependent what works here
+lr = 23; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
 
 [FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
 

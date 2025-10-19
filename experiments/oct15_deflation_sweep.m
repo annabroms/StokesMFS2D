@@ -1,4 +1,10 @@
 %test lr preconditioning
+
+%What I learnt: Smaller delta requires a larger number of modes for a small
+%number of iterations. The same test script was used both to test the
+%performance with trigonometric modes and with modes corresponding to the
+%first k singular vectors of the single particle SVD. 
+
 close all; clear;
 images = 0; %images not needed for well separated particles
 deltavec = [0.1:0.1:1 2 5]; 
@@ -9,7 +15,8 @@ nruns = 10;
 rads = ones(P,1);
 visualise = 0; 
 lrvec = [0 4:10 23:10:70];
-lrvec = [0 5 7 11:4:27 (20:10:30)*4+3]; % should be to 60 here
+lrvec = [0 5 7 11:4:27 (20:10:30)*4+3]; 
+% SVD k chosen to match the number of coarse basis functions used with a trigonometric basis. should be up to 60 here
 
 for k = 1:length(deltavec)
     delta = deltavec(k);
@@ -31,7 +38,7 @@ end
 
 %%
 % Visualise the results
-c = lines(length(lrvec));
+c = lines(length(lrvec)+1);
 figure(4)
 loglog(nan,nan);
 hold on
@@ -63,12 +70,20 @@ for i = 1:length(lrvec)
     
     figure(3)
     mean_val = mean(reshape(iters(:,:,i),length(deltavec),nruns)');
-    h3(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i,5)+1},'Color',c(i,:));
+    if i>8
+        h3(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i+1,5)+1},'Color',c(i+1,:));
+    else
+        h3(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i,5)+1},'Color',c(i,:));
+    end
     
 
     figure(4)
     mean_val = mean(reshape(errs(:,:,i),length(deltavec),nruns)');
-    h4(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i,5)+1},'Color',c(i,:));
+    if i>8
+        h4(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i+1,5)+1},'Color',c(i+1,:));
+    else
+        h4(i) = plot(deltavec,mean_val,'-','Marker',markers{mod(i,5)+1},'Color',c(i,:));
+    end
     
     
 
@@ -80,13 +95,15 @@ xlabel('$\delta$','interpreter','latex')
 ylabel('GMRES iterations','interpreter','latex')
 grid on
 
-labels = arrayfun(@(l) sprintf('$\\text{mode } %d$', l), [lrvec(2:end)-3], 'UniformOutput', false);
+labels = arrayfun(@(l) sprintf('$k = %d$', l), [lrvec(2:end)-3], 'UniformOutput', false);
+
+%labels = arrayfun(@(l) sprintf('$\\text{mode } %d$', l), [lrvec(2:end)-3], 'UniformOutput', false);
 legend(h3,['No deflation', labels], 'Interpreter', 'latex', 'Location', 'best');
 
 figure(4)
 axis tight
 xlabel('$\delta$','interpreter','latex')
-ylabel('Relative residual','interpreter','latex')
+ylabel('Relative surface residual','interpreter','latex')
 grid on
 legend(h4,['No deflation', labels], 'Interpreter', 'latex', 'Location', 'best');
 
