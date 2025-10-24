@@ -1,4 +1,4 @@
-function [UW,lambdahat,it,gmres_tol,maxres] = solve_2D_mob(q,F,T,rads,image,visualise)
+function [UW,lambdahat,it,gmres_tol,maxres] = solve_2D_mob(q,F,T,rads,image,lr,visualise)
 %SOLVE_2D_MOB Solves a 2D Stokes mobility problem with circular particles
 % using 1-body preconditioned recompleted MFS.
 %
@@ -11,6 +11,8 @@ function [UW,lambdahat,it,gmres_tol,maxres] = solve_2D_mob(q,F,T,rads,image,visu
 %   T         - Px1 column vector of torques acting on the particles
 %   rads      - Px1 vector of particle radii
 %   image     - Logical flag (true/false): use image system for higher accuracy
+%   lr        - 0,1,2,..: sets use of long-range preconditioning. If false, no
+%               lr precond. lr > 1 determines the coarse space.
 %   visualise - Logical flag: plot the configuration and solution details
 %
 % Outputs:
@@ -72,6 +74,8 @@ opt = get2Dparams();
 %QFS paper (Laplace).
 a = opt.a_c; 
 opt.image = image;
+opt.lr = lr; 
+opt.P = P; 
 
 if image
     Nc = 60; %has been 60 all the time before
@@ -110,7 +114,7 @@ opt.s = s;
 %% GET GRIDS AND VISUALISE
 
 %create grids
-[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
+[rout,weights,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
 
 if visualise
     figure()
@@ -140,7 +144,7 @@ end
 %% PREPARE PRECONDITIONING AND RHS
 
 %get evaluation of lambda0, the completion sources, computed from known net forces and torques
-u = getRecompletionFlow(rin,rout,q,F,T); 
+[u,lambda_x,lambda_y] = getRecompletionFlow(rin,rout,q,F,T); 
 
 %Compute self-interaction blocks for each particle separately if images are in use.  
 if ~isempty(rimage)
@@ -149,19 +153,49 @@ else
     %Without images, all pseudoinverses are the same so it's enough to do
     %this for a single body (assuming every particle is discretised with
     %the same number of source and collocation points)
-    [UU,Y,L] = getSelfPseudoMobility(1,0,rin(1:Nc)-q(1),rout(1:a*Nc)-q(1),rimage,nimage,pair_points,s,project_proxy);
+    [UU,Y,L,Lr] = getSelfPseudoMobility(1,0,rin(1:Nc)-q(1),rout(1:a*Nc)-q(1),rimage,nimage,pair_points,s,project_proxy);
+end
+
+%% Experiment with left preconditioner based on deflation
+solve = 1;
+if lr
+    [Rinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond_mob(q,rin,rout,L{1},Lr,opt);
+    %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
+    opt.db = db;
+    tau_coarse = getCoarseSource(u,Rinv,Nx,Ny,Mx,Zi,Yi,db,P,Nc,a);
+
+    disp('...Long range preconditioner constructed')
+
+    % Check if this is enough for a solution to the system, by evaluating
+    % and comparing lhs to rhs
+    proj_tau = zeros(P*Nc*2,1); 
+    rhs = zeros(P*Nc*a*2,1); 
+    for k = 1:P
+        tau_k = [tau_coarse(Nc*(k-1)+1:Nc*k); tau_coarse(P*Nc+Nc*(k-1)+1:P*Nc+Nc*k)];
+        rhs_k = -Lr*tau_k;
+        rhs(Nc*a*(k-1)+1:Nc*a*k) = rhs_k(1:end/2); 
+        rhs(Nc*a*(k-1)+P*Nc*a+1:Nc*a*k+P*Nc*a) = rhs_k(end/2+1:end);
+        proj_tau_k = tau_k-L{1}*tau_k;
+        proj_tau(Nc*(k-1)+1:Nc*k) = proj_tau_k(1:end/2); 
+        proj_tau(Nc*(k-1)+Nc*P+1:Nc*k+Nc*P) = proj_tau_k(end/2+1:end);
+    end
+    lhs = getVelocityField(rin,rout,proj_tau(1:end/2),proj_tau(end/2+1:end),[],[],[],[],[],[], []);
+    if norm(lhs-rhs)<gmres_tol
+        solve = 0; 
+    end
 end
 
 % Build system matrix to see what it looks like. 
 debug = 0;
-if debug
+if debug && lr
     x = zeros(2*length(rout),1);
     tic
     for k = 1:2*length(rout)
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
+        uu = lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Rinv,Nx,Ny,Mx,Zi,Yi,opt);
+        %uu = matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
         CC(:,k) = uu;
     end
     toc
@@ -183,8 +217,14 @@ end
 
 
 %% SOLVE
-[mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,1,rout);
+if opt.lr && solve
+    disp('...Solving for fine component...')
+    Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt); 
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Rinv,Nx,Ny,Mx,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
 
+elseif solve
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,1,rout);
+end
 % Decay of residual with iteration number
 figure()
 semilogy(resvec)
@@ -198,6 +238,13 @@ N_small = size(rin,1)/P;
 PM = length(rout);
 
 [tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(mu_gmres,rimage,UU,Y,P,N_small,PM,pair_points,s,project_proxy);
+
+
+if opt.lr
+    tau_stokes = applyQmat_mob([tau_stokes_x; tau_stokes_y],rin,rout,L{1},Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt);
+    tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2); 
+    tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end); 
+end
 
 tau_proxy = [tau_stokes_x; tau_stokes_y];
 
@@ -249,7 +296,19 @@ for k = 1:P
 end
 
 %Using representation
-u_rhs = matvec_2D_mobility(mu_gmres,rin,rout,rcheck_b,rimage,nimage,q,UU,Y,L,pair_points,s,0,project_proxy);
+if lr
+    tau_L = zeros(P*Nc*2,1); 
+    for k = 1:P
+        tau_k = [tau_stokes_x(Nc*(k-1)+1:Nc*k); tau_stokes_y(Nc*(k-1)+1:Nc*k)];
+        tau_k = tau_k-L{1}*tau_k;
+        tau_L(Nc*(k-1)+1:k*Nc)= tau_k(1:end/2);
+        tau_L(Nc*(k-1)+P*Nc+1:k*Nc+P*Nc) = tau_k(end/2+1:end);
+    end
+
+    u_rhs = getVelocityField(rin,rcheck_b,tau_L(1:end/2),tau_L(end/2+1:end),[],[],[],[],[],[], []);
+else
+    u_rhs = matvec_2D_mobility(mu_gmres,rin,rout,rcheck_b,rimage,nimage,q,UU,Y,L,pair_points,s,0,project_proxy);
+end
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0; 
 % We should get the same thing by just determining the TOTAL source
@@ -259,7 +318,7 @@ u_rhs = u_rhs-S_0;
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs';
 max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
-maxres = max(abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end)))/max_abs;
+maxres = max(abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end)))/max_abs
 
 
 if visualise
@@ -338,11 +397,12 @@ F = [1 0; 0 0]; %forces on the particles
 T = [1; 1]; %torques on the particles
 rads = [1; 1]; 
 visualise = 1; 
-[UW,lambda_mob,it,gmres_tol,err] = solve_2D_mob(q,F,T,rads,images, visualise);
+lr = 0; %long range preconditioning
+[UW,lambda_mob,it,gmres_tol,err] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_2D_mob(q,F,T,rads,images, visualise);
+[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)

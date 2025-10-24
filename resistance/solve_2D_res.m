@@ -59,7 +59,6 @@ gmres_tol = 1e-6;
 % Params to determine grid
 opt = get2Dparams(); 
 a = opt.a_c;
-a = 1;
 opt.a_c = a; 
 opt.P = P; 
 opt.image = image;
@@ -78,8 +77,8 @@ else
     Nc = 200;
     Nc = 1000;
     Nc = 250;
-    Nc = 60;
-    Nc = 150; 
+    Nc = 150;
+   % Nc = 150; 
     tol = 1e-14;
     tol = 1e-12;
     wobbly = 0; %other particle shapes...
@@ -370,12 +369,13 @@ end
 %% Experiment with left preconditioner based on deflation
 solve = 1;
 if lr
-    [Rinv,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
+    disp('...Start building long range preconditioner')
+    [Sinv,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
     %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
     opt.db = db;
-    tau_coarse = getCoarseSource(fout,Rinv,Nx,Ny,Mx,Z,Y,db,P,Nc,a);
+    tau_coarse = getCoarseSource(fout,Sinv,Nx,Ny,Mx,Z,Y,db,P,Nc,a);
 
-    disp('...Long range preconditioner constructed')
+    disp('...Completed building long range preconditioner')
 
     % Check if this is enough for a solution to the system, by evaluating
     % and comparing to rhs
@@ -481,8 +481,8 @@ if lr
   %  maxit = 1; %debug
    % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
-        Pf = applyPmat(fout,rin,rout,Rinv,Nx,Ny,Mx,Z,Y,opt); 
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+        Pf = applyPmat(fout,rin,rout,Sinv,Nx,Ny,Mx,Z,Y,opt); 
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
@@ -542,7 +542,7 @@ end %[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_
     if lr
         %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
         if solve
-            tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,Nx,Ny,Mx,Z,Y,opt);        
+            tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Sinv,Nx,Ny,Mx,Z,Y,opt);        
             tau_stokes_x = tau_coarse(1:end/2)+tau_stokes(1:end/2);
             tau_stokes_y = tau_coarse(end/2+1:end)+tau_stokes(end/2+1:end);    
         else
@@ -797,7 +797,7 @@ function test_solve_res2
 
 close all; 
 images = 0; %images not needed for well separated particles
-delta = 0.1; 
+delta = 1; 
 rng(8); 
 
 P = 5;
@@ -808,7 +808,7 @@ U = rand(P,2); %translational velocities
 W = rand(P,1); %angular velocities 
 rads = ones(P,1);
 visualise = 0; 
-lr = 23; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
+lr = 5; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
 
 [FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
 

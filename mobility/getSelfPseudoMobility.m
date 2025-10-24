@@ -1,4 +1,4 @@
-function [Uii,Yii,Lii] = getSelfPseudoMobility(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s,project_proxy)
+function [Uii,Yii,Lii,Lr] = getSelfPseudoMobility(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s,project_proxy)
 %getSelfPseudoMobility computes two blocks per particle to build the MFS mobility single body pseudoinverse 
 % based on the SVD factorisaiton of the single body matrix.          
 %
@@ -136,7 +136,8 @@ for i = 1:P
     Lr = Kout*Kin'; %to close the system with unknown velocities. Remember: we use a recompleted formulation!
 
     if project_proxy
-        Nii = [Nio*(eye(size(L))-L)+Lr Nimage];
+        %Nii = [Nio*(eye(size(L))-L)];
+        Nii = [Nio*(eye(size(L))-L)+Lr Nimage]; %used for mobility
         
     else
         warning('Code not complete!')

@@ -1,17 +1,16 @@
-function [Sinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond(q,rin,rout,opt)
+function [Sinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond_mob(q,rin,rout,L,Lr,opt)
 %%GET_LONG_RANGE_PRECOND  Construct coarse-space projection matrices for long-range preconditioning.
 %
-%   [Sinv, Zi, Yi] = GET_LONG_RANGE_PRECOND(q, rin, rout, opt)
+%   [Rinv, Z, Y] = GET_LONG_RANGE_PRECOND(q, rin, rout, opt)
 %
 %   Constructs the matrices used in the long-range preconditioner:
-%   the coarse-to-fine mappings AN and AM, and the inverse coarse interaction matrix Rinv.
+%   the diagonal blocks in the matrices Y and Z, and the inverse coarse interaction matrix Sinv.
 %   These are used to define the projectors:
 %
-%       P = I - G * Z * Sinv * Y'     (left-side projection, see applyPmat)
-%       Q = I - Z * Sinv * Y' * G     (right-side projection, see applyQmat)
+%       P = I - G_L * Z * Sinv * Y'     (left-side projection, see applyPmat)
+%       Q = I - Zi * Sinv * Yi' * G_L     (right-side projection, see applyQmat)
 %
-%   The choice of coarse basis (e.g. translation-only vs. rigid-body modes) 
-%   is set via the option opt.lr.
+%   The choice of coarse basis is set via the option opt.lr.
 %
 %   INPUTS:
 %     q        - P array of particle centers.
@@ -26,19 +25,18 @@ function [Sinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond(q,rin,rout,opt)
 %                  • other kernel options (such as fmm flat passed to getFlow).
 %
 %   OUTPUTS:
-%     Sinv     - (Pk×Pk) inverse of coarse interaction matrix S = blkdiag(Y')*U,
+%     Rinv     - (Pk×Pk) inverse of coarse interaction matrix R = blkdiag(Y')*U,
 %                where U is the coarse-flow matrix at the PM targets from
 %                the Pk coarse basis functions
 %     Z       - (2PM×Pk) matrix mapping coarse coefficients to proxy source strengths.
 %     Y       - (2PN×Pk) matrix whose transpose, Y', maps to coarse velocity space.
 %
 %   NOTES:
-%     - The function assumes block structure per body and Yi and Zi constructs
-%       block-diagonal matrices Z and Y accordingly.
+%     - The function assumes block structure per body 
 %
-%   See also: applyPmat, applyQmat, get_long_range_precond_mob
+%   See also: applyPmat_mob, applyQmat_mob
 %
-% Anna Broms, Oct 19, 2025
+% Anna Broms, Oct 22, 2025
 
 lr = opt.lr;
 a = opt.a_c;
@@ -73,7 +71,7 @@ elseif lr == 2
     Kout = getKmat2D(rout(1:Nc*a),q(1));
     svd_type = 0; 
 elseif lr>2 
-    lmax = lr-2;
+    lmax = lr-3;
     %lmax = 0; 
     
     % Start with first two columns: (1,0) for Nx, (0,1) for Ny
@@ -135,13 +133,14 @@ elseif lr>2
     
 end
 
-%% Is it a good choice to take singular vectors of G for a single body to be the coarse basis functions in Z, Y? Yes!
-
+%% 
 if svd_type
     G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
     %[V,D] = eig(G);
-    [U,S,V] = svd(G); 
-    smax = lr-3;
+    %[U,S,V] = svd(G*(eye(2*Nc)-L)+Lr); 
+    [U,S,V] = svd(G*(eye(2*Nc)-L)); 
+    %[U,S,V] = svd(G); 
+    smax = lr-2;
     s = diag(S);
     Zi = V(:,1:smax);%*diag(1./s(1:smax));
     Yi = U(:,1:smax);
@@ -224,6 +223,11 @@ targ = [real(rout)';imag(rout)'];
 % Enough to use sources on one body at the time due to the sparsity structure
 S = zeros(db*P);
 Vmat = zeros(Nc*P*2*a,P*db);
+LrZ = Lr*Zi;
+LZ = Zi-L*Zi;
+LZ = Zi;
+% Let the coarse operator be the pure SLP or G(I-L)+Lr?
+
 for k = 1:P
     %Do a block call for the 2k basis functions on this body
     srcinfo.sources = [real(rin((k-1)*Nc+1:k*Nc))'; imag(rin((k-1)*Nc+1:k*Nc))'];   
@@ -232,8 +236,9 @@ for k = 1:P
 
     for i = 1:db
         if svd_type
-            src_struct(i,1,:) = Zi(1:end/2,i);
-            src_struct(i,2,:) = Zi(end/2+1:end,i);
+            
+            src_struct(i,1,:) = LZ(1:end/2,i);
+            src_struct(i,2,:) = LZ(end/2+1:end,i);
         else
             % Assuming basis functions with no coupling between x and y,
             % such as the constand basis, or using strategy 3, with
@@ -263,7 +268,8 @@ for k = 1:P
     %replace with direct evaluation instead
    % [x_comp,y_comp] = stokesletDirect(real(rin((k-1)*Nc+1:k*Nc))',imag(rin((k-1)*Nc+1:k*Nc))',...
     %    real(rout),imag(rout),Z(1:end/2,:),Z(end/2+1:end,:),Nc);
-    
+   % x_comp(Nc*a*(k-1)+1:Nc*a*k,:) = x_comp(Nc*a*(k-1)+1:Nc*a*k,:)+LrZ(1:end/2,:);
+    %y_comp(Nc*a*(k-1)+1:Nc*a*k,:) = y_comp(Nc*a*(k-1)+1:Nc*a*k,:)+LrZ(end/2+1:end,:);
     Vmat(1:end/2,db*(k-1)+1:db*k) = x_comp;
     Vmat(end/2+1:end,db*(k-1)+1:db*k) = y_comp;
 

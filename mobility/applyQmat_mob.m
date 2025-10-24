@@ -1,7 +1,7 @@
-function lambda_fine = applyQmat(vel,rvec_in,rvec_out,Rinv,Nx,Ny,Mx,Zi,Yi,opt)
+function lambda_fine = applyQmat_mob(vel,rvec_in,rvec_out,L,Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt)
 %APPLYQMAT  Apply long-range preconditioning projection matrix on sources
 %
-%   lambda_fine = APPLYQMAT(vel, rvec_in, rvec_out, Rinv, Zi, Yi, opt)
+%   lambda_fine = APPLYQMAT_mob(vel, rvec_in, rvec_out, Rinv, Zi, Yi, opt)
 %
 %   Applies the projection operator 
 %%   
@@ -27,19 +27,39 @@ function lambda_fine = applyQmat(vel,rvec_in,rvec_out,Rinv,Nx,Ny,Mx,Zi,Yi,opt)
 %     - The flow is computed via getVelocityField using the Stokeslet representation.
 %     - Image systems are not included in this implementation.
 %
-%   See also: applyPmat, getCoarseSource, get_long_range_precond,
+%   See also: applyPmat_mob, getCoarseSource, get_long_range_precond_mob,
 %   getVelocityField
 %
-% Anna Broms, Oct 19, 2025
+% Anna Broms, Oct 22, 2025
 
 
 
 %compute velocities using these source strengths
+P = opt.P;
+Nc = opt.N_c; 
+a = opt.a_c;
+
+proj_L = zeros(P*Nc*2,1);
+Lr_vel = zeros(P*Nc*a*2,1);
+for k = 1:opt.P
+    vel_k = [vel(Nc*(k-1)+1:Nc*k); vel(P*Nc+Nc*(k-1)+1:Nc*k+P*Nc)];
+    proj_vel_k = vel_k-L*vel_k; %project by I-L
+    proj_L(Nc*(k-1)+1:Nc*k) = proj_vel_k(1:end/2);
+    proj_L(Nc*(k-1)+P*Nc+1:Nc*k+P*Nc) = proj_vel_k(end/2+1:end);
+
+    Lr_vel_k = Lr*vel_k; % Lr lambda
+    Lr_vel(Nc*a*(k-1)+1:Nc*a*k) = Lr_vel_k(1:end/2);
+    Lr_vel(Nc*a*(k-1)+P*Nc*a+1:Nc*a*k+P*Nc*a) = Lr_vel_k(end/2+1:end);
+
+
+end
 
 %remember that everything so far is implemented without images in mind
-proj_vel = getVelocityField(rvec_in,rvec_out,vel(1:end/2),vel(end/2+1:end),[],[],[],[],[],[], []);
+proj_vel = getVelocityField(rvec_in,rvec_out,proj_L(1:end/2),proj_L(end/2+1:end),[],[],[],[],[],[], []);
 
-lambda = getCoarseSource(proj_vel,Rinv,Nx,Ny,Mx,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
+tot_vel = proj_vel+Lr_vel;
+
+lambda = getCoarseSource(tot_vel,Rinv,Nx,Ny,Mx,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
 
 lambda_fine = vel-lambda;
 

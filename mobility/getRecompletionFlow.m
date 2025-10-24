@@ -58,10 +58,9 @@ for k = 1:P
 end
 
 %Now, compute flow.
-[ufmm,vfmm] = stokesSLPfmm(lambda_x,lambda_y,real(rin),imag(rin),real(rout),imag(rout),...
-    0,5);
+res = getVelocityField(rin,rout,lambda_x,lambda_y,[],[],[],[],[],[],[]);
 
-u = -[ufmm; vfmm]; %minus sign as we move this term to rhs
+u = -res; %minus sign as we move this term to rhs
 
 
 end
