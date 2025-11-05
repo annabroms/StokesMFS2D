@@ -141,7 +141,7 @@ if svd_type
     G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
     %[V,D] = eig(G);
     [U,S,V] = svd(G); 
-    smax = lr-3;
+    smax = lr-2;
     s = diag(S);
     Zi = V(:,1:smax);%*diag(1./s(1:smax));
     Yi = U(:,1:smax);
@@ -220,7 +220,7 @@ targ = [real(rout)';imag(rout)'];
 % Vmat2 = [reshape(Ufmm.pottarg(:,1,:),srcinfo.nd,Nc*P*a) reshape(Ufmm.pottarg(:,2,:),srcinfo.nd,Nc*P*a)]'./2/pi;
 %R = AM'*Vmat; %This can certainly be computed faster! 
 
-%% Build matrix Vmat using its block structure instea. 
+%% Build matrix Vmat using its block structure instead. 
 % Enough to use sources on one body at the time due to the sparsity structure
 S = zeros(db*P);
 Vmat = zeros(Nc*P*2*a,P*db);
@@ -263,13 +263,31 @@ for k = 1:P
     %replace with direct evaluation instead
    % [x_comp,y_comp] = stokesletDirect(real(rin((k-1)*Nc+1:k*Nc))',imag(rin((k-1)*Nc+1:k*Nc))',...
     %    real(rout),imag(rout),Z(1:end/2,:),Z(end/2+1:end,:),Nc);
+
+    %create a mask for the bodies far away
     
-    Vmat(1:end/2,db*(k-1)+1:db*k) = x_comp;
-    Vmat(end/2+1:end,db*(k-1)+1:db*k) = y_comp;
+    %stupid way of doing this
+    if opt.mask    
+        d = abs(q-q(k));
+        ind = find(d>(2+opt.cut_off));
+        ind_diff = setdiff(1:P,ind);
+        keep_ind = []; 
+        for l = 1:length(ind_diff)
+            i = ind_diff(l); 
+            keep_ind = [keep_ind; ((i-1)*Nc*a+1:i*Nc*a)'];
+        end
+    
+        Vmat(keep_ind,db*(k-1)+1:db*k) = x_comp(keep_ind,:);
+        Vmat(keep_ind+P*Nc*a,db*(k-1)+1:db*k) = y_comp(keep_ind,:);
+    else
+        %To build the original system S
+        Vmat(1:end/2,db*(k-1)+1:db*k) = x_comp;
+        Vmat(end/2+1:end,db*(k-1)+1:db*k) = y_comp;
+    end
 
    %Slow, but requires less memory. 
     % for i = 1:P
-    %     R((i-1)*db+1:i*db,(k-1)*db+1:k*db) = R((i-1)*db+1:i*db,(k-1)*db+1:k*db) + ...
+    %     S((i-1)*db+1:i*db,(k-1)*db+1:k*db) = S((i-1)*db+1:i*db,(k-1)*db+1:k*db) + ...
     %         Y'*[x_comp((i-1)*Nc*a+1:i*Nc*a,:); y_comp((i-1)*Nc*a+1:i*Nc*a,:)];
     % end
     

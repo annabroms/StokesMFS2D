@@ -1,8 +1,8 @@
-function [Uii,Yii] = getSelfPseudo(P,rin_vec,rout_vec,rimage,nimage,pair_points,s)
+function [Uii,Yii] = getSelfPseudoCoarse(P,rin_vec,rout_vec,rimage,nimage,pair_points,s)
 %getSelfPseudo computes two blocks per 2D particle to build the MFS single body pseudoinverse 
 % based on the SVD factorisaiton of the single body Stokes target-from-source matrix.          
 %
-% Syntax: [Uii,Yii] = getSelfPseudo(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s)
+% Syntax: [Uii,Yii] = getSelfPseudoCoarse(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s)
 %
 % Input: 
 % P         - Number of particles to compute pseudoinverse for 
@@ -47,7 +47,7 @@ end
 solve_xy = 1; %order unknowns as x, then y globally
 
 mu = 1; 
-visualise = 0; 
+visualise = 1; 
 
 N = size(rin_vec,1)/P;
 
@@ -61,7 +61,6 @@ if isempty(rimage) %compute just one factor, for a single particle
     tol = 1e-10; 
     %should not choose eps here as it might be that we then don't remove the last singval 
     tol = 1e-14; 
-    P = 1; 
 else  
     tol = 1e-9;
     tol = 1e-14; 
@@ -76,9 +75,6 @@ Yii = cell(P,1);
 
 start_im = 0; 
 start_colloc = 0; 
-
-
-
 for i = 1:P
     %Get image data
     if isempty(rimage)
@@ -114,7 +110,8 @@ for i = 1:P
     else
         Nimage = getImageKernels2D(rim,nim,rout,mu,s); %get the right singularities
     end
-    Nii = [Nio Nimage];
+    K = getKmat2D(rin,mean(rin));
+    Nii = [Nio*K Nimage];
 
     %Compute SVD
     [Y,Bi]  = getPseudoFactors(Nii,tol,visualise);

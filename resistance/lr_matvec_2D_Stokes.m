@@ -6,7 +6,7 @@ function res = lr_matvec_2D_Stokes(tau,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,
 
 vel = matvec_2D_Stokes(tau,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,pairs,s);
 
-res = applyPmat(vel,rvec_in,rvec_out,Rinv,Nx,Ny,Mx,Zi,Yi,opt);
+res = applyPmat(vel,rvec_in,rvec_out,Rinv,q,Ny,Mx,Zi,Yi,opt);
 
 
 end

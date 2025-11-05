@@ -1,11 +1,12 @@
-function lambda_fine = applyQmat_mob(vel,rvec_in,rvec_out,L,Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt)
-%APPLYQMAT  Apply long-range preconditioning projection matrix on sources
+function lambda_fine = applyQmat_mob(vel,rvec_in,rvec_out,L,Lr,Sinv,Zi,Yi,opt)
+%APPLYQMAT_MOB  Apply long-range preconditioning projection matrix on
+%sources for the mobility setting
 %
-%   lambda_fine = APPLYQMAT_mob(vel, rvec_in, rvec_out, Rinv, Zi, Yi, opt)
+%   lambda_fine = APPLYQMAT_mob(vel, rvec_in, rvec_out, Sinv, Zi, Yi, opt)
 %
 %   Applies the projection operator 
 %%   
-%       Q = I - (Z * (R \ I) * Y') * G
+%       Q = I - (Z * (S \ I) * Y') * G
 %
 %   to the solution vector lambda, with Z = blkdiag(Zi) and Y = blkdiag(Yi)
 %
@@ -13,7 +14,7 @@ function lambda_fine = applyQmat_mob(vel,rvec_in,rvec_out,L,Lr,Rinv,Nx,Ny,Mx,Zi,
 %     lambda    - 3PN×1 vector of proxy source strengths 
 %     rvec_in   - PN complex valued array of source points for evaluating the proxy flow.
 %     rvec_out  - PM complex valued array of target surface points where the flow is evaluated.
-%     Rinv      - (Pk×Pk) inverse of the coarse interaction matrix R,
+%     Sinv      - (Pk×Pk) inverse of the coarse interaction matrix R,
 %                 where k is the number of coarse basis functions per body
 %     Y         - (2PM×Pk) matrix mapping from surface flow to coarse space.
 %     Z         - (2PN×Pk) matrix mapping from proxy source space to coarse space.
@@ -55,11 +56,11 @@ for k = 1:opt.P
 end
 
 %remember that everything so far is implemented without images in mind
-proj_vel = getVelocityField(rvec_in,rvec_out,proj_L(1:end/2),proj_L(end/2+1:end),[],[],[],[],[],[], []);
+proj_vel = getVelocityField(rvec_in,rvec_out,proj_L(1:end/2),proj_L(end/2+1:end));
 
 tot_vel = proj_vel+Lr_vel;
 
-lambda = getCoarseSource(tot_vel,Rinv,Nx,Ny,Mx,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
+lambda = getCoarseSource(tot_vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
 
 lambda_fine = vel-lambda;
 

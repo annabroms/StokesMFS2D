@@ -1,7 +1,8 @@
-function lambda_fine = applyQmat(vel,rvec_in,rvec_out,Sinv,q,Ny,Mx,Zi,Yi,opt)
+function lambda_fine = applyQmat_peanut(mu,rvec_in,rvec_out,Sinv,Zi,Yi,opt,...
+    rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap)
 %APPLYQMAT  Apply long-range preconditioning projection matrix on sources
 %
-%   lambda_fine = APPLYQMAT(vel, rvec_in, rvec_out, Sinv, Zi, Yi, opt)
+%   lambda_fine = APPLYQMAT_PEANUT(vel, rvec_in, rvec_out, Sinv, Zi, Yi, opt)
 %
 %   Applies the projection operator 
 %%   
@@ -38,40 +39,14 @@ function lambda_fine = applyQmat(vel,rvec_in,rvec_out,Sinv,q,Ny,Mx,Zi,Yi,opt)
 
 %remember that everything so far is implemented without images in mind
 
-%mask out elements here
-if opt.mask
-    Nc = opt.N_c;
-    a = opt.a_c;
-    P = opt.P;
-    vel_k = zeros(P*Nc*a*2,1);
-    proj_vel = zeros(P*Nc*a*2,1);
-    for k = 1:P
-        vel_k(:) = 0;
-        lambda_x = vel(Nc*(k-1)+1:Nc*k);
-        lambda_y = vel(Nc*(k-1)+P*Nc+1:Nc*k+P*Nc);
-        proj_k = getVelocityField(rvec_in(Nc*(k-1)+1:Nc*k),rvec_out,lambda_x,lambda_y,[],[],[],[],[],[], []);        
-        d = abs(q-q(k));
-        ind = find(d>(2+opt.cut_off));
-        ind_diff = setdiff(1:P,ind);
-        keep_ind = []; 
-        for l = 1:length(ind_diff)
-            i = ind_diff(l); 
-            keep_ind = [keep_ind; ((i-1)*Nc*a+1:i*Nc*a)'];
-        end
-        vel_k(keep_ind) = proj_k(keep_ind);
-        vel_k(keep_ind+P*Nc*a) = proj_k(keep_ind+P*Nc*a);
-    
-        proj_vel = proj_vel+vel_k;
-    end
-else
-    proj_vel = getVelocityField(rvec_in,rvec_out,vel(1:end/2),vel(end/2+1:end),[],[],[],[],[],[], []);
-end
+debug = 0; 
+proj_vel = matvec_2D_pairprecond_peanut(mu,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
+%proj_vel = getVelocityField(rvec_in,rvec_out,vel(1:end/2),vel(end/2+1:end),[],[],[],[],[],[], []);
 
 
+mu_coarse = getCoarseMu(proj_vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
 
-lambda = getCoarseSource(proj_vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
-
-lambda_fine = vel-lambda;
+lambda_fine = mu-mu_coarse;
 
 
 end

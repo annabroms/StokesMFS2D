@@ -1,9 +1,9 @@
 function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,lr,visualise)
-%SOLVE_2D_RES Solves a 2D Stokes resistance problem with circular particles
-% using 1-body preconditioned MFS.
+%SOLVE_2D_RES_LR Solves a 2D Stokes resistance problem with circular particles
+% using 1-body preconditioned MFS COMBINED WITH LONG RANGE PRECONDITIONING
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res(q, U, W, rads, image, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q, U, W, rads, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
@@ -27,7 +27,9 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,l
 %                          resistance
 %   solve_precond_peanut - 2-body preconditioning with peanut compression
 %                          for resistance
-%   solve_2D_mob         - 1-body preconditioned mobility formulation
+%   solve_2D_res         - 1-body preconditioned resistance formulation
+%   (can also be called with lr, but then acting on the sources instead of
+%   the boundary velocity values mu).
 %
 % To test, call without arguments
 %
@@ -119,13 +121,6 @@ opt_c.Rp_c = 0.15;
 opt_c.Rp_c = 0.5526;
 [rout_c,~,rin_c,~,~,~] = get2DImageGrid(q,rads,opt_c);
 
-%Check coeff magnitude and residual if we solve with a single SVD.
-
-% Nim = getImageKernels2D(rimage,nimage,rout,1,s);
-% N = singleLayer(rin,rout,1);
-%
-% Ntot = [N Nim];
-% [Ytot,Btot]  = getPseudoFactors(Ntot,1e-8,1);
 
 
 if visualise
@@ -144,58 +139,12 @@ end
 rcheck_b = [];
 n_bound = 1300;
 
-if wobbly
-    %ONLY WITHOUT IMAGE POINTS (ignore for now)
-    w = [2 3 4];
-    %w = [3 3 3];
-    a = 0.15;
-    a = 0.1;
-    a = 1; 
-    r0 = 1;
-    nout = 200*2;
-    tout = linspace(0,2*pi,nout+1);
-    rout = [];
-    rin = [];
-    Nc = 200;
-    sep = 0.2; %0.25 worked well
-    for k = 1:size(q,1)
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),nout,q(k));
-        theta = pi*rand(1);
-        %theta = pi/3;
-        x = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
-        rout = [rout; x(1,:)'+1i*x(2,:)'+q(k)];
-        %create inner points
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),Nc,q(k));
-
-        y = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
-        nx = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.nx)'; imag(s.nx)'];
-        y = y(1,:)'+1i*y(2,:)'+q(k);
-        nx = nx(1,:)'+1i*nx(2,:)';
-        x = y-sep*s.sp.*nx;
-        rin = [rin; x];
-        n_part(k) = nout;
-        pair_points(k,2) = nout;
-
-        s = wobblycurve(r0-a,a,w(mod(k,3)+1),n_bound,q(k));
-        x = [cos(theta) -sin(theta); sin(theta) cos(theta)]*[real(s.x)'-real(q(k)); imag(s.x)'-imag(q(k))];
-        rcheck_b = [rcheck_b; x(1,:)'+1i*x(2,:)'+q(k)];
-    end
-
-
-    if visualise
-        figure()
-        plot(real(rout),imag(rout),'b.');
-        hold on
-        plot(real(rin),imag(rin),'r.');
-        axis equal
-    end
-else
-    for k = 1:P
-        t = linspace(0,2*pi,n_bound+1)';
-        t = t(1:end-1);
-        rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
-    end
+for k = 1:P
+    t = linspace(0,2*pi,n_bound+1)';
+    t = t(1:end-1);
+    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
 end
+
 
 %Construct check boundaries
 rcheck_dom = 100+100i;
@@ -273,16 +222,6 @@ end
 
 [Uii,Yii] = getSelfPseudo(P,rin,rout,rimage,nimage,pair_points,s);
 
-%% Solve the system
-
-% Compute a solution using GMRES with Krylov preconditioning
-%precond = KrylovPrecond();
-%now, try to limit the number of iters for the preconditioner. Does
-%that help?
-% [x_gmres, e2, precond] = precond_gmres(@(x) matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,1);
-%it = length(e2);
-%fprintf("iterations = %d\n", length(e2))
-%delete precond
 %% Look at eigvals and eigvecs of the system matrix
 % Build the matrix to check it out
 debug = 0;
@@ -369,7 +308,7 @@ if debug
     end
 
 end
-%% Experiment with left preconditioner based on deflation
+%% Experiment with left preconditioner based on deflation, acting on mu
 solve = 1;
 if lr
     disp('...Start building long range preconditioner')
@@ -381,7 +320,6 @@ if lr
 
     % opt.mask = 0; 
     % [Sinv2,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
-    % %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
     % opt.db = db;
     % tau_coarse2 = getCoarseSource(fout,Sinv2,Z,Y,db,P,Nc,a);
 
@@ -390,7 +328,6 @@ if lr
     % Check if this is enough for a solution to the system, by evaluating
     % and comparing to rhs
     lhs = matvec_2D_Stokes(mu_coarse,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
-    %lhs = getVelocityField(rin,rout,tau_coarse(1:end/2),tau_coarse(end/2+1:end),[],[],[],[],[],[], []);
     if norm(lhs-fout)<gmres_tol
         solve = 0; 
     end
@@ -492,8 +429,8 @@ if lr
   %  maxit = 1; %debug
    % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
-        Pf = applyPmat_mu(fout,rin,rout,Sinv,q,Zi,Yi,rimage,nimage,Uii,Yii,pair_points,opt);
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+        Pf = applyPmat_mu(fout,rin,rout,Sinv,q,Zi,Yi,Uii,Yii,pair_points,opt);
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
