@@ -36,21 +36,42 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
     if nargin < 9
         w = ones(size(rout));
     end
+
+    if length(s)<6
+        s(6) = 0; s(7) = 0; %no Stokes doulets, no Potential doublets
+    elseif length(s)<7
+        s(7) = 0; 
+    end
                                          
     %% Prepare system matrix
     mu = 1; %viscosity
     if size(rin,1)
         Nio = singleLayer(rin,rout,mu);
+        C = [ones(1,size(rin,1)) zeros(1,size(rin,1)); zeros(1,size(rin,1)) ones(1,size(rin,1))]; %Zero total force constraint?
     else
         Nio = [];
+        C = []; 
     end
-    if size(rimage,1)
+    nbr_im = size(rimage,1);
+    if nbr_im
         Nimage = getImageKernels2D(rimage,nimage,rout,mu,s);
+        %Cimage = zeros(2,size(Nimage,2)); %To be modified
+         
+        if s(1)
+            Cimage = [ones(1,nbr_im) zeros(1,nbr_im); zeros(1,nbr_im) ones(1,nbr_im)];
+        else
+            Cimage = zeros(2,2*nbr_im);
+        end
+        
     else
         Nimage = [];
+        Cimage = [];
     end
+    ncols_N = size(Nimage,2);     
+    Ctot = [C Cimage zeros(2,ncols_N-2*nbr_im)];
     
     Ntot = [Nio Nimage];
+    
 
     W = diag(repmat(sqrt(w),2,1));
     
@@ -59,10 +80,16 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
         D = diag(1 ./ col_norms);
         
         Ntot = Ntot*D;
+        Ctot = Ctot*D; 
         
     end
     NtotD = W*Ntot;
+    const_col = [ones(size(rout,1),1) zeros(size(rout,1),1); zeros(size(rout,1),1) ones(size(rout,1),1)];
+    NtotD =[NtotD const_col; Ctot zeros(2)]; %add constant contribution
+    %NtotD = [NtotD; Ctot]; %remove constant basis function 
+
     b = W*b;
+    b = [b; 0; 0]; % add force constraint
 
     %Possibly, do also preconditioning from the left
     [Y, U] = getPseudoFactors(NtotD, regtol, 0);
@@ -71,6 +98,8 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
     reserr = norm(solres,inf);
     coefnorm = norm(x,inf); %more reasonable to look at largest coeff 
     if scalecols
+        d = diag(D);
+        D = diag([d; 1; 1]); 
         x = D*x;
     end
 

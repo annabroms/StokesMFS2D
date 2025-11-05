@@ -1,8 +1,11 @@
 function res = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,U,Y,Lc,Lf,pairs,Upf,Ypf)
 
-
-[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
+    tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,tau_pot_all_px,tau_pot_all_py,u_corr]= getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,Lc,Lf,pairs,Upf,Ypf); 
+%[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,...
+ %   tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,u_corr] 
  
 P = length(q); 
 PM = length(rvec_out);
@@ -19,7 +22,7 @@ N_f = opt.N_f;
 rot = []; % no rotlets at image points so far
 
 res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,...
-    tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y);
+    tau_stress_all_px,tau_stress_all_py,tau_pot_all_px,tau_pot_all_py);
 
 
 two_corr = 0;
@@ -48,7 +51,38 @@ if isequal(rcheck,rvec_out)
         
             res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
             res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
+
+
+            if opt.proj_all %project also from images. To be done for all images belonging to this particle
+                for j = 1:P %make sure not to add contrib twice! 
+                    rim1 = rimage_vec{k,j};
+                    if ~isempty(rim1)
+                        rim2 = rimage_vec{j,k};
+                        Kim1 = getKmat2D(rim1,q(k)); 
+                        Kim2 = getKmat2D(rim2,q(j));
+
+                        Lr = getLrPair(B,B,Kim1,Kim2);
+
+                        stress = [tau_stress_x{k,j};tau_stress_y{k,j}]; % This will give me stresslets for both particles in the pair
+                        if ~isempty(stress)
+                            bcvec = Lr*stress;
+    
+                            pot = [tau_pot_x{k,j};tau_pot_y{k,j}];
+                            bcvec = bcvec+Lr*pot;
+                            res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/4);
+                            res((j-1)*N_large+1:j*N_large) = res((j-1)*N_large+1:j*N_large) + bcvec(end/4+1:end/2);
+                            res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:3*end/4);
+                            res((j-1)*N_large+PM+1:j*N_large+PM) = res((j-1)*N_large+PM+1:j*N_large+PM) + bcvec(3*end/4+1:end);
+                        end
+                    end
+
+                end
+
+            end
+
         end
+
+
     end
 
 

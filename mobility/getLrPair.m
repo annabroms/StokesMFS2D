@@ -1,16 +1,16 @@
-function Lr = getLrPair(B1,B2,K)
+function Lr = getLrPair(B1,B2,K1,K2)
 %getLrPair help function to close the system for the unknown sources in a
 % 2D Stokes mobility problem with 2-body preconditioning. 
 % 
-% Syntax: Lr = getLrPair(B1,B2,K) 
+% Syntax: Lr = getLrPair(B1,B2,K1,K2) 
 % 
 % Description: Returns the matrix Lr for a pair of circles, constructed
-% from the individual blocks Lr:=B_i*K' of each particle in the
+% from the individual blocks Lr:=B_i*K_i' of each particle in the
 % pair. Lr is the matrix that maps u<-lambda, i.e. it evaluates the rigid
 % body velocities on the surface of the particle, u = BU, using the ansatz that U =
 % -K'lambda. When we build the mobility system matrix, the sign is reversed.
 %
-% Note: B1,B2 and K are constructed with getKmat2D
+% Note: B1,B2 and K1,K2 are constructed with getKmat2D
 %
 % Anna Broms April 4, 2025
 
@@ -18,8 +18,8 @@ function Lr = getLrPair(B1,B2,K)
 %Need to build projection for the pair the same way
    % Lr = blkdiag(B1*K',B2*K'); %Not the right thing! 
 
-Lr1 = B1*K'; % xx xy; yx yy
-Lr2 = B2*K';
+Lr1 = B1*K1'; % xx xy; yx yy
+Lr2 = B2*K2';
 
 xx1 = Lr1(1:end/2,1:end/2);
 xx2 = Lr2(1:end/2,1:end/2);

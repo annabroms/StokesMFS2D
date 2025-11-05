@@ -64,7 +64,7 @@ N_c = 80;  %100 better here?
 %N_c = 60; 
 %N_c = 100;  
 N_f = 150; 
-%N_f = N_c; %debug
+
 
 a_c = 1.2;
 %a_c = 1; 
@@ -78,7 +78,7 @@ tol_c = 1e-12; %I think this works reasonably
 % smoother coarse 1-body basis to evaluate on neighbour
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
 
-s = [0 0 1 1]; %set type of singularities at image points [S R T D]
+s = [0 0 1 1 0 0 0]; %set type of singularities at image points [S R T D]
 %s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
 %be changed!
 
@@ -109,6 +109,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 % %Less storage required.
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
+opt.proj_all = 0; % flag for projecting also the image sources. Not fully implemented
 
 %% CREATE GRID
 %Outer basic grid
@@ -119,7 +120,7 @@ rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
 
 %Construct image grid
 %will return only the basic outer grid.                               
-[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
 
 tin = linspace(0,2*pi,N_c+1);
@@ -222,117 +223,125 @@ if debug
     colorbar
     skeel(CC)
 
-    [V,D] = eig(CC);
-    D = diag(D); 
-    figure()
-    plot(real(D),imag(D),'+')
-    xlabel('Re \lambda')
-    ylabel('Im \lambda')
+    get_nullspace = 0;
+    get_eigs = 1; 
 
-    [s,I] = mink(abs(D),3);
-    Vsmall = V(:,I).*s';
+    if get_eigs
 
-    [UU,S,VV] = svd(CC);
-    SS = diag(S);
-    figure()
-    semilogy(SS)
-    semilogy(SS,'+')
-    [s2,I2] = mink(SS,6);
-
-    UUs = UU(:,I2);
-    VVs = VV(:,I2); 
-
-    Mc = round(a_c*N_c);
-    t = linspace(0,2*pi,Mc+1);
-    t = t(1:end-1)'; 
-
-    %Visualise left and right singular vectors
-    for i = 1:6
-        for k = 1:P
-            Vpx = VVs((k-1)*Mc+1:k*Mc,i);
-            Vpy = VVs((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
-            Vp = abs(Vpx+1i*Vpy);
-            figure(33)
-            subplot(2,3,i)
-            scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
-            hold on
-            colorbar
-            view(0,90)
-            sgtitle('Right sing vec','interpreter','latex')
-            title(i)
-            axis off
-            axis square
-
-            figure(34)
-            subplot(2,3,i)
-            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
-            hold on
-            q2 = [q; q(1)];
-            plot(real(q2),imag(q2),'k-')
-            axis off
-            sgtitle('Right sing vec','interpreter','latex')
-            title(i)
-            axis square
-
-
-            Vpx = UUs((k-1)*Mc+1:k*Mc,i);
-            Vpy = UUs((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
-            Vp = abs(Vpx+1i*Vpy);
-            figure(35)
-            subplot(2,3,i)
-            scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
-            hold on
-            colorbar
-            view(0,90)
-            sgtitle('Left sing vec','interpreter','latex')
-            title(i)
-            axis off
-            axis square
-
-            figure(36)
-            subplot(2,3,i)
-            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
-            hold on
-            q2 = [q; q(1)];
-            plot(real(q2),imag(q2),'k-')
-            axis off
-            sgtitle('Left sing vec','interpreter','latex')
-            title(i)
-            axis square
-        end
-    end
+        [V,D] = eig(CC);
+        D = diag(D); 
+        figure()
+        plot(real(D),imag(D),'+')
+        xlabel('Re \lambda')
+        ylabel('Im \lambda')
             
-    %Visualise eigenvectors
+        [s,I] = mink(abs(D),3);
 
-    for i = 1:3
-     
-        for k = 1:P  
-            Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
-            Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
-            Vp = abs(Vpx+1i*Vpy);
-            figure(31)
-            subplot(1,3,i)
-            scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
-            hold on
-            colorbar
-            view(0,90)
-            sgtitle('Abs of eigvec','interpreter','latex')
-            axis off
-            axis square
-
-
-            figure(32)
-            subplot(1,3,i)
-            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
-            hold on
-            q2 = [q; q(1)];
-            plot(real(q2),imag(q2),'k-')
-            sgtitle('Eigvec','interpreter','latex')
-            axis off
-            axis square
-
-
-
+        if get_nullspace
+            Vsmall = V(:,I).*s';
+        
+            [UU,S,VV] = svd(CC);
+            SS = diag(S);
+            figure()
+            semilogy(SS)
+            semilogy(SS,'+')
+            [s2,I2] = mink(SS,6);
+        
+            UUs = UU(:,I2);
+            VVs = VV(:,I2); 
+        
+            Mc = round(a_c*N_c);
+            t = linspace(0,2*pi,Mc+1);
+            t = t(1:end-1)'; 
+        
+            %Visualise left and right singular vectors
+            for i = 1:6
+                for k = 1:P
+                    Vpx = VVs((k-1)*Mc+1:k*Mc,i);
+                    Vpy = VVs((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+                    Vp = abs(Vpx+1i*Vpy);
+                    figure(33)
+                    subplot(2,3,i)
+                    scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
+                    hold on
+                    colorbar
+                    view(0,90)
+                    sgtitle('Right sing vec','interpreter','latex')
+                    title(i)
+                    axis off
+                    axis square
+        
+                    figure(34)
+                    subplot(2,3,i)
+                    quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
+                    hold on
+                    q2 = [q; q(1)];
+                    plot(real(q2),imag(q2),'k-')
+                    axis off
+                    sgtitle('Right sing vec','interpreter','latex')
+                    title(i)
+                    axis square
+        
+        
+                    Vpx = UUs((k-1)*Mc+1:k*Mc,i);
+                    Vpy = UUs((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+                    Vp = abs(Vpx+1i*Vpy);
+                    figure(35)
+                    subplot(2,3,i)
+                    scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
+                    hold on
+                    colorbar
+                    view(0,90)
+                    sgtitle('Left sing vec','interpreter','latex')
+                    title(i)
+                    axis off
+                    axis square
+        
+                    figure(36)
+                    subplot(2,3,i)
+                    quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
+                    hold on
+                    q2 = [q; q(1)];
+                    plot(real(q2),imag(q2),'k-')
+                    axis off
+                    sgtitle('Left sing vec','interpreter','latex')
+                    title(i)
+                    axis square
+                end
+            end
+                    
+            %Visualise eigenvectors
+        
+            for i = 1:3
+             
+                for k = 1:P  
+                    Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
+                    Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+                    Vp = abs(Vpx+1i*Vpy);
+                    figure(31)
+                    subplot(1,3,i)
+                    scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vp,40,Vp,'filled');
+                    hold on
+                    colorbar
+                    view(0,90)
+                    sgtitle('Abs of eigvec','interpreter','latex')
+                    axis off
+                    axis square
+        
+        
+                    figure(32)
+                    subplot(1,3,i)
+                    quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy)
+                    hold on
+                    q2 = [q; q(1)];
+                    plot(real(q2),imag(q2),'k-')
+                    sgtitle('Eigvec','interpreter','latex')
+                    axis off
+                    axis square
+                end
+        
+    
+            end
         end
 
     end
@@ -357,7 +366,10 @@ if debug
 end 
 
 %% POSTPROCESS
-[~,~,~,~,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx,tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+%[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+ %   tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
+ %   tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,tau_pot_all_px,tau_pot_all_py,u_corr]
+[~,~,~,~,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx,tau_stokes_nonpy,~,~,tau_stress_all_x,tau_stress_all_y,~,~,~,~,tau_pot_all_x,tau_pot_all_y,~,~] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
 
 tau_image = [tau_stress_all_x; tau_stress_all_y; tau_pot_all_x; tau_pot_all_y];
@@ -626,26 +638,35 @@ end
 
 function test_solve_mob
 
-close all; 
-q = [0; 2.001; 2.001i]; %center coordinates
+close all;
+delta = 0.001;
+q = [0; 2+delta; (2+delta)*1i]; %center coordinates
 
 %or, instead, three cireles in triangle
 % delta = 0.001; 
-% x = 1+delta/2;
-% y = sqrt((2+delta)^2-(1+delta/2)^2);
-% q = [0; 2+delta; x+1i*y];
+x = 1+delta/2;
+y = sqrt((2+delta)^2-(1+delta/2)^2);
+q = [0; 2+delta; x+1i*y];
 
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
 rads = [1; 1; 1]; 
+
+%If only two particles
+% q = [0; 2+delta];
+% F = F(1:2,:); 
+% T = T(1:2); 
+% rads = [1;1]; 
+
 visualise = 1; 
 images = 1; 
 delta_pair = 0.2; 
-[UW,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, visualise);
+lr= 0; 
+[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 
-[UW,lambda,it2,gmres_tol,err2] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+[UW2,lambda,it2,gmres_tol,err2] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

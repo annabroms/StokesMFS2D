@@ -1,4 +1,4 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,visualise)
+function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,lr,visualise)
 %SOLVE_2D_RES Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS.
 %
@@ -373,10 +373,10 @@ end
 solve = 1;
 if lr
     disp('...Start building long range preconditioner')
-    [Sinv,Nx,Ny,Mx,Z,Y,db] = get_long_range_precond(q,rin,rout,opt);
+    [Sinv,Zi,Yi,db] = get_long_range_precond_mu(q,rin,rout,opt);
     %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
     opt.db = db;
-    tau_coarse = getCoarseSource(fout,Sinv,Z,Y,db,P,Nc,a);
+    mu_coarse = getCoarseMu(fout,Sinv,Zi,Yi,db,P,Nc,a);
 
 
     % opt.mask = 0; 
@@ -389,7 +389,8 @@ if lr
 
     % Check if this is enough for a solution to the system, by evaluating
     % and comparing to rhs
-    lhs = getVelocityField(rin,rout,tau_coarse(1:end/2),tau_coarse(end/2+1:end),[],[],[],[],[],[], []);
+    lhs = matvec_2D_Stokes(mu_coarse,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+    %lhs = getVelocityField(rin,rout,tau_coarse(1:end/2),tau_coarse(end/2+1:end),[],[],[],[],[],[], []);
     if norm(lhs-fout)<gmres_tol
         solve = 0; 
     end
@@ -491,8 +492,8 @@ if lr
   %  maxit = 1; %debug
    % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
-        Pf = applyPmat(fout,rin,rout,Sinv,q,Ny,Mx,Z,Y,opt); 
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+        Pf = applyPmat_mu(fout,rin,rout,Sinv,q,Zi,Yi,rimage,nimage,Uii,Yii,pair_points,opt);
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
@@ -514,83 +515,24 @@ if debug
 end
 
 PM = length(rout);
-
 if solve
-    [tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(x_gmres,rimage,Uii,Yii,P,Nc,PM,pair_points,s);
-end %[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(x_gmres,rimage,UU,Y,P,Nc,PM,pair_points,s);
-    %if mobsolve (to speed up computations. Bad idea due to RBM in the
-    %nullspace of the matrix.
-    % for k = 1:P    % for k = 1:P
-    %     tau_x = tau_stokes_x(Nc*(k-1)+1:k*Nc);
-    %     tau_y = tau_stokes_y(Nc*(k-1)+1:k*Nc);
-    %     proj = [tau_x; tau_y]-L{1}*[tau_x; tau_y];
-    %     tau_stokes_x(Nc*(k-1)+1:k*Nc) = proj(1:end/2);
-    %     tau_stokes_y(Nc*(k-1)+1:k*Nc) = proj(end/2+1:end); 
-    % end
-    % vel = getVelocityField(rin,rout,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,tau_stress_x,tau_stress_y,tau_pot_x, tau_pot_y);
-    % fout_c = fout;%-vel;
-    % Kin = getKmat2D(rin(1:Nc),mean(rin(1:Nc)));
-    % [x_gmres_c,it_c,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes_coarse(x,rin,rout,rimage,nimage,q,Uc,Yc,Kin,pair_points,s),fout_c,2*size(rout,1),maxit,gmres_tol,1,rout);
-    % [tau_coarse_x,tau_coarse_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensityCoarse(x_gmres_c,rimage,Uc,Yc,Kin,P,Nc,PM,pair_points,s);
-    % 
-    % tau_stokes_x = tau_stokes_x+tau_coarse_x;
-    % tau_stokes_y = tau_stokes_y+tau_coarse_y; 
-    %     tau_x = tau_stokes_x(Nc*(k-1)+1:k*Nc);
-    %     tau_y = tau_stokes_y(Nc*(k-1)+1:k*Nc);
-    %     proj = [tau_x; tau_y]-L{1}*[tau_x; tau_y];
-    %     tau_stokes_x(Nc*(k-1)+1:k*Nc) = proj(1:end/2);
-    %     tau_stokes_y(Nc*(k-1)+1:k*Nc) = proj(end/2+1:end); 
-    % end
-    % vel = getVelocityField(rin,rout,tau_stokes_x,tau_stokes_y,rimage,nimage,rot,tau_stress_x,tau_stress_y,tau_pot_x, tau_pot_y);
-    % fout_c = fout;%-vel;
-    % Kin = getKmat2D(rin(1:Nc),mean(rin(1:Nc)));
-    % [x_gmres_c,it_c,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes_coarse(x,rin,rout,rimage,nimage,q,Uc,Yc,Kin,pair_points,s),fout_c,2*size(rout,1),maxit,gmres_tol,1,rout);
-    % [tau_coarse_x,tau_coarse_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensityCoarse(x_gmres_c,rimage,Uc,Yc,Kin,P,Nc,PM,pair_points,s);
-    % 
-    % tau_stokes_x = tau_stokes_x+tau_coarse_x;
-    % tau_stokes_y = tau_stokes_y+tau_coarse_y; 
-    if lr
-        %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
-        if solve
-            tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Sinv,q,Ny,Mx,Z,Y,opt);        
-            tau_stokes_x = tau_coarse(1:end/2)+tau_stokes(1:end/2);
-            tau_stokes_y = tau_coarse(end/2+1:end)+tau_stokes(end/2+1:end);    
-        else
-            tau_stokes_x = tau_coarse(1:end/2);
-            tau_stokes_y = tau_coarse(end/2+1:end);
-        end
-        %no image points are assumed to be in use atm
-        rot = [];
-        tau_stress_x = [];
-        tau_stress_y = [];
-        tau_pot_x = [];
-        tau_pot_y = []; 
-        tau_image = [];
+    mu_fine = applyQmat_mu(x_gmres,rin,rout,Sinv,q,Zi,Yi,rimage,nimage,Uii,Yii,pair_points,opt);
+    mu_tot = mu_fine+mu_coarse;
+else
+    mu_tot = mu_coarse;
+end
+       
 
-       % +tau_stokes(end/2+1:end)
-    else
-        tau_image = [rot;tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
-    end
+[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(mu_tot,rimage,Uii,Yii,P,Nc,PM,pair_points,s);
    
 
-    %for debugging
-    %[tau_stokes_x1,tau_stokes_y1,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getTransformedDensity(x_gmres1,rimage,Uii,Yii,P,Nc,PM,pair_points,s);
-
-    %if preconditioning with P:
-    
-    %other preconditioning strategy!
-    % project = 0;
-    % if project [x_gmres1,it1,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
-    %     Az_fine = matvec_2D_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
-    %     fout_c = fout-Az_fine;
-    %     %Find coarse solution to correct!
-    % end
-    
-    tau_proxy = [tau_stokes_x; tau_stokes_y];
 
     
+    %tau_proxy = [tau_stokes_x; tau_stokes_y];
 
-    lambda = [tau_proxy; tau_image];
+tau_proxy = [tau_stokes_x; tau_stokes_y];    
+tau_image = [rot;tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y];
+lambda = [tau_proxy; tau_image];
 
 
 

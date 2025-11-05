@@ -1,5 +1,11 @@
 function u = eval_Stokes_solution(lambda,rin,rcheck,rimage,nimage,s,N_c,P)
 %EVAL_STOKES_SOLUTION(lambda,rin,rchech,rimage,nimage)
+if length(s)<6
+    s(6) = 0; s(7) = 0; %no Stokes doulets, no Potential doublets
+elseif length(s)<7
+    s(7) = 0; 
+end
+
     if nargin < 8
         P = 1; 
     end
@@ -38,9 +44,17 @@ function u = eval_Stokes_solution(lambda,rin,rcheck,rimage,nimage,s,N_c,P)
 
         if s(4)
             ind_pot = ind_start+1:ind_start+2*im_nbr;
+            ind_start = ind_start+2*im_nbr;
         else
             ind_pot = [];
         end
+
+        if s(7)
+            ind_sd = ind_start+1:ind_start+4*im_nbr;
+        else
+            ind_sd = [];
+        end
+
 
         
     
@@ -69,6 +83,10 @@ function u = eval_Stokes_solution(lambda,rin,rcheck,rimage,nimage,s,N_c,P)
             stress_y = lambda(ind_stress(end/2+1:end));
            
         end
+
+       % sd_x = [lambda(ind_sd(1:end/4)); lambda(ind_sd(end/2+1:3*end/4))];
+        %sd_y = [lambda(ind_sd(end/4+1:end/2)); lambda(ind_sd(3*end/4+1:end))];
+        sd = lambda(ind_sd);
     else
         pot_x = [];
         pot_y  = [];
@@ -99,6 +117,16 @@ function u = eval_Stokes_solution(lambda,rin,rcheck,rimage,nimage,s,N_c,P)
                                rot,stress_x, stress_y,pot_x, pot_y);
     end
 
+    if s(7) && size(rimage,1)
+        u_sd = getSourceDoublet(sd,rimage,rcheck);
+        u = u+u_sd;
+    end
+
+    %if constant term
+    u(1:end/2) = u(1:end/2)+lambda(end-1); 
+    u(end/2+1:end) = u(end/2+1:end)+lambda(end); 
 
 
-end
+
+
+enddense_stokes.m

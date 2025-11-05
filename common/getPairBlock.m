@@ -1,10 +1,12 @@
-function [U,Y] = getPairBlock(rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr,project)
+function [U,Y] = getPairBlock(q,rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr_pair,project_all)
 %getPairBlock computes factorisation of the pair correction for two
 %circular particles in Stokes flow solved with MFS
 %
-% Syntax: [U,Y] = getPairBlock(rin_pair,rout_f,nimage,rimage,s,L,Lr,project)
+% Syntax: [U,Y] = getPairBlock(rin_pair,rout_f,nimage,rimage,s,Lf_pair,Lr_pair,project_all)
 %
 % Input: 
+% q             - Complex valued vector of center coordinates for the two
+%                 paritcles in the pair
 % rin_pair_f    - vector of complex valued coordinates for the fine grid of
 %                 proxy sources on both particles in the pair: body1, body2
 % rout_f        - vector of complex valued coordinates on the boundaries
@@ -17,9 +19,10 @@ function [U,Y] = getPairBlock(rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr,proje
 %                 locations [S R T D]
 % Lf_pair       - Projection matrix onto the null space of the force
 %                 /torque constraint matrix using the fine grid on the two particles
-% Lc            - Projection matrix onto the null space of the force
-%                 /torque constraint matrix using the coarse grid on one
-%                 particle.
+% Lr_pair       - Matrix for the pair mapping source vector to velocity
+%                 field on boundaries
+% project_all   - Boolean flag: if true, project also image sources (also
+%                 stresslets, potential dipoles)
 %
 % Output: 
 % DC            - Matrix representing the product of two matrices: the
@@ -36,7 +39,9 @@ function [U,Y] = getPairBlock(rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr,proje
 % Note: DC and Y builds the mapping lambda_coarse_effective <- beta backward 
 % stably with beta the fine source strengths, as lambda_coarse_effective = Y*(DC*beta).
 %
-% Anna Broms April 4, 2025
+% See also: getILPair, getLrPair
+%
+% Anna Broms April 11, 2025
 
 mu = 1; 
 
@@ -48,9 +53,21 @@ mu = 1;
 % plot(real(rout_f),imag(rout_f),'bo')
 % plot(real(rimage),imag(rimage),'k*')
 
+if isempty(Lr_pair)
+    project = 0; 
+else
+    project = 1; 
+end
+
+
 
 if size(rimage,1)
-    Nimage = getImageKernels2D(rimage,nimage,rout_f,mu,s);
+    if project_all
+        [Lr_S,Lr_R,Lr_T,Lr_D,Sim,Rim,Tim,Dim] = getProjectedImages(q,rimage,nimage,rout_f,s);
+        Nimage = [Sim+Lr_S Rim+Lr_R Tim+Lr_T Dim+Lr_D];
+    else
+        Nimage = getImageKernels2D(rimage,nimage,rout_f,mu,s);
+    end
 else
     Nimage = [];
 end
@@ -59,9 +76,9 @@ N = singleLayer(rin_pair_f,rout_f,mu);
 % In a mobility problem, need to project so that fine sources don't
 % contribute to net force/torque on the particles
 if project
-    N = [N*Lf_pair+Lr Nimage];
+    Ntot = [N*Lf_pair+Lr_pair Nimage];
 else
-    N = [N Nimage]; 
+    Ntot = [N Nimage]; 
 end 
 
 
@@ -71,7 +88,7 @@ tol = 1e-11; %4 nov: seems to work well but results in peaks in close to touchin
 tol = 1e-14;
 %tol = eps; % I don't think this is reasonable. Just to understand what happens now. 
 
-[Y,U] = getPseudoFactors(N,tol,0); 
+[Y,U] = getPseudoFactors(Ntot,tol,1); 
 
 
 end

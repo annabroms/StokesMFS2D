@@ -17,8 +17,8 @@ N_c = opt.N_c;
     rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up,Yp,Cmap,debug);
 
 
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...
-         0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
+%[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...
+       %  0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
 
   
 %NOTE! ERRORS ACCUMULATE WITH FMM IF LARGE SOURCE STRENGTHS 
@@ -28,7 +28,9 @@ N_c = opt.N_c;
 
 
 %res = [udirect'/4/pi; vdirect'/4/pi];
-res = [ufmm; vfmm];
+%res = [ufmm; vfmm];
+
+res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,[],[],[],[],[],[],[]);
 
 res = res+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 
 % adding the fine representation instead

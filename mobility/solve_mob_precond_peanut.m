@@ -79,7 +79,7 @@ tol_c = 1e-12; %I think this works reasonably
 %tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff  
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
 
-s = [0 0 1 1];  %set type of singularities at image points [S R T D]
+s = [0 0 1 1 0 0 0];  %set type of singularities at image points [S R T D]
 %s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
 %be changed!
 
@@ -132,7 +132,8 @@ end
 
 %Construct image grid
 basic = 1; %return only the basic outer grid, else refined outer grid 
-[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+%[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] 
+[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
 
 %get evaluation of lambda0
@@ -264,7 +265,7 @@ if debug
 end
 
 debug = 0;                                                                                                                                           
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,debug),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 figure()
 semilogy(resvec); 
@@ -273,7 +274,7 @@ title('GMRES convergence with peanut compression, mobility', 'interpreter','late
 
 if visualise
     %check residual
-    restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,debug)-urhs)./urhs;
+    restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
     figure()
     semilogy(abs(restot))
     title('Rel res at colloc points for mob peanut')
@@ -551,11 +552,11 @@ T = [1; 1; 1]; %torques on the particles
 rads = [1; 1; 1]; 
 visualise = 1; 
 delta_pair = 0.2; 
-[UW,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
 
 %compare to a solution with image enhancement
 N_peanut = 400; 
-[UW,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
+[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
 
 str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

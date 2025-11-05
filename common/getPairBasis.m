@@ -150,15 +150,15 @@ for i = 1:P
             if project
                 B1 = getKmat2D([q(i)+rout_base; fine_1],q(i));
                 B2 = getKmat2D([q(p2)+rout_base; fine_2],q(p2));
-                Lr = getLrPair(B1,B2,Kf);            
+                Lr_pair = getLrPair(B1,B2,Kf,Kf);            
             else
-                Lr = []; 
+                Lr_pair = []; 
             end
             
             %% Compute fine basis pseudoinverse
             %Takes in fine grid with image enhancement and fine collocation
             %points. 
-            [Uf_pair,Yf_pair] = getPairBlock(rin_pair,rout_f,rimage,[nimage{i,p2}; nimage{p2,i}],s,Lf_pair,Lr,project);
+            [Uf_pair,Yf_pair] = getPairBlock([q(i);q(p2)],rin_pair,rout_f,rimage,[nimage{i,p2}; nimage{p2,i}],s,Lf_pair,Lr_pair,opt.proj_all);
 
             if opt.precomp
 

@@ -44,7 +44,11 @@ if nargin < 4
 elseif nargin < 5
     image = 1; 
     visualise = 0; 
+    lr = 0; 
 elseif nargin < 6
+    visualise = 0; 
+    lr = 0; 
+elseif nargin < 7
     visualise = 0; 
 end
 
@@ -108,7 +112,7 @@ opt.pc = 0; %no pair correction
 
 
 %solve with Stresslets + potential dipoles at image points
-s = [0 0 1 1]; % s = [S R T D]
+s = [0 0 1 1 0 0 0]; % s = [S R T D]
 opt.s = s; 
 
 %% GET GRIDS AND VISUALISE
@@ -116,6 +120,7 @@ opt.s = s;
 %create grids
 [rout,weights,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
 
+ 
 if visualise
     figure()
     %Visualise particles
@@ -159,10 +164,10 @@ end
 %% Experiment with left preconditioner based on deflation
 solve = 1;
 if lr
-    [Rinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond_mob(q,rin,rout,L{1},Lr,opt);
+    [Sinv,Nx,Ny,Mx,Zi,Yi,db] = get_long_range_precond_mob(q,rin,rout,L{1},Lr,opt);
     %tau_coarse1 = AN*Rinv*(AM'*fout); same thing
     opt.db = db;
-    tau_coarse = getCoarseSource(u,Rinv,Nx,Ny,Mx,Zi,Yi,db,P,Nc,a);
+    tau_coarse = getCoarseSource(u,Sinv,Nx,Ny,Mx,Zi,Yi,db,P,Nc,a);
 
     disp('...Long range preconditioner constructed')
 
@@ -194,7 +199,7 @@ if debug && lr
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Rinv,Nx,Ny,Mx,Zi,Yi,opt);
+        uu = lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Nx,Ny,Mx,Zi,Yi,opt);
         %uu = matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
         CC(:,k) = uu;
     end
@@ -219,8 +224,8 @@ end
 %% SOLVE
 if opt.lr && solve
     disp('...Solving for fine component...')
-    Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt); 
-    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Rinv,Nx,Ny,Mx,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+    Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Sinv,Nx,Ny,Mx,Zi,Yi,opt); 
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Nx,Ny,Mx,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 elseif solve
     [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,1,rout);
@@ -241,7 +246,7 @@ PM = length(rout);
 
 
 if opt.lr
-    tau_stokes = applyQmat_mob([tau_stokes_x; tau_stokes_y],rin,rout,L{1},Lr,Rinv,Nx,Ny,Mx,Zi,Yi,opt);
+    tau_stokes = applyQmat_mob([tau_stokes_x; tau_stokes_y],rin,rout,L{1},Lr,Sinv,Nx,Ny,Mx,Zi,Yi,opt);
     tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2); 
     tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end); 
 end

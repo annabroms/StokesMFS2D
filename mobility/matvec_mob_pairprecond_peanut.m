@@ -1,5 +1,5 @@
-function res = matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up, Yp,Cmap,Lc_pair,Lf_pair,debug)
-%Resistance matvec with peanut compressions for the pair corrections
+function res = matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up, Yp,Cmap,Lc_pair,Lf_pair)
+%Mobility matvec with peanut compressions for the 2-body corrections
 
 % Us, Ys SVD factors for self-interaction block
 % Ucf, Ycf cell array of SVD factors for pair-corrections using fine grid
@@ -18,18 +18,7 @@ N_c = opt.N_c;
 [tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr] = transform_mob_peanut(tau,rbase_in_c,...
     rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up,Yp,Cmap,Lc_pair,Lf_pair);
 
-
-[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),...
-         0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
-
-  
-%NOTE! ERRORS ACCUMULATE WITH FMM IF LARGE SOURCE STRENGTHS 
-
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),tau_stokes_x,tau_stokes_y,length(rvec_in));
-% See the SLP FMM test in the fast tools folder
-
-%res = [udirect; vdirect];
-res = [ufmm; vfmm];
+res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y);
 
 res = res+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 
 % adding the fine representation instead

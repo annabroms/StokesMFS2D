@@ -1,4 +1,6 @@
-function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y,u_corr] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+function [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
+    tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,tau_pot_all_px,tau_pot_all_py,u_corr] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rvec_out,q,U,Y,Lc,Lf,pairs,Upf,Ypf)
 %GETPAIRTRANSFORMATION maps data at coarse collocation nodes back to coarse and fine source
 %strengths, in preparation for the mobility matvec. This is very similar to
@@ -299,6 +301,8 @@ for i = 1:P
                 rim = length(rimage);
                 
                 %get contribution from image points 
+                
+
                 u_stress = getStresslets(beta_tot(4*opt.N_f+1:4*opt.N_f+rim),...
                     beta_tot(4*opt.N_f+1+rim:4*opt.N_f+2*rim),rimage,...
                     rout_pair,real(nimage_pair),imag(nimage_pair));
@@ -312,7 +316,7 @@ for i = 1:P
 %                 [u1,v1] = StokesletDirect(real(rin_pair),imag(rin_pair),...
 %                     real(rout_pair),imag(rout_pair),...
 %                     beta_tot(1:2*opt.N_f),beta_tot(2*opt.N_f+1:4*opt.N_f),2*opt.N_f);
-                [u1,v1] = StokesletDirect(real(rin_pair),imag(rin_pair),...
+                [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
                     real(rout_pair),imag(rout_pair),...
                     [tau_mapped_proj_i(1:end/2); tau_mapped_proj_p2(1:end/2)],...
                     [tau_mapped_proj_i(end/2+1:end); tau_mapped_proj_p2(end/2+1:end)],2*opt.N_f);
@@ -392,6 +396,12 @@ tau_stress_all_y = [];
 tau_pot_all_x = [];
 tau_pot_all_y = [];
 
+tau_stress_all_px = [];
+tau_stress_all_py = [];
+
+tau_pot_all_px = [];
+tau_pot_all_py = [];
+
 %Collect all source points and source data
 
 for i = 1:length(has_neigh)
@@ -422,8 +432,47 @@ for i = 1:length(has_neigh)
     
         tau_pot_all_x = [tau_pot_all_x; tau_pot_x{k,p2}];
         tau_pot_all_y = [tau_pot_all_y; tau_pot_y{k,p2}];
+
+        if opt.proj_all
+            pot_kx = tau_pot_x{k,p2};
+            pot_ky = tau_pot_y{k,p2};
+            pot_1 = [pot_kx(1:end/2); pot_ky(1:end/2)];
+            pot_2 = [pot_kx(end/2+1:end); pot_ky(end/2+1:end)];
+
+            stress_kx = tau_stress_x{k,p2};
+            stress_ky = tau_stress_y{k,p2};
+            stress_1 = [stress_kx(1:end/2); stress_ky(1:end/2)];
+            stress_2 = [stress_kx(end/2+1:end); stress_ky(end/2+1:end)];
+
+            rim1 = rimage_vec{k,p2};
+            Kim = getKmat2D(rim1,q(k)); 
+            Lim = Kim*((Kim'*Kim)\Kim');
+            pot_1 = pot_1-Lim*pot_1;
+            stress_1 = stress_1-Lim*stress_1;
+
+            rim2 = rimage_vec{p2,k};
+            Kim = getKmat2D(rim2,q(p2)); 
+            Lim = Kim*((Kim'*Kim)\Kim');
+            pot_2 = pot_2-Lim*pot_2;
+            stress_2 = stress_2-Lim*stress_2;
+
+            tau_stress_all_px = [tau_stress_all_px; stress_1(1:end/2); stress_2(1:end/2)];
+            tau_stress_all_py = [tau_stress_all_py; stress_1(end/2+1:end); stress_2(end/2+1:end)];
+
+            tau_pot_all_px = [tau_pot_all_px; pot_1(1:end/2); pot_2(1:end/2)];
+            tau_pot_all_py = [tau_pot_all_py; pot_1(end/2+1:end); pot_2(end/2+1:end)];
+
+
+
+        else
+            tau_stress_all_px = tau_stress_all_x;
+            tau_stress_all_py = tau_stress_all_y; 
+
+            tau_pot_all_px = tau_pot_all_x;
+            tau_pot_all_py = tau_pot_all_y; 
+        end
         
-        %Add all image points from particle k 
+        %Add all image points from particle k and its neighbour
         rimage_in = [rimage_in;  rimage_vec{k,p2}; rimage_vec{p2,k}];
         nimage_in = [nimage_in;  nimage{k,p2}; nimage{p2,k}];
     end

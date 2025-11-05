@@ -279,8 +279,8 @@ if image
                 [t, ~] = gradedptr(N, beta);
 
                 %test alternative
-                M_clust = sample_nbr*4*sum(opt.s);
-                t = 0.5*[logspace(-6,0,M_clust) -logspace(-6,0,M_clust)];
+                %M_clust = sample_nbr*4*sum(opt.s);
+                %t = 0.5*[logspace(-6,0,M_clust) -logspace(-6,0,M_clust)];
                 %must be rotated
                 t = t+tstar;
 
