@@ -17,6 +17,7 @@ Nclust = 100; %Set nbr of additional sources in each star clustered towards
 
 fprintf('------Stokes resistance demo with two stars delta = %1.2e apart------\n',delta)
 svec = [1 0 0 1 1]; % S R Tr D T at clustered nodes
+svec = [1 0 0 1 1 0 1];
 %svec = [0 0 0 1 1];
 P = 2; 
 
@@ -141,6 +142,7 @@ quiver(real(coll),imag(coll),real([n1;n2]),imag([n1;n2])) %visualise normals
 title('Basic setup')
 %% Visualise source strengths
 figure()
+x_b = x_b(1:end-2); 
 scatter(real(centers),imag(centers),20,log10(abs(x_b(1:end/2)+1i*x_b(end/2+1:end))),'filled')
 axis equal
 colorbar
@@ -176,7 +178,9 @@ plot(real(pol2),imag(pol2),'c.')
 %[zacc2_2,~,itr4] = compute_reflections(c1+0.01, schwarz2, schwarz1);
 
 
-threshold = 1e-10;
+threshold = sqrt(delta); 
+threshold = 1e-6; 
+threshold_coll = 1e-10;
 
 tclust = 0.5*logspace(log10(threshold),0,Nclust);
 %tclust = 0.4*exp(-2*pi*(0:Nclust-1)/sqrt(Nclust)); %differently clustered nodes:  see "Resolution of sing. by rational functions"
@@ -197,7 +201,7 @@ cent_clust2 = [zacc2-tclust'*(zacc2-c2)./abs(zacc2-c2)+tclust(1)*(zacc2-c2)./abs
 
 Mclust = Nclust*5; % Possible to pick more clustered collocation points
 %Mclust = Nclust*10; %testing
-tclust2 = logspace(log10(threshold),0,Mclust)';
+tclust2 = logspace(log10(threshold_coll),0,Mclust)';
 
 %% To assign clustered nodes at the boundary, first find closest parameter value on the two curves
 % Objective function: squared distance to zacc1
@@ -316,5 +320,7 @@ fprintf('With clustering: Residual (collocation points) %1.3e, (new points) %1.3
 alignfigs;
 
 
+function isInside()
 
+end
 

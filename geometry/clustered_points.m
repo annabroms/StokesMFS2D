@@ -25,6 +25,9 @@ function t = clustered_points(N, Ns, sigma, A)
 
     u = sqrt(1:Ns)' - sqrt(Ns);
     v = A*exp(sigma*u);
+    %v = v(v>1e-14); %Anna testing. Was ok here with 1e-14 for the squares.
+    %But are we then resolving the problem?
+
     t2 = [-1+v; 1-v];
 
     t = sort([t1; t2]);

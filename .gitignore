@@ -2,6 +2,10 @@
 *.m~
 *.asv
 
+# Some visualisations and generated data files
+data/
+anna_test/
+visuals/
 
 ## Core latex/pdflatex auxiliary files:
 *.aux

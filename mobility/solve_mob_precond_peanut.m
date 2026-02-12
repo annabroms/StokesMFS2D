@@ -1,4 +1,4 @@
-function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise)
+function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,lr,visualise)
 %SOLVE_MOB_PRECOND_PEANUT Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -19,7 +19,9 @@ function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,
 %                every close pair of particles. The peanut boundary is used
 %                to map fine sources to effective coarse sources, giving the
 %                same flow field exterior to the close pair of particles.
+%   lr         - Flag for long range preconditioning 
 %   visualise  - Logical flag: plot the configuration and solution details
+
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
@@ -54,7 +56,7 @@ if nargin==0, test_solve_mob;
 %GMRES params
 maxit = 800; 
 gmres_tol = 1e-6; %not enough given the residual we seek
-gmres_tol = 1e-10; 
+gmres_tol = 1e-8; 
 
 % Grid params
 P = length(q); 
@@ -62,7 +64,7 @@ P = length(q);
 
 %Play with N_c, N_f, a (a_f). 
 N_c = 150;  %100 better here? 
-%N_c = 100; 
+N_c = 80; 
 %N_c = 200; 
 N_f = 150; 
 %N_f = N_c; %debug
@@ -102,10 +104,12 @@ opt = get2Dparams();
 opt.s = s;
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
+opt.P = P; 
 opt.a_c = a_c; 
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
+opt.lr = lr;
 opt.rads = rads; 
 opt.N_peanut = N_peanut;
 opt.s = s; 
@@ -113,7 +117,6 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 % %Less storage required.
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
-
 opt.cmap = 1; 
  
 
@@ -131,7 +134,6 @@ for k = 1:P
 end
 
 %Construct image grid
-basic = 1; %return only the basic outer grid, else refined outer grid 
 %[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] 
 [rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
@@ -145,7 +147,7 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
-[U,Y,Lc] = getSelfPseudoMobility(1,q,rbase_in_c,rbase_out_c,[],[],[0,ceil(a_c*N_c)],s,1);
+[U,Y,Lc,Lr] = getSelfPseudoMobility(1,q,rbase_in_c,rbase_out_c,[],[],[0,ceil(a_c*N_c)],s,1);
 
 
 %Get pair basis
@@ -234,19 +236,21 @@ for k = 1:P
     rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
 end
 
-%% Solve system
 
-% Build the matrix to check it out
-debug = 0;
-if debug
+
+%% Experiment with left preconditioner based on deflation
+debug = 1;
+if debug && lr
     x = zeros(2*length(rout),1);
     tic
     for k = 1:2*length(rout)
         k
         x(:) = 0; 
         x(k) = 1; 
+
         uu = matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
-            refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair,debug);
+             refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair);
+      
         CC(:,k) = uu;
     end
     toc
@@ -262,11 +266,109 @@ if debug
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
+
+    num_eigs = 3; 
+    [ss,I] = maxk(abs(D),num_eigs);
+    Vk = V(:,I).*ss';
+
+    [Uc,S,V] = svd(CC); 
+    Vsmall = V(:,end); 
+    
+
+    Mc = round(opt.a_c*opt.N_c);
+    t = linspace(0,2*pi,Mc+1);
+    t = t(1:end-1)';  
+    for i = 1
+        for k = 1:P  
+            Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
+            Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+    
+            figure(6)
+           % subplot(1,3,i)
+            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy);
+            hold on
+            colorbar
+            view(0,90)
+        end
+    end
+
+
+
+
+
 end
 
-debug = 0;                                                                                                                                           
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+if lr
+    rin_c = []; 
+    for k = 1:P
+        rin_c = [rin_c; rbase_in_c+q(k)];
+    end
+                     %get_long_range_precond_peanut_mob(q,rin,rout,L,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,opt)
 
+    [Sinv,Zi,Yi,db] = get_long_range_precond_peanut_mob(q,rin_c,rout,Lc{1},Lr,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,opt,Vsmall);
+
+    %[Sinv,Zi,Yi,db] = get_long_range_precond_mu(q,rin_c,rout,opt);
+    opt.db = db;
+    mu_coarse = getCoarseMu(urhs,Sinv,Zi,Yi,db,P,opt.N_c,opt.a_c,Vsmall);
+   % mu_coarse = Vsmall*Sinv*Vsmall'*urhs;
+    %mu_coarse = Vsmall*Vsmall'*urhs; %Better to do the projection like
+    %this? 
+
+    %Try to evaluate: 
+    res1 = matvec_mob_pairprecond_peanut(mu_coarse,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
+    
+    %pair_points = [zeros(P,1) opt.a_c*opt.N_c*ones(P,1)];
+    %res2 = matvec_2D_Stokes(mu_coarse,rvec_in_c,rout,[],[],q,UU,YY,pair_points,s);
+end
+
+%% Solve system
+
+% Build the matrix to check it out
+debug = 0;
+if debug
+    x = zeros(2*length(rout),1);
+    tic
+    for k = 1:2*length(rout)
+        k
+        x(:) = 0; 
+        x(k) = 1; 
+        if lr 
+            uu = lr_matvec_mob_peanut(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,Sinv,Zi,Yi);
+        else
+            uu = matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
+                refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair);
+        end
+        CC(:,k) = uu;
+    end
+    toc
+    figure(14);
+    clf; 
+    imagesc(log10(abs(CC)))
+    colorbar
+    skeel(CC)
+
+    [V,D] = eig(CC);
+    D = diag(D); 
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+
+
+
+
+end
+
+if lr
+    Pf = applyPmat_peanut_mob(urhs,rin_c,rout,Lc{1},Sinv,q,Zi,Yi,rbase_in_c,...
+        rbase_in_f,refine,rimage_vec,nimage,opt,U,Y,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,Vsmall);   
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_mob_peanut(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,Sinv,Zi,Yi,Vsmall),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);   
+
+else
+
+    debug = 0;                                                                                                                                           
+    [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+end
 figure()
 semilogy(resvec); 
 title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
@@ -274,7 +376,11 @@ title('GMRES convergence with peanut compression, mobility', 'interpreter','late
 
 if visualise
     %check residual
-    restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
+    if lr
+        restot = (lr_matvec_mob_peanut(tau,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,Sinv,Zi,Yi,Vsmall)-Pf)./Pf;
+    else
+        restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
+    end
     figure()
     semilogy(abs(restot))
     title('Rel res at colloc points for mob peanut')
@@ -285,11 +391,18 @@ end
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 
+if lr
+    mu_mapped = applyQmat_peanut_mob(tau,rvec_in_c,rout,Sinv,Zi,Yi,opt,...
+            rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
+    
+    tau = mu_mapped+mu_coarse; 
+end
+
 [tau_stokes_x, tau_stokes_nonpx,~, tau_beta_x,tau_stokes_y,tau_stokes_nonpy,~,tau_beta_y,~] = transform_mob_peanut(tau,...
     rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
 lambda = [tau_stokes_x; tau_stokes_y];
 
-warning('Check what sources to report')
+
 
 %%% Get rigid body motion. 
 
@@ -547,19 +660,33 @@ function test_solve_mob
 
 close all; 
 q = [0; 2.001; 2.001i]; %center coordinates
-F = [1 0; 0 0; 0 1]; %forces on the particles
-T = [1; 1; 1]; %torques on the particles
-rads = [1; 1; 1]; 
+P = 4; 
+%alternative configuration
+delta = 0.001; 
+x = 1+delta/2;
+y = sqrt((2+delta)^2-(1+delta/2)^2);
+q = [0; 2+delta; x+1i*y];
+%q = hexagonal_lattice(delta, 2);
+% q = q(1:3); 
+%F = [1 0; 0 0; 0 1]; %forces on the particles
+%T = [1; 1; 1]; %torques on the particles
+P = length(q);
+%q = [0:(2+delta):(P-1)*(2+delta)]';
+F = rand(P,2); T = rand(P,1); 
+rads = ones(P,1); 
 visualise = 1; 
-delta_pair = 0.2; 
-[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+delta_pair = 0.2;
+
+%delta_pair = 2; 
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
 
 %compare to a solution with image enhancement
-N_peanut = 400; 
-[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
-
-str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
-disp(str)
+N_peanut = 400;
+lr = 20; 
+%[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,lr,visualise);
+[UW3,lambdahat,it3,gmres_tol, err3] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,0,visualise);
+%str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
+%disp(str)
 
 alignfigs(3);
 

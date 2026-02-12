@@ -98,16 +98,18 @@ opt.pc = 0; %no pair correction
 
 opt.lr = lr; 
 opt.mask = 0; 
-opt.cut_off = 20; 
+opt.cut_off = 20; %can't do this in 2D! 
+opt.pc = 0; 
 
 %solve with Stresslets + Potential dipoles at image points
-s = [0 0 1 1]; % s = [S R T D]
+s = [0 0 1 1 0 0 0]; % s = [S R T D]
 opt.s = s; 
 mu = 1; %viscosity
 
 %% GET GRIDS AND VISUALISE
 %get grids
 [rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
+
 
 %get also a coarse representation, to be used for long range
 %preconditioning with deflation. 
@@ -396,7 +398,7 @@ if lr
 end
 
 %% Build matrix again and check eigvals, using the preconditioning
-debug = 0; 
+debug = 1; 
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -404,7 +406,8 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt);
+        %uu = lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Z,Y,opt);
+        uu = matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
         CC(:,k) = uu;
     end
     toc
@@ -421,6 +424,7 @@ if debug
 
     num_eigs = 5; 
     [ss,I] = maxk(abs(D),num_eigs);
+    [ss,I] = mink(abs(D),num_eigs);
     Vsmall = V(:,I).*ss';
 
     
@@ -447,33 +451,39 @@ if debug
             % hold on
 
 
-            figure(27)
+            % figure(27)
+            % subplot(1,num_eigs,i)
+            % plot(t,Vpx)
+            % hold on
+            % sgtitle('x-component, with deflation')
+            % 
+            % figure(28)
+            % subplot(1,num_eigs,i)
+            % plot(t,Vpy)
+            % hold on
+            % sgtitle('y-component, with deflation')
+            % 
+            % figure(29)
+            % subplot(1,num_eigs,i)
+            % scatter3(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,40,Vpx,'filled');
+            % hold on
+            % colorbar
+            % view(0,90)
+            % title('x-component, with deflation')
+            % 
+            % figure(30)
+            % subplot(1,num_eigs,i)
+            % scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
+            % hold on
+            % colorbar
+            % view(0,90)
+            % title('y-component, with deflation')
+            
+            figure(31)
             subplot(1,num_eigs,i)
-            plot(t,Vpx)
+            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy);
             hold on
-            sgtitle('x-component, with deflation')
-
-            figure(28)
-            subplot(1,num_eigs,i)
-            plot(t,Vpy)
-            hold on
-            sgtitle('y-component, with deflation')
-
-            figure(29)
-            subplot(1,num_eigs,i)
-            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
-            hold on
-            colorbar
-            view(0,90)
-            title('x-component, with deflation')
-
-            figure(30)
-            subplot(1,num_eigs,i)
-            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
-            hold on
-            colorbar
-            view(0,90)
-            title('y-component, with deflation')
+            axis equal
 
         end
 
@@ -806,12 +816,18 @@ end
 function test_solve_res2
 
 close all; 
-images = 0; %images not needed for well separated particles
-delta = 1; 
+images = 1; %images not needed for well separated particles
+delta = 0.01; 
 rng(8); 
 
 P = 5;
-[q,B] = grow_cluster(P,delta,2);
+%[q,B] = grow_cluster(P,delta,2);
+q = [0:(2+delta):(P-1)*(2+delta)]';
+delta = 0.1; %P = 5
+x = 1+delta/2;
+y = sqrt((2+delta)^2-(1+delta/2)^2);
+q = [0; 2+delta; x+1i*y];
+P = length(q); 
 %q = 0; 
 %q = [0; 2+delta]; %center coordinates
 U = rand(P,2); %translational velocities 
@@ -819,7 +835,7 @@ W = rand(P,1); %angular velocities
 rads = ones(P,1);
 visualise = 0; 
 lr = 5; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
-
+lr = 0; 
 [FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
 
 end

@@ -224,7 +224,7 @@ end
 
 %% Look at eigvals and eigvecs of the system matrix
 % Build the matrix to check it out
-debug = 0;
+debug = 1;
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -247,7 +247,7 @@ if debug
     D = diag(D); 
     plot(real(D),imag(D),'ro')
 
-    num_eigs = 5; 
+    num_eigs = 40; 
     [ss,I] = maxk(abs(D),num_eigs);
     Vsmall = V(:,I).*ss';
 
@@ -256,7 +256,7 @@ if debug
     t = linspace(0,2*pi,Mc+1);
     t = t(1:end-1)'; 
 
-    for i = 1:num_eigs
+    for i = 2%1:num_eigs
      
         for k = 1:P  
             Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
@@ -302,6 +302,13 @@ if debug
             colorbar
             view(0,90)
             title('y-component')
+
+            figure(6)
+            %subplot(1,num_eigs,i)
+            quiver(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,Vpy);
+            hold on
+            colorbar
+            view(0,90)
 
         end
 

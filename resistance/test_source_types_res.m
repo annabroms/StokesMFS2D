@@ -5,7 +5,7 @@ close all;
 % the fine grid for a close to touching pair of particles in the Stokes
 % resistance problem. 
 
-delta = 0.0001; % particle-particle distance
+delta = 0.001; % particle-particle distance
 D = 2+delta;
 S1 = D^2;
 xa1 = (S1/D/2-sqrt((S1^2)/D^2/4-1))/D;
@@ -15,14 +15,20 @@ acc = xa1*D;
 opt = get2Dparams();
 opt.N_c = 150;
 %opt.N_c = 60;
-opt.Rp_c = 0.8151;
-opt.Rp_c = 0.75; % proxy radius
+
+%set separation between true boundary and proxy surface
+tol = 1e-12;
+sep = (1/opt.N_c)*log(1/tol); %separation between surfaces based on rule of thumb in Stein & Barnett QFS paper (2021) 
+opt.Rp_c = max([1-sep,0.01]); %radius of proxy surface
+
+%opt.Rp_c = 0.8151;
+%opt.Rp_c = 0.75; % proxy radius
 %opt.Rp_c = 0.53;
 N_c = opt.N_c;  % should be 60 for the test
 
 image = 1; %use images!
 normalize = 1; % Do column scaling
-left_precond = 1; % Do row weighting
+left_precond = 0; % Do row weighting
 
 mu = 1; % viscosity
 P = 2; % number of particles
@@ -90,11 +96,13 @@ debug = 0;
 sind = [3 7 11 13 15]+1;
 %sind = 11; 
 sind = 4;
-rhs_num = 20;
+rhs_num = 1;
 
 alpha_vec = linspace(0.01,pi/6,10);
 alpha_vec = linspace(0.01,pi/3,10);
-opt.n_clusters = 50; 
+opt.n_clusters = 40; 
+
+smat = [1 0 1 1 0 0 0];
 
 for i = 1:size(smat,1)
 %for i = length(alpha_vec) % Need to modify get2DImageGrid first to loop

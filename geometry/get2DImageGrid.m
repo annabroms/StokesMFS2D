@@ -2,7 +2,7 @@ function [rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, 
 %GET2DIMAGEGRID Distributes source, collocation, and image points for circular particles in 2D
 %
 % Syntax:
-%   [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+%   [rout, weights,rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
 %
 % Inputs:
 %   q          - Complex vector of particle center coordinates (length P)
@@ -358,7 +358,7 @@ for k = 1:P
         
         if ~pc %if no pair corrections (fine grid to be returned)
             t = [t; t_extra];    
-            t = mod(t,2*pi);
+            t = mod(real(t),2*pi);
             t = sort(t);
             w_k = [diff(t); abs(t(end)-(t(1)+2*pi))]; %weights to be used in left preconditioning
         else 

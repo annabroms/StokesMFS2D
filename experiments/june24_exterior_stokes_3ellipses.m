@@ -4,7 +4,7 @@ clear;
 
 svec = [1 0 0 1 1]; % set of singularities at clustered nodes [S R Tr D,T]: stokeslets, 
 % rotlets, stresslet with random "normal" direction, potential dipoles and stresslets with two directions ex,ey
-
+svec = [1 0 0 1 1];
 % Set particle configuration
 delta = 1e-5; %not sure atm what the resulting particle-particle distance is
 avec = [1 1 3]; %set axis
@@ -30,6 +30,7 @@ scalenorms = 1;
 %% set bc
 P = 3; % number of particles
 Up = [0 0; 1 0; 0 1]; Wp = [1; 0; 0]; % translational and angular velocities
+Up = [2 0; 1 0; -3 0]; Wp = [0; 0; 0]; % translational and angular velocities
 
 M1 = ceil(osf*N1);
 t = linspace(0, 2*pi, M1+1)';
@@ -243,11 +244,11 @@ sgtitle('Surface residual in new points')
 clim([-9,0])
 
 %% Visualise solution field
-sizePlane = 20000;
+sizePlane = 80000;
 
 %Generate random points in the exterior domain
 L = 1.8;
-rcheck_dom = [];
+rcheck_dom = rcheck;
 while size(rcheck_dom,1)<sizePlane
     p = -1.5*L+4*L*rand(1)+1i*(-2.5*L+4*L*rand(1));
     next = 0;
@@ -271,7 +272,8 @@ u = eval_Stokes_solution(x_f,centers,rcheck_dom,clusters,dir,svec,N1,P);
 surfir(real(rcheck_dom),imag(rcheck_dom),u(1:end/2));
 view(0,90)
 colorbar
-clim([-1,1])
+clim([-3,3])
+%clim([-5,5])
 axis square
 axis tight
 removePatches(cvec,0,avec,bvec,taus,1e6)  %only visualise the exterior field
@@ -282,6 +284,7 @@ surfir(real(rcheck_dom),imag(rcheck_dom),u(end/2+1:end));
 view(0,90)
 colorbar
 clim([-1,1])
+clim([-3,3])
 axis square
 axis tight
 removePatches(cvec,0,avec,bvec,taus,1e6)  %only visualise the exterior field

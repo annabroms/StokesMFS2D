@@ -88,7 +88,7 @@ tol = 1e-11; %4 nov: seems to work well but results in peaks in close to touchin
 tol = 1e-14;
 %tol = eps; % I don't think this is reasonable. Just to understand what happens now. 
 
-[Y,U] = getPseudoFactors(Ntot,tol,1); 
+[Y,U] = getPseudoFactors(Ntot,tol); 
 
 
 end

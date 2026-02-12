@@ -12,10 +12,12 @@ function [err_ext,reserr_ext,coefnorm_ext] = june18_polygon_stokes(svec,plotdoma
 
 if nargin<1
     close all
-    svec = [1 1 0 1 1]; %S R Tr, D, T. [1 1 0 1 1] works for the non-convex polygon exterior/interior problem
+    svec = [1 0 0 1 1 0 1]; %S R Tr, D, T, SD. [1 1 0 1 1] works for the non-convex polygon exterior/interior problem
                         %Tr refers to Stresslet with random "normal"
-                        %direction 
-   % svec = [0 0 0 1 1];                 
+                        %direction
+    svec = [1 0 0 1 1 0 1]; %works very well! 
+    svec = [1 0 0 1 1 0 1]; %Not divergence free! Is there an extra constraint missing? 
+    svec = [0 0 1 1 0 0 0];                 
     plotdomain = 1;
 elseif nargin<2
     plotdomain = 0; 
@@ -24,7 +26,7 @@ end
 regtol = 1e-13;
 %regtol = 1e-10; %truncation level of SVD
 
-solve_int = 0; %solve interior problem? 
+solve_int = 1; %solve interior problem? 
 
 %% Definition of the polygon
 
@@ -35,7 +37,7 @@ P2 = [1+2i 1/2+1i/2 1+2/3+2i/3 2+2i];
 square = 0; 
 
 P = P1;  % for a non-convex polygon
-%P = P2;  % for a convex polygon
+P = P2;  % for a convex polygon
 
 n_sides = length(P);
 
@@ -56,7 +58,8 @@ vert_tangents = exp(1i*(angle(vert_normals)-pi/2));
 %n_smooth = 200;
 n_smooth = 150; 
 n_smooth = 100; 
-n_clust = 150; %150 takes a long time... 
+%n_clust = 150; %150 takes a long time... 
+n_clust = 20; 
 %n_clust = 0; %the interior problem is very easy to solve. How come?
 %n_clust = 10; 
 
@@ -189,7 +192,7 @@ centers_clust_int = centers_clust_int.';
 
 %% A different set of boundary points
 
-pts_b = oversample_points(pts1, osf+1);
+pts_b = oversample_points(pts1, osf+2);
 pts_b = [-1 pts_b 1]; %add corner points 
 
 bndpts_b = [];
@@ -226,6 +229,8 @@ if plotdomain
 
     figure()
     subplot(1,2,1)
+    constr=solres(end-1:end); %satisfy zero force/torque constraint?
+    solres=solres(1:end-2);
     scatter(real(bndpts),imag(bndpts),5,log10(abs(solres(1:end/2))),'filled')
     colorbar
     subplot(1,2,2)

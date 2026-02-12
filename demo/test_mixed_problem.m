@@ -9,11 +9,11 @@ a = 4; %sets start and end position for the moving bodies.
 delta_vec = logspace(-3,0,20); %set tightest separation between moving body and wall.
 %delta_vec = 0.01;
 P = 6; %number of objects (walls + particles)
-images = 0; %solve accurately?
+images = 1; %solve accurately?
 run_name = 'P6_accurate_obstacle_delta';
-%run_name = 'test';
-run_name = 'P6_crude_obstacle_delta';
-run_name = 'P6_more_crude_obstacle_delta';
+run_name = 'test';
+%run_name = 'P6_crude_obstacle_delta';
+%run_name = 'P6_more_crude_obstacle_delta';
 %run_name = 'P6_accurate_obstacle_delta';
 %run_name = 'P6_accurate_obstacle_delta';
 dynamic_plot = 0; %draw every time step?
@@ -40,6 +40,7 @@ for k = 1:length(delta_vec)
         F = [1 0; 1 0]; 
         T = [0; 0];
         ystat = [0 0 a a 0 -a; 2+delta -2-delta 2+delta -2-delta 0 0];
+        ystat = [0 0 a a 0 -2-delta; 2+delta -2-delta 2+delta -2-delta 0 0];
         Pend = 5;
         max_x = 3*a; 
         
@@ -65,7 +66,7 @@ for k = 1:length(delta_vec)
     y = y(:);
 
      
-    visualise = 0; %plot the configuration inside solve script?
+    visualise = 1; %plot the configuration inside solve script?
    
     %Check accuracy level for a single static configuration (compare coarse and fine grid solution)  
     %solve_mixed solves a combined mobility and resistance problem for

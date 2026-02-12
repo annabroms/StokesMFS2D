@@ -5,7 +5,9 @@ function viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,
 %create grid to check basis in, at the boundaries of the particles in the
 %pair
 %parameterisation to visualise in at boundary
-teval = linspace(0,2*pi,a_c*Nc+1); 
+tself = linspace(0,2*pi,a_c*Nc+1); 
+tself = tself(1:end-1)'; 
+teval = linspace(0,2*pi,50*a_c*Nc+1); 
 teval = teval(1:end-1)'; 
 rcheck_b = [q(1)+cos(teval)+1i*sin(teval); q(2)+cos(teval)+1i*sin(teval)];
 
@@ -19,20 +21,23 @@ y = 2*sin(alpha);
 rcheck3 = x+cos(teval)+y*1i+1i*sin(teval);
 %rcheck4 = x+cos(tfine)+(y+delta)*1i+1i*sin(tfine); offset y for third
 %particle in triangle
-rcheck4 = x+cos(teval)+(y+0.1)*1i+1i*sin(teval); 
+rcheck4 = x+cos(teval)+(y+delta)*1i+1i*sin(teval); 
 
 %Also look in a bunch of points exterior to the particles
-N = 100;
+N = 600;
 t = linspace(0,2*pi,N);
 t = t(1:end-1)';
-rcheck = [q(1)+cos(t)+1i*sin(t); q(2)+cos(t)+1i*sin(t)];
-N = 100; 
+rcheck = [q(1)+cos(t)+1i*sin(t)];% q(2)+cos(t)+1i*sin(t)];
+N = 200; 
 x = linspace(-2,4,N);
 y = linspace(-2,2,N);
+x = linspace(0,2,N);
+y = linspace(-1,1,N);
 [XX,YY] = meshgrid(x,y);
 r = XX(:)+1i*YY(:);
 ind1 = find(abs(r-q(1))<1);
 ind2 = find(abs(r-q(2))<1);
+%ind2 = []; 
 indok = setdiff(1:N*N,ind1);
 indok = setdiff(indok,ind2); 
 rcheck = [rcheck; r(indok)]; 
@@ -105,12 +110,15 @@ Nother_finer = singleLayer(rbase_in_c+q(i),q(p2)+cos(tfiner)+1i*sin(tfiner),1);
 
 %coarse self-interaction
 Nself = singleLayer(rbase_in_c,cos(tcoarse)+1i*sin(tcoarse),1);
+Nself = singleLayer(rbase_in_c,cos(teval)+1i*sin(teval),1);
 Nself3 = singleLayer(rbase_in_c,rcheck3,1);
 Nself4 = singleLayer(rbase_in_c,rcheck4,1);
 
+Ncheck = singleLayer(rbase_in_c,rcheck,1); 
+
 %% Check basis
 % loop over x, then y, one nonzero coordinate in mu at the time
-for k = a_c*Nc+1 :2*a_c*Nc 
+for k = 1 :2*a_c*Nc 
     try
         ind = mod(k,a_c*Nc+1);
         if floor(k/(a_c*Nc+1))
@@ -133,18 +141,26 @@ for k = a_c*Nc+1 :2*a_c*Nc
         tau_mapped = [tau_i_x; tau_i_y]-L*[tau_i_x; tau_i_y];
     end
 
-    %% Look first at the 1-body basis on the body itself. 
+    %% Look first at the 1-body basis...
+    % ...on the body itself. 
     uself = Nself*tau_mapped; 
 
     figure(6);
     clf;
-    plot(teval,uself(1:end/2))
+%     plot(tself,uself(1:end/2))
+%     hold on
+%     plot(tself,uself(end/2+1:end))
+    plot(teval,uself(1:end/2),'LineWidth',2)
     hold on
-    plot(teval,uself(end/2+1:end))
+    plot(teval,uself(end/2+1:end),'LineWidth',2)
     plot(tcoarse,zeros(a_c*Nc,1),'k-*')
     xlabel('t')
     legend('x','y','interpreter','latex')
     title('1-body basis on self')
+    xlim([0,2*pi])
+
+    figure()
+    f1 = fft(uself(1:end/2))
     
     %A smooth function, but it has to be resolved on the neighbour...
 
@@ -162,6 +178,39 @@ for k = a_c*Nc+1 :2*a_c*Nc
     xlabel('t')
     legend('x','y','interpreter','latex')
     title('1-body basis evaluated on fine grid of neighbour')
+    axis tight
+
+    %... Check in the exterior of the particle
+    ufield = Ncheck*tau_mapped;
+
+    figure(13)
+    subplot(1,3,1)
+    surfir(real(rcheck),imag(rcheck),log10(abs(ufield(1:end/2))))
+    %surfir(real(rcheck),imag(rcheck),ufield(1:end/2));
+    colorbar
+    axis tight
+    view(0,90)
+    subplot(1,3,2)
+    surfir(real(rcheck),imag(rcheck),log10(abs(ufield(end/2+1:end))))
+    %surfir(real(rcheck),imag(rcheck),ufield(end/2+1:end))
+    removePatches([real(q(1)) imag(q(1))],0,1,1)
+    view(0,90)
+    colorbar
+    axis tight
+
+    figure(14)
+    subplot(1,2,1)
+    %surfir(real(rcheck),imag(rcheck),log10(abs(ufield(1:end/2))))
+    surfir(real(rcheck),imag(rcheck),ufield(1:end/2));
+    colorbar
+    axis tight
+    view(0,90)
+    subplot(1,2,2)
+    %surfir(real(rcheck),imag(rcheck),log10(abs(ufield(end/2+1:end))))
+    surfir(real(rcheck),imag(rcheck),ufield(end/2+1:end))
+    removePatches([real(q(1)) imag(q(1))],0,1,1)
+    view(0,90)
+    colorbar
     axis tight
 
 
@@ -369,10 +418,11 @@ for k = a_c*Nc+1 :2*a_c*Nc
     plot(teval,x1);
     hold on
     plot(teval,y1);
-    plot(teval,x2);
-    plot(teval,y2);
+    plot(teval,x2,'LineWidth',2);
+    plot(teval,y2,'LineWidth',2);
     legend('touching particle, x coord','touching particle, y coord','slight offset, x coord','slight offset, y coord',...
         'interpreter','latex')
+    axis tight
     
     subplot(1,2,2)
     f1 = fft(x1);
@@ -390,7 +440,7 @@ for k = a_c*Nc+1 :2*a_c*Nc
         'interpreter','latex')
     xlabel('k','interpreter','latex')
     sgtitle('\chi 1,2 at boundary of a tentative third particle')
-
+    axis tight
     %slow decay with coarse grid!
 
     %% Also, add evaluation of the coarse 1-body basis. Still nice and
@@ -412,6 +462,7 @@ for k = a_c*Nc+1 :2*a_c*Nc
     plot(teval,y1);
     plot(teval,x2);
     plot(teval,y2);
+  
     legend('touching particle, x coord','touching particle, y coord','slight offset, x coord','slight offset, y coord',...
         'interpreter','latex')
 
@@ -431,6 +482,7 @@ for k = a_c*Nc+1 :2*a_c*Nc
     plot(teval,y2);
     legend('touching particle, x coord','touching particle, y coord','slight offset, x coord','slight offset, y coord',...
         'interpreter','latex')
+    axis tight
     subplot(1,2,2)
     f1 = fft(x1);
     g1 = fft(y1);
@@ -446,6 +498,7 @@ for k = a_c*Nc+1 :2*a_c*Nc
     legend('touching particle, x coord','touching particle, y coord','slight offset, x coord','slight offset, y coord',...
         'interpreter','latex')
     xlabel('k','interpreter','latex')
+    axis tight
     %The decay here is limited by the magnitude of tau_mapped (large!)
 
 
@@ -463,21 +516,24 @@ for k = a_c*Nc+1 :2*a_c*Nc
     figure(5)
     clf; 
     subplot(1,2,1)
-    surfir(real(rcheck),imag(rcheck),utot(1:end/2))
-    %surfir(real(rcheck),imag(rcheck),log10(abs(utot(1:end/2))))
+    %surfir(real(rcheck),imag(rcheck),utot(1:end/2))
+    surfir(real(rcheck),imag(rcheck),log10(abs(utot(1:end/2))))
     view(0,90)
     hold on
-    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),1)
+    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),10)
+    %caxis([-8,1])
     colorbar
     plot3(real(q(1))+0.9*cos(tstar),imag(q(1))+0.9*sin(tstar),10,'r*')
     subplot(1,2,2)
-    surfir(real(rcheck),imag(rcheck),utot(end/2+1:end))
-    %surfir(real(rcheck),imag(rcheck),log10(abs(utot(end/2+1:end))))
+    %surfir(real(rcheck),imag(rcheck),utot(end/2+1:end))
+    surfir(real(rcheck),imag(rcheck),log10(abs(utot(end/2+1:end))))
     hold on
-    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),1)
+    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),10)
     plot3(real(q(1))+0.9*cos(tstar),imag(q(1))+0.9*sin(tstar),10,'r*')
     view(0,90)
+   % caxis([-8,1])
     colorbar
+
     %pause(2);
 
 
@@ -489,7 +545,7 @@ end
 
 function removePatches(q,h,rad,maxval)
 t = linspace(0,2*pi,200);
-for k = 1:length(q)
+for k = 1:size(q,1)
     r_range = linspace(0,rad(k)+10*h,2);
     [R,T] = meshgrid(r_range,t);
     [X,Y] = pol2cart(T,R);

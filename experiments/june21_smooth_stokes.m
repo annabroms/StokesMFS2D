@@ -3,10 +3,11 @@ function [err_extp,err_extl,reserr_p,reserr_l,coefnorm_p,coefnorm_l] = june21_sm
 if nargin<1
     close all
     N = 150; 
+    %N = 400;
     svec = [0 0 0 1 1];
-    svec = [1 1 0 0 0];
-    %svec = [1 0 0 0 0];
-    plotdomain = 0;
+    svec = [1 0 1 0 0 0 0];
+    %svec = [1 0 0 1 1];
+    plotdomain = 1;
     
 end
 
@@ -19,13 +20,14 @@ end
 fprintf('------Experiment with 2D Stokes ------\n\n')
 
 a = 2.0;
-b = 0.2;
+b = 0.5;
 %b = 1; 
 c = sqrt(a^2-b^2);   % foci of ellipse are at (+/-c, 0)
 
 osf = 10;
 %osf = 30; 
 regtol = 1e-13;
+regtol = 1e-15; 
 scalecols = 1;
 
 
@@ -127,14 +129,6 @@ err_extl = max(abs(diff_vec));
 fprintf('Line sources: residual %1.3e and coefficient norm %1.3e\n\n', reserr_l, coefnorm_l)
 
 
-%% Plot the field
-
-if plotfield
-    Xrange = -4:0.05:4;
-    Yrange = -4:0.05:4;
-    [X,Y] = meshgrid(Xrange, Yrange);
-    
-end
 
 
 end

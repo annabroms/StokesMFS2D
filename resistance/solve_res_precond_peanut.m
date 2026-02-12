@@ -221,8 +221,9 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
+             %matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)
         uu = matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
-            refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Cmap_F,debug);
+            refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
         CC(:,k) = uu;
     end
     toc
@@ -232,9 +233,81 @@ if debug
     colorbar
     skeel(CC)
 
-    [~,D] = eig(CC);
+    [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'b+')
+
+    num_eigs = 40; 
+   % [ss,I] = maxk(abs(D),num_eigs);
+    [ss,I] = mink(abs(D),num_eigs);
+    Vsmall = V(:,I).*ss';
+
+    [U,S,V] = svd(CC); 
+    Vsmall = U(:,end); 
+
+    
+    Mc = round(opt.a_c*opt.N_c);
+    t = linspace(0,2*pi,Mc+1);
+    t = t(1:end-1)'; 
+
+    for i = 1%1:num_eigs
+     
+        for k = 1:P  
+            Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
+            Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+            Vp = abs(Vpx+1i*Vpy);
+            % figure(31)
+            % subplot(1,3,i)
+            % scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vp,40,Vp,'filled');
+            % hold on
+            % colorbar
+            % view(0,90)
+            % 
+            % figure(32)
+            % subplot(1,3,i)
+            % plot(t,Vp)
+            % hold on
+
+
+            figure(1)
+            subplot(1,num_eigs,i)
+            plot(t,Vpx)
+            hold on
+            title('x-component')
+
+            figure(2)
+            subplot(1,num_eigs,i)
+            plot(t,Vpy)
+            hold on
+            title('y-component')
+
+            figure(3)
+            subplot(1,num_eigs,i)
+            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
+            hold on
+            colorbar
+            view(0,90)
+            title('x-component')
+
+            figure(4)
+            subplot(1,num_eigs,i)
+            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
+            hold on
+            colorbar
+            view(0,90)
+            title('y-component')
+
+            figure(6)
+            %subplot(1,num_eigs,i)
+            quiver(real(q(k))+cos(t),imag(q(k))+sin(t),Vpx,Vpy);
+            hold on
+            colorbar
+            view(0,90)
+
+        end
+    end
+
+
 end
 
 % To test with Krylov precond, do something like
@@ -261,7 +334,12 @@ title('GMRES convergence with peanut compression, resistance', 'interpreter','la
 
 if visualise
     %check residual
-    restot = (matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)-fout);
+    if lr
+                  
+        restot = (lr_matvec_2D_peanut(tau,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi)-Pf);
+    else
+        restot = (matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)-fout);
+    end
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')
@@ -698,22 +776,25 @@ else
 
     rng(9);
     P = 10;
-    delta = 0.001; %P = 5
+    P = 50; 
+    delta = 0.01; %P = 5
     x = 1+delta/2;
     y = sqrt((2+delta)^2-(1+delta/2)^2);
     q = [0; 2+delta; x+1i*y];
-   % P = length(q); 
+    %P = length(q); 
     
     visualise = 1; 
     %delta = 1;
-    q = grow_cluster(P,delta,2);
+   % q = grow_cluster(P,delta,2);
+    q = createDumbells(P,delta);
+    q = [0:(2+delta):(P-1)*(2+delta)]';
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); rads = ones(P,1);
     %W = zeros(P,1); 
-    lr = 20; 
+    lr = 8; %6 not enough, 8 is enough for the long chain 
    % lr = 0; 
-    images = 0; 
+  
    % [FT,lambda,it,gmres_tol,err] = solve_2D_res(q,U,W,rads,images, lr,visualise);
     [FT1,lambda1,it1,gmres_tol,err1] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise,lr);
     [FT2,lambda2,it2,gmres_tol,err2] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise,0);
