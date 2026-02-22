@@ -2,6 +2,10 @@
 *.m~
 *.asv
 
+# folders to ignore
+data/
+visuals/
+anna_test/
 
 ## Core latex/pdflatex auxiliary files:
 *.aux

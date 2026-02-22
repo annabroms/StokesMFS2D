@@ -1,13 +1,12 @@
-function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
-%SOLVE_MOB_PRECOND_IMAGES Solves a 2D Stokes mobility problem with circular
+function [UW, lambda, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, T, rads, delta_pair, visualise)
+%SOLVE_MOB_PRECOND_ENHANCED Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
 % source strengths on each close pair of particles. The fine sources,
-% including sources at approximate image points, correct the representation
-% obtained from a coarse grid, effectively preconditioning the system.
+% correct the representation obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
+%   [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, T, rads, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -41,7 +40,7 @@ function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F,
 %
 % To test: Call without arguments.
 %
-% Anna Broms, April 4, 2025
+% Anna Broms, Feb12, 2026
 
 if nargin==0, test_solve_mob; 
     return; end
@@ -57,13 +56,14 @@ gmres_tol = 1e-10;
 P = length(q); 
 
 opt = get2Dparams();
+opt.P = P; 
 
 %Set coarse and fine grid. 
 %Play with N_c, N_f, a (a_f). 
-N_c = 80;  %100 better here? 
+N_c = 60;  %100 better here? 
 %N_c = 60; 
 %N_c = 100;  
-N_f = 150; 
+N_f = 60; 
 
 
 a_c = 1.2;
@@ -77,10 +77,6 @@ tol_c = 1e-12; %I think this works reasonably
 %tol_c = 1e-8; %Curve moves closer to the surface -> smaller coeff and 
 % smoother coarse 1-body basis to evaluate on neighbour
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
-
-s = [0 0 1 1 0 0 0]; %set type of singularities at image points [S R T D]
-%s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
-%be changed!
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
@@ -96,7 +92,7 @@ if nargin < 5
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
 end
 
-opt.s = s;
+
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
 opt.a_c = a_c; 
@@ -104,12 +100,12 @@ opt.a_f = a_f;
 opt.N_c = N_c;
 opt.N_f = N_f; 
 opt.N_peanut = 0;
-opt.s = s; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
 % %Less storage required.
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
-opt.proj_all = 0; % flag for projecting also the image sources. Not fully implemented
+opt.Nclust = 200;
+
 
 %% CREATE GRID
 %Outer basic grid
@@ -117,24 +113,22 @@ tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
 
 rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
-
-%Construct image grid
-%will return only the basic outer grid.                               
-[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
-
-
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
 
-tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1);
-tout_f = tout_f(1:end-1)';
-rbase_out_f = cos(tout_f)+1i*sin(tout_f);
+tin_f = linspace(0,2*pi,N_f+1);
+tin_f = tin_f(1:end-1)';
+rbase_in_f =  Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f);
+ 
+[~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+
 rin = [];
-rin_f = [];
-rout_f = [];
+rout = [];
+
 for k = 1:P
     rin = [rin; q(k)+rbase_in_c];
+    rout = [rout; rbase_out_c+q(k)];
 end
 
 % % To illustrate for presentation / paper
@@ -181,14 +175,16 @@ end
 % coarse proxy grid + basic grid of collocation points only. We assume
 % everyone has the same discretisation, so it's enough to do this once.
 rimage_in = []; 
-nimage = []; 
-[U,Y,Lc] = getSelfPseudoMobility(1,q,rbase_in_c,rbase_out_c,rimage_in,nimage,[0,ceil(a_c*N_c)],s,1);
+[U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
 
-Kf = getKmat2D(rbase_in_f,0); % Kf' maps force density to net force and torque
-Lf = Kf*((Kf'*Kf)\Kf'); %Projects onto the range of the constraint matrix Kf'
+%Kf = getKmat2D(rbase_in_f,0); % Kf' maps force density to net force and torque
+%Lf = Kf*((Kf'*Kf)\Kf'); %Projects onto the range of the constraint matrix Kf'
 
 %Get pair basis
-[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
+%[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
+%Get pair basis
+[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1});
+
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');
@@ -215,7 +211,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_mob_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+        uu = matvec_mob_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
         CC(:,k) = uu;
     end
     figure()
@@ -350,7 +346,7 @@ if debug
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
 debug = 1; 
 
 %Modify to build with krylov preconditioning
@@ -362,25 +358,28 @@ if debug
 %     semilogy(e2);
       semilogy(resvec);
       title('GMRES convergence mobility, pair corrections', 'Interpreter','latex')
-      u2 = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+      u2 = matvec_mob_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
 end 
 
 %% POSTPROCESS
 %[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
  %   tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
  %   tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,tau_pot_all_px,tau_pot_all_py,u_corr]
-[~,~,~,~,tau_stokes_x,tau_stokes_y,tau_stokes_nonpx,tau_stokes_nonpy,~,~,tau_stress_all_x,tau_stress_all_y,~,~,~,~,tau_pot_all_x,tau_pot_all_y,~,~] = getMobPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
-    rimage_vec,nimage,opt,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
 
-tau_image = [tau_stress_all_x; tau_stress_all_y; tau_pot_all_x; tau_pot_all_y];
-% tau_proxy = [tau_stokes_x; tau_stokes_y]; %This is the fine density
-tau_proxy = [tau_stokes_nonpx; tau_stokes_nonpy];
+%warning('work to be done for postprocessing here!')
+
+[~,~,tau_stokes_x,tau_stokes_y, ...
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = getMobPairTransformationStokes(tau,rbase_in_c,rbase_in_f,refine,...
+    rimage_vec,opt,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
+
+lambda = [tau_stokes_x; tau_stokes_y]; %This is the fine density
+%tau_proxy = [tau_stokes_nonpx; tau_stokes_nonpy];
 %And evaluate in new points rcheck_dom and rcheck_b
 
 %The total source strengths are obtained by adding on lambda_x and lambda_y
 %here. 
 
-lambdahat = [tau_proxy; tau_image]; %not just for other things than visualisation
+%lambdahat = [tau_proxy; tau_image]; %not just for other things than visualisation
 
 %% Get rigid body motion. 
 
@@ -393,10 +392,14 @@ end
 
 %Then, due to all fine sources.
 has_neigh = sort(unique(pairs(:)));
+Kf = getKmat2D(rbase_in_f,0); 
 for i = 1:length(has_neigh)
     k = has_neigh(i); 
     UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kf'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
         tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
+    Kim = getKmat2D(rimage_k{k},q(k));
+    % TODO: don't build K matrix
+    UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kim'*[tau_stokes_e_nonpx{k}; tau_stokes_e_nonpy{k}];
 end
 
 
@@ -411,7 +414,7 @@ for k = 1:P
 end
 
 %Using representation
-u_rhs = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+u_rhs = matvec_mob_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rcheck_b,q,U,Y,Lc{1},pairs,Upf,Ypf);
 
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
@@ -505,7 +508,7 @@ if visualise
 
     %% Visualise source strengths
     figure()
-    semilogy(abs(lambdahat))
+    semilogy(abs(lambda))
     title('Source strengths mobility with pair corr')
     axis tight
     
@@ -639,35 +642,35 @@ end
 function test_solve_mob
 
 close all;
-delta = 0.001;
+delta = 0.01;
 q = [0; 2+delta; (2+delta)*1i]; %center coordinates
-q = [0; 2+delta; 4+2*delta];
-
+q = [0; 2+delta; 4+4*delta];
 %or, instead, three cireles in triangle
 % delta = 0.001; 
-% x = 1+delta/2;
-% y = sqrt((2+delta)^2-(1+delta/2)^2);
-% q = [0; 2+delta; x+1i*y];
+x = 1+delta/2;
+y = sqrt((2+delta)^2-(1+delta/2)^2);
+q = [0; 2+delta; x+1i*y];
 
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
 rads = [1; 1; 1]; 
 
+
 %If only two particles
-% q = [0; 2+delta];
+%q = [0; 2+delta; 6];
 % F = F(1:2,:); 
 % T = T(1:2); 
 % rads = [1;1]; 
 
 visualise = 1; 
 images = 1; 
-delta_pair = 0.2; 
+delta_pair = 0.5; 
 lr= 0; 
-[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 
-[UW2,lambda,it2,gmres_tol,err2] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+[UW2,lambda,it2,gmres_tol,err2] = solve_mob_precond_enhanced(q,F,T,rads,delta_pair,visualise);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

@@ -1,0 +1,403 @@
+function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = getMobPairTransformationStokes(tau,rbase_in_c,rbase_in_f,refine,...
+    rimage_vec,opt,rvec_out,q,U,Y,Lc,pairs,Upf,Ypf)
+%GETPAIRTRANSFORMATIONSTOKES maps data at coarse collocation nodes back to coarse and fine source
+%strengths, in preparation for the mobility matvec. This is very similar to
+% getPairTransformation.m for the resistance problem, with the difference
+% that probjections are done. 
+
+%Very long function call...
+
+P = length(q);
+N_coarse = opt.N_c;
+N_large = length(rvec_out)/P; 
+PM = length(rvec_out); 
+
+two_parts = 0; 
+precomp = opt.precomp; 
+use_matrix_free_projection = true; % set false to use the original K-based projector
+use_singlelayer_pair_eval = true; % set false to use stokesletDirect for pair flow evaluation
+
+
+%map densities back
+%Bookkeeping stuff
+
+%should be preallocated...
+tau_stokes_x = []; 
+tau_stokes_y = []; 
+tau_stokes_nonpx = [];
+tau_stokes_nonpy = [];
+
+rvec_in = [];  
+ 
+coarse_ind = cell(P,1); 
+tau_stokes_f_x = cell(P,1);
+tau_stokes_f_y = cell(P,1);
+tau_stokes_e_x = cell(P,1);
+tau_stokes_e_y = cell(P,1);
+tau_stokes_f_nonpx = cell(P,1);
+tau_stokes_f_nonpy = cell(P,1);
+
+tau_stokes_e_nonpx = cell(P,1);
+tau_stokes_e_nonpy = cell(P,1);
+ 
+rimage_k = cell(P,1);
+
+u_corr = zeros(2*PM,1); 
+%Store local fine grid correction
+
+
+for i = 1:P
+    %Retrieve self evaluation blocks
+
+    %check if particle is in any pair.
+    if ~isempty(pairs)
+        %neigh = find(pairs(:,1)==i);
+        [I,J] = find(pairs==i);
+        neigh = [I J];
+    else
+        neigh = [];
+    end
+    
+    tau_particle_x = tau((i-1)*N_large+1:N_large*i);
+    tau_particle_y = tau(PM+(i-1)*N_large+1:PM+N_large*i);
+
+    %if isempty(neigh) %has no neighbours 
+    step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other?
+    tau_mapped = Y{1}*step1; %this is the mapped density for this particle to throw in to the kernel
+    
+    %check residual for the self-interaction only
+    %NN = singleLayer(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
+    %disp('Self-interaction error')
+    %norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
+    %norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
+    %norm(tau_mapped,inf) %large magnitude?
+
+    tau_stokes_nonpx = [tau_stokes_nonpx; tau_mapped(1:N_coarse)];
+    tau_stokes_nonpy = [tau_stokes_nonpy; tau_mapped(N_coarse+1:end)];
+
+    start_ind = size(tau_stokes_x,1);   
+    
+    tau_i_x = tau_mapped(1:N_coarse);
+    tau_i_y = tau_mapped(N_coarse+1:end);
+    tau_mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
+    
+
+    %debug mode to comment out here
+    tau_stokes_x = [tau_stokes_x; tau_mapped(1:N_coarse)];
+    tau_stokes_y = [tau_stokes_y; tau_mapped(N_coarse+1:end)];
+
+    %store indices to later subtract self-interaction blocks in the matvec
+    coarse_ind{i} = start_ind+1:start_ind+N_coarse; 
+    rvec_in = [rvec_in; q(i)+rbase_in_c]; %Keep track of coarse source points
+    
+    if ~isempty(neigh)
+        
+        for k = 1:size(neigh,1)
+
+
+
+            if neigh(k,2) == 2 %has already been counted in 
+                break
+            end
+            %send in two particles with the fine grid 
+            p2 = pairs(neigh(k),2); %get neighbour
+
+            rimage_k{i} = [rimage_k{i}; rimage_vec{i,p2}];
+            rimage_k{p2} = [rimage_k{p2}; rimage_vec{p2,i}];
+
+            tau_particle_x2 = tau((p2-1)*N_large+1:N_large*p2);
+            tau_particle_y2 = tau(PM+(p2-1)*N_large+1:PM+N_large*p2);
+
+            %Keep track of local ordering of source vector for the pair.
+            im_nr = length(rimage_vec{i,p2});
+            s_ind1_x = 1:opt.N_f; 
+            s_ind2_x = opt.N_f+im_nr+1:2*opt.N_f+im_nr;
+            s_ind1_y = 2*opt.N_f+2*im_nr+1:3*opt.N_f+2*im_nr;
+            s_ind2_y = 3*opt.N_f+3*im_nr+1:4*opt.N_f+3*im_nr;
+            e_ind1_x = opt.N_f+1:opt.N_f+im_nr; 
+            e_ind2_x = 2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr;
+            e_ind1_y = 3*opt.N_f+2*im_nr+1:3*opt.N_f+3*im_nr;
+            e_ind2_y = 4*opt.N_f+3*im_nr+1:4*opt.N_f+4*im_nr;
+
+            rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
+
+            if two_parts 
+                %Here, we build \chi 1,2 and \chi 2,1 separately. NOT
+                %needed to do it like this...
+
+                %Already computed above: 
+
+                % %Here we use that the onebody basis is same for everybody. Otherwise, replace U{1} -> U{i}:
+%                 step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other
+%                 tau_mapped = Y{1}*step1; 
+%                 
+%                 %We construct data corresponding to 1-body basis on first
+%                 %particle. 
+
+%               tau_i_x = tau_mapped(1:N_coarse);
+%               tau_i_y = tau_mapped(N_coarse+1:end);
+%               tau_mapped = [tau_i_x; tau_i_y]-L*[tau_i_x; tau_i_y]; 
+
+    
+    
+                %Read off coarse grid contribution on other particle fine
+                %grid
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
+                Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
+                
+    
+    
+                R2 = -Nother*tau_mapped; %rhs on particle 2
+                block = R2(1:end/2);
+                A2 = [zeros(size(block)); block; zeros(size(block)); R2(end/2+1:end)]; 
+                %store as x x y y 
+    
+                %Evaluate pseudo-inverse corresponding to fine grid
+                %backward-stably.
+                pair_mapped = Upf{i,p2}*A2; 
+                tau_pair = Ypf{i,p2}*pair_mapped; 
+    
+                %% Do the same thing for the other order of the particles in the pair
+                %Should be U{p2} and Y{p2} here, but now we assume every
+                %particle has the same basic (coarse) discretisation. 
+                step1 = U{1}*[tau_particle_x2; tau_particle_y2]; 
+                mapped = Y{1}*step1;
+    
+                
+                tau_i_x = mapped(1:N_coarse);
+                tau_i_y = mapped(N_coarse+1:end);
+                mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
+                
+    
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
+                Nother = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
+               
+                R1 = -Nother*mapped;
+                block = R1(1:end/2); %x-contribution           
+                A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
+                pair_mapped = Upf{i,p2}*A1;
+                tau_pair2 = Ypf{i,p2}*pair_mapped;
+    
+                %% Project
+    
+                tau_mapped_tot_xi = tau_pair(s_ind1_x) + tau_pair2(s_ind1_x);
+                tau_mapped_tot_yi = tau_pair(s_ind1_y) + tau_pair2(s_ind1_y);
+    
+                tau_mapped_tot_xp2 = tau_pair(s_ind2_x) + tau_pair2(s_ind2_x);
+                tau_mapped_tot_yp2 = tau_pair(s_ind2_y) + tau_pair2(s_ind2_y);
+                tau_mapped_extra_xi = tau_pair(e_ind1_x) + tau_pair2(e_ind1_x);
+                tau_mapped_extra_yi = tau_pair(e_ind1_y) + tau_pair2(e_ind1_y);
+                tau_mapped_extra_xp2 = tau_pair(e_ind2_x) + tau_pair2(e_ind2_x);
+                tau_mapped_extra_yp2 = tau_pair(e_ind2_y) + tau_pair2(e_ind2_y);
+
+    
+                
+            else
+                %Build \chi 1,2 and \chi 2,1 jointly
+                %step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other
+                %tau_mapped = Y{1}*step1;    
+                %Already determined!
+ 
+
+                %Same thing with different orders for the particles in the
+                %pair
+                step1 = U{1}*[tau_particle_x2; tau_particle_y2]; 
+                mapped = Y{1}*step1;
+                %project
+                tau_i_x = mapped(1:N_coarse);
+                tau_i_y = mapped(N_coarse+1:end);
+                mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y];
+
+
+                if ~precomp
+                    %Read off coarse grid contribution on other particle fine
+                    %grid
+                    rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
+%                   Nother2 = singleLayer(rbase_in_c+q(i),rout_fine_other2,mu);
+%                   R2 = -Nother2*tau_mapped; 
+                
+                    [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+                        real(rout_fine_other2),imag(rout_fine_other2),tau_mapped(1:end/2),...
+                        tau_mapped(end/2+1:end),opt.N_c);
+                    R2 = -[udirect; vdirect];
+        
+                    rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
+    %                 Nother1 = singleLayer(rbase_in_c+q(p2),rout_fine_other1,mu);               
+    %                 R1 = -Nother1*mapped;
+    
+                    [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+                        real(rout_fine_other1),imag(rout_fine_other1),mapped(1:end/2),...
+                        mapped(end/2+1:end),opt.N_c);
+                    R1 = -[udirect; vdirect];
+    
+                    coarse_to_fine_tot = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
+                else
+                    coarse_to_fine_tot = [tau_mapped(1:end/2); mapped(1:end/2); 
+                        tau_mapped(end/2+1:end); mapped(end/2+1:end)];
+                end
+                %store as x x y y 
+    
+                %Take pseudoinverse of the fine representation to determine
+                %beta for BOTH \chi 1,2 and \chi 2,1.
+                pair_mapped = Upf{i,p2}*coarse_to_fine_tot; 
+                beta_tot = Ypf{i,p2}*pair_mapped; 
+
+
+                %% Project
+    
+                tau_mapped_f_xi = beta_tot(s_ind1_x);
+                tau_mapped_f_yi = beta_tot(s_ind1_y);    
+                tau_mapped_f_xp2 = beta_tot(s_ind2_x);
+                tau_mapped_f_yp2 = beta_tot(s_ind2_y);
+                
+                tau_mapped_e_xi = beta_tot(e_ind1_x);
+                tau_mapped_e_yi = beta_tot(e_ind1_y);
+                tau_mapped_e_xp2 = beta_tot(e_ind2_x);
+                tau_mapped_e_yp2 = beta_tot(e_ind2_y);
+
+    
+            end
+            tau_fine_i = [tau_mapped_f_xi; tau_mapped_e_xi; tau_mapped_f_yi; tau_mapped_e_yi];
+            tau_fine_p2 = [tau_mapped_f_xp2; tau_mapped_e_xp2; tau_mapped_f_yp2; tau_mapped_e_yp2];
+
+            % Fast matrix-free projector (with original K-based fallback).
+            if use_matrix_free_projection
+
+                tau_mapped_proj_i = projectOutRigid2D( ...
+                    tau_fine_i, rin_pair(1:end/2), q(i));
+                tau_mapped_proj_p2 = projectOutRigid2D( ...
+                    tau_fine_p2, rin_pair(end/2+1:end), q(p2));
+     
+            else
+            
+                % Original fallback: explicit dense projector.
+                Kf1 = getKmat2D(rin_pair(1:end/2),q(i));
+                Kf2 = getKmat2D(rin_pair(end/2+1:end),q(p2));  
+                Lf1 = Kf1*((Kf1'*Kf1)\Kf1');
+                Lf2 = Kf2*((Kf2'*Kf2)\Kf2');
+                tau_mapped_proj_i = tau_fine_i-Lf1*tau_fine_i;
+                tau_mapped_proj_p2 = tau_fine_p2-Lf2*tau_fine_p2;
+            end
+
+            %% Evaluate flow field on the pair itself
+            % Should be computed with the fine grid on the pair
+            rout_pair = [rvec_out((i-1)*N_large+1:i*N_large,:); rvec_out((p2-1)*N_large+1:p2*N_large,:)];
+                   
+
+
+            if two_parts 
+                % Build matrices explicitly -> slower! 
+                N_pair = singleLayer([rbase_in_f+q(i); rimage_vec{i,p2}; ...
+                    rbase_in_f+q(p2); rimage_vec{p2,i}],rout_pair,mu);
+                u_pair = N_pair*(tau_pair+tau_pair2);
+            else
+                %Avoid constructing matrices explicitly. 
+                rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; ...
+                    rbase_in_f+q(p2); rimage_vec{p2,i}];
+                st_all = length(rin_pair);
+                if use_singlelayer_pair_eval
+                    % New path: evaluate pair flow via dense single-layer matrix.
+                    N_pair = singleLayer(rin_pair,rout_pair,1);
+                    u_pair = N_pair*[beta_tot(1:st_all); beta_tot(st_all+1:2*st_all)];
+                else
+                    % Old path: direct kernel evaluation (kept for comparison).
+                    [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+                        real(rout_pair),imag(rout_pair),...
+                        beta_tot(1:st_all),beta_tot(st_all+1:2*st_all),st_all);
+                    u_pair = [u1; v1];
+                end
+            end
+            ind1x = (i-1)*N_large+1:i*N_large;
+            ind2x =  (p2-1)*N_large+1:p2*N_large;
+            ind1y = (i-1)*N_large+PM+1:i*N_large+PM;
+            ind2y = (p2-1)*N_large+PM+1:p2*N_large+PM;
+            pair_ind = [ind1x ind2x ind1y ind2y]'; 
+
+            u_corr(pair_ind) = u_corr(pair_ind)+u_pair; 
+           
+
+            %also subtract self-interaction on other.
+            N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+            u2 = N2*tau_mapped;
+
+            N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+            u1 = N1*mapped; 
+
+            u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);
+            u_corr(ind2x) = u_corr(ind2x)+u2(1:end/2);
+            u_corr(ind1y) = u_corr(ind1y)+u1(end/2+1:end);
+            u_corr(ind2y) = u_corr(ind2y)+u2(end/2+1:end);
+
+            %% Store source strengths at source points for the different
+             % source types corresponding to the fine grid.
+            pair_idx = [i; p2];
+            pair_proj = {tau_mapped_proj_i, tau_mapped_proj_p2};
+            pair_f_nonpx = {tau_mapped_f_xi, tau_mapped_f_xp2};
+            pair_f_nonpy = {tau_mapped_f_yi, tau_mapped_f_yp2};
+            pair_e_nonpx = {tau_mapped_e_xi, tau_mapped_e_xp2};
+            pair_e_nonpy = {tau_mapped_e_yi, tau_mapped_e_yp2};
+
+            for pair_it = 1:2
+                idx = pair_idx(pair_it);
+                tau_proj = pair_proj{pair_it};
+
+                tau_f_x = tau_proj(s_ind1_x);
+                tau_f_y = tau_proj(opt.N_f+im_nr+1:2*opt.N_f+im_nr);
+                tau_e_x = tau_proj(e_ind1_x);
+                tau_e_y = tau_proj(2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr);
+
+                if isempty(tau_stokes_f_x{idx})
+                    tau_stokes_f_x{idx} = tau_f_x;
+                    tau_stokes_f_y{idx} = tau_f_y;
+                    tau_stokes_f_nonpx{idx} = pair_f_nonpx{pair_it};
+                    tau_stokes_f_nonpy{idx} = pair_f_nonpy{pair_it};
+                else
+                    tau_stokes_f_x{idx} = tau_stokes_f_x{idx} + tau_f_x;
+                    tau_stokes_f_y{idx} = tau_stokes_f_y{idx} + tau_f_y;
+                    tau_stokes_f_nonpx{idx} = tau_stokes_f_nonpx{idx} + pair_f_nonpx{pair_it};
+                    tau_stokes_f_nonpy{idx} = tau_stokes_f_nonpy{idx} + pair_f_nonpy{pair_it};
+                end
+
+                if isempty(tau_stokes_e_x{idx})
+                    tau_stokes_e_x{idx} = tau_e_x;
+                    tau_stokes_e_y{idx} = tau_e_y;
+                    tau_stokes_e_nonpx{idx} = pair_e_nonpx{pair_it};
+                    tau_stokes_e_nonpy{idx} = pair_e_nonpy{pair_it};
+                else
+                    tau_stokes_e_x{idx} = [tau_stokes_e_x{idx}; tau_e_x];
+                    tau_stokes_e_y{idx} = [tau_stokes_e_y{idx}; tau_e_y];
+                    tau_stokes_e_nonpx{idx} = [tau_stokes_e_nonpx{idx}; pair_e_nonpx{pair_it}];
+                    tau_stokes_e_nonpy{idx} = [tau_stokes_e_nonpy{idx}; pair_e_nonpy{pair_it}];
+                end
+
+            end
+
+
+        end
+        
+    end
+       
+end
+
+has_neigh = sort(unique(pairs(:)));
+
+
+%Collect all source points and source data
+
+for i = 1:length(has_neigh)
+    k = has_neigh(i);    
+    
+    tau_stokes_x = [tau_stokes_x; tau_stokes_f_x{k}; tau_stokes_e_x{k}];
+    tau_stokes_y = [tau_stokes_y; tau_stokes_f_y{k}; tau_stokes_e_y{k}];
+
+    tau_stokes_nonpx = [tau_stokes_nonpx; tau_stokes_f_nonpx{k}];
+    tau_stokes_nonpy = [tau_stokes_nonpy; tau_stokes_f_nonpy{k}];
+    
+    %Keep track of the source points corresponding to the fine source data
+    rvec_in = [rvec_in; q(k)+rbase_in_f; rimage_k{k}];
+    
+    
+end
+
+end

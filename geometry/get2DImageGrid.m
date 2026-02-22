@@ -132,6 +132,7 @@ if image
                     %get number of image locations to be generated, from empiric
                     %relationship
                     sample_nbr = max(ceil(slope*log10(d)+m),0); 
+                    
                 end
 
                 if ~sample_nbr

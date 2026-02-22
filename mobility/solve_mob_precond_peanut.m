@@ -237,7 +237,7 @@ end
 %% Solve system
 
 % Build the matrix to check it out
-debug = 0;
+debug = 1;
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -246,7 +246,8 @@ if debug
         x(:) = 0; 
         x(k) = 1; 
         uu = matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
-            refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair,debug);
+            refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair);
+            % matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
         CC(:,k) = uu;
     end
     toc
@@ -547,15 +548,33 @@ function test_solve_mob
 
 close all; 
 q = [0; 2.001; 2.001i]; %center coordinates
-F = [1 0; 0 0; 0 1]; %forces on the particles
-T = [1; 1; 1]; %torques on the particles
-rads = [1; 1; 1]; 
+
+delta = 1e-2; 
+P = 3; 
+q = 0:2+delta:(P-1)*(2+delta);
+P = 4; 
+q = [0; 2+delta; 5; 7+delta];
+
+
+P = 2; 
+side = 2 + delta;               % neighbor center distance
+R = side / (2*sin(pi/P));         % ring radius
+q = R * exp(1i * (0:P-1).' * (2*pi/P));
+q(1) = 8;
+F = [real(q) imag(q)]; 
+T = zeros(size(q)); 
+rads = ones(size(q)); 
+
+
+%F = [1 0; 0 0; 0 1; -1 0]; %forces on the particles
+%T = [1; 1; 1; -1]; %torques on the particles
+%rads = [1; 1; 1; 1]; 
 visualise = 1; 
 delta_pair = 0.2; 
-[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
 
 %compare to a solution with image enhancement
-N_peanut = 400; 
+N_peanut = 1200; 
 [UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
 
 str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);

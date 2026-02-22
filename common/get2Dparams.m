@@ -28,6 +28,7 @@ sep = (1/N_f)*log(1/tol); %separation between surfaces based on rule of thumb in
 opt.Rp_f = max([1-sep,0.01]);
 opt.a_f = 1.2; % upsampling factor for collocation points so that M_f = a_f*N_f; 
  
+opt.beta = 0.3; %determines distance between focus and tip of ellipse for enhancing nodes
 
 
 end

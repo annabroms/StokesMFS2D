@@ -16,6 +16,7 @@ PM = length(rvec_out);
 
 two_parts = 0; 
 precomp = opt.precomp; 
+use_matrix_free_projection = true; % set false to use the original K-based projector
 
 
 %map densities back
@@ -274,8 +275,34 @@ for i = 1:P
     
             end
 
-            tau_mapped_proj_i = [tau_mapped_tot_xi;tau_mapped_tot_yi]-Lf*[tau_mapped_tot_xi;tau_mapped_tot_yi];
-            tau_mapped_proj_p2 = [tau_mapped_tot_xp2;tau_mapped_tot_yp2]-Lf*[tau_mapped_tot_xp2;tau_mapped_tot_yp2];
+            tau_fine_i = [tau_mapped_tot_xi; tau_mapped_tot_yi];
+            tau_fine_p2 = [tau_mapped_tot_xp2; tau_mapped_tot_yp2];
+
+            if use_matrix_free_projection
+                proj_ok_i = true;
+                proj_ok_p2 = true;
+                try
+                    tau_mapped_proj_i = projectOutRigid2D(tau_fine_i, rbase_in_f+q(i), q(i));
+                    tau_mapped_proj_p2 = projectOutRigid2D(tau_fine_p2, rbase_in_f+q(p2), q(p2));
+                    proj_ok_i = isvector(tau_mapped_proj_i) && ...
+                        numel(tau_mapped_proj_i) == numel(tau_fine_i) && ...
+                        all(isfinite(tau_mapped_proj_i));
+                    proj_ok_p2 = isvector(tau_mapped_proj_p2) && ...
+                        numel(tau_mapped_proj_p2) == numel(tau_fine_p2) && ...
+                        all(isfinite(tau_mapped_proj_p2));
+                catch
+                    proj_ok_i = false;
+                    proj_ok_p2 = false;
+                end
+            else
+                proj_ok_i = false;
+                proj_ok_p2 = false;
+            end
+
+            if ~(proj_ok_i && proj_ok_p2)
+                tau_mapped_proj_i = tau_fine_i-Lf*tau_fine_i;
+                tau_mapped_proj_p2 = tau_fine_p2-Lf*tau_fine_p2;
+            end
 
             %% Evaluate flow field on the pair itself
             % Should be computed with the fine grid on the pair
@@ -445,16 +472,74 @@ for i = 1:length(has_neigh)
             stress_2 = [stress_kx(end/2+1:end); stress_ky(end/2+1:end)];
 
             rim1 = rimage_vec{k,p2};
-            Kim = getKmat2D(rim1,q(k)); 
-            Lim = Kim*((Kim'*Kim)\Kim');
-            pot_1 = pot_1-Lim*pot_1;
-            stress_1 = stress_1-Lim*stress_1;
+            if use_matrix_free_projection
+                ok_pot1 = true;
+                ok_stress1 = true;
+                try
+                    pot_1_new = projectOutRigid2D(pot_1, rim1, q(k));
+                    stress_1_new = projectOutRigid2D(stress_1, rim1, q(k));
+                    ok_pot1 = isvector(pot_1_new) && ...
+                        numel(pot_1_new) == numel(pot_1) && ...
+                        all(isfinite(pot_1_new));
+                    ok_stress1 = isvector(stress_1_new) && ...
+                        numel(stress_1_new) == numel(stress_1) && ...
+                        all(isfinite(stress_1_new));
+                    if ok_pot1
+                        pot_1 = pot_1_new;
+                    end
+                    if ok_stress1
+                        stress_1 = stress_1_new;
+                    end
+                catch
+                    ok_pot1 = false;
+                    ok_stress1 = false;
+                end
+            else
+                ok_pot1 = false;
+                ok_stress1 = false;
+            end
+
+            if ~(ok_pot1 && ok_stress1)
+                Kim = getKmat2D(rim1,q(k)); 
+                Lim = Kim*((Kim'*Kim)\Kim');
+                pot_1 = pot_1-Lim*pot_1;
+                stress_1 = stress_1-Lim*stress_1;
+            end
 
             rim2 = rimage_vec{p2,k};
-            Kim = getKmat2D(rim2,q(p2)); 
-            Lim = Kim*((Kim'*Kim)\Kim');
-            pot_2 = pot_2-Lim*pot_2;
-            stress_2 = stress_2-Lim*stress_2;
+            if use_matrix_free_projection
+                ok_pot2 = true;
+                ok_stress2 = true;
+                try
+                    pot_2_new = projectOutRigid2D(pot_2, rim2, q(p2));
+                    stress_2_new = projectOutRigid2D(stress_2, rim2, q(p2));
+                    ok_pot2 = isvector(pot_2_new) && ...
+                        numel(pot_2_new) == numel(pot_2) && ...
+                        all(isfinite(pot_2_new));
+                    ok_stress2 = isvector(stress_2_new) && ...
+                        numel(stress_2_new) == numel(stress_2) && ...
+                        all(isfinite(stress_2_new));
+                    if ok_pot2
+                        pot_2 = pot_2_new;
+                    end
+                    if ok_stress2
+                        stress_2 = stress_2_new;
+                    end
+                catch
+                    ok_pot2 = false;
+                    ok_stress2 = false;
+                end
+            else
+                ok_pot2 = false;
+                ok_stress2 = false;
+            end
+
+            if ~(ok_pot2 && ok_stress2)
+                Kim = getKmat2D(rim2,q(p2)); 
+                Lim = Kim*((Kim'*Kim)\Kim');
+                pot_2 = pot_2-Lim*pot_2;
+                stress_2 = stress_2-Lim*stress_2;
+            end
 
             tau_stress_all_px = [tau_stress_all_px; stress_1(1:end/2); stress_2(1:end/2)];
             tau_stress_all_py = [tau_stress_all_py; stress_1(end/2+1:end); stress_2(end/2+1:end)];
@@ -480,4 +565,3 @@ for i = 1:length(has_neigh)
 end
 
 end
-
