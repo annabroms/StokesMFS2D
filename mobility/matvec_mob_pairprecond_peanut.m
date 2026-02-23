@@ -12,6 +12,7 @@ mu = 1;
 PM = length(rvec_out);
 N_f = opt.N_f;
 N_c = opt.N_c; 
+use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 %Transform coarse \mu -> coarse \lambda
@@ -26,8 +27,11 @@ res = res+u_corr; %Subtraction of the contribution from the peanut compressed ba
 %Imposing boundary conditions, if solving
 if isequal(rcheck,rvec_out)
 
-    B = getKmat2D(rvec_out(1:N_large)-q(1),0);
-    K = getKmat2D(rbase_in_f,0);
+    rbase_out_rel = rvec_out(1:N_large)-q(1);
+    if ~use_matrix_free_BKt
+        B = getKmat2D(rbase_out_rel,0);
+        K = getKmat2D(rbase_in_f,0);
+    end
     
     %This part is already taken care of... i.e. we never add and subtract the same thing. 
     % for k= 1:P
@@ -41,8 +45,13 @@ if isequal(rcheck,rvec_out)
     has_neigh = sort(unique(pairs(:)));
     for i = 1:length(has_neigh)
         k = has_neigh(i); 
-        bcvec = B*K'*[tau_beta_x((k-1)*N_f+1:k*N_f); 
-            tau_beta_y((k-1)*N_f+1:k*N_f)];
+        fbx = tau_beta_x((k-1)*N_f+1:k*N_f);
+        fby = tau_beta_y((k-1)*N_f+1:k*N_f);
+        if use_matrix_free_BKt
+            bcvec = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fbx,fby);
+        else
+            bcvec = B*K'*[fbx; fby];
+        end
     
         res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
         res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
@@ -79,4 +88,3 @@ end
 
 
 end
-

@@ -1,4 +1,19 @@
 function res = matvec_mob_pairprecond_enhanced(tau,geom,basis)
+%MATVEC_MOB_PAIRPRECOND_ENHANCED Matrix-vector action for mobility pair preconditioner.
+%
+% Syntax:
+%   res = matvec_mob_pairprecond_enhanced(tau,geom,basis)
+%
+% Inputs:
+%   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.
+%   geom  - Geometry/problem struct with fields:
+%           rbase_in_c, rbase_in_f, opt, rvec_out, rcheck, q, pairs.
+%   basis - Precomputed basis struct with fields:
+%           U, Y, Lc, Upf, Ypf.
+%
+% Output:
+%   res   - Matvec result at check/collocation points [u_x; u_y].
+%
 
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
@@ -11,7 +26,6 @@ pairs = geom.pairs;
 [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
     tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
     getMobPairTransformationStokes(tau,geom,basis); 
-
  
 P = opt.P; 
 PM = length(rvec_out);
@@ -19,6 +33,7 @@ N_large = PM/P;
 mu = 1; 
 N_c = opt.N_c;
 N_f = opt.N_f;
+use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 %% Get flow field from all source types
@@ -30,8 +45,8 @@ two_corr = 0;
 
 if isequal(rcheck,rvec_out)
 
-    B = getKmat2D(rvec_out(1:N_large)-q(1),0);
-    K = getKmat2D(rbase_in_f,0);
+    rbase_out_rel = rvec_out(1:N_large)-q(1);
+
     
     %This part is already taken care of... 
     % for k= 1:P
@@ -48,18 +63,22 @@ if isequal(rcheck,rvec_out)
         for i = 1:length(has_neigh)
             k = has_neigh(i); 
 
-            % Add Lr part for the coarse sources...
-            bcvec_c = B*K'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
-                tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
-
+            % Add BK' part for the coarse sources...
+            fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+            fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+            
+            bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+        
             %and for the fine sources
-            tau_fine = [tau_stokes_e_nonpx{k}; tau_stokes_e_nonpy{k}];
-            Kfine = getKmat2D(rimage_k{k},q(k));
-            bcvec_f = B*Kfine'*tau_fine;
+            if isempty(rimage_k{k})
+                bcvec_f = zeros(2*N_large,1);
+            else    
+                bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
+                    tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
+            end
         
             res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
             res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
-
 
         end
     end
@@ -98,5 +117,3 @@ end
 
 
 end
-
-

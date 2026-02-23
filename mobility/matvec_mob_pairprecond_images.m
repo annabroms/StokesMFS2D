@@ -15,6 +15,7 @@ N_large = PM/P;
 mu = 1; 
 N_c = opt.N_c;
 N_f = opt.N_f;
+use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 
@@ -31,8 +32,15 @@ two_corr = 0;
 
 if isequal(rcheck,rvec_out)
 
-    B = getKmat2D(rvec_out(1:N_large)-q(1),0);
-    K = getKmat2D(rbase_in_f,0);
+    rbase_out_rel = rvec_out(1:N_large)-q(1);
+
+    B = [];
+    if opt.proj_all || ~use_matrix_free_BKt
+        B = getKmat2D(rbase_out_rel,0);
+    end
+    if ~use_matrix_free_BKt
+        K = getKmat2D(rbase_in_f,0);
+    end
     
     %This part is already taken care of... 
     % for k= 1:P
@@ -48,8 +56,14 @@ if isequal(rcheck,rvec_out)
         has_neigh = sort(unique(pairs(:)));
         for i = 1:length(has_neigh)
             k = has_neigh(i); 
-            bcvec = B*K'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
-                tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
+            fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+            fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+
+            if use_matrix_free_BKt
+                bcvec = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+            else
+                bcvec = B*K'*[fcx; fcy];
+            end
         
             res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
             res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);

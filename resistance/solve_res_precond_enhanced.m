@@ -153,6 +153,22 @@ end
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
 
+geom = struct();
+geom.rbase_in_c = rbase_in_c;
+geom.rbase_in_f = rbase_in_f;
+geom.refine = refine;
+geom.rimage_vec = rimage_vec;
+geom.opt = opt;
+geom.rvec_out = rout;
+geom.q = q;
+geom.pairs = pairs;
+
+basis = struct();
+basis.U = UU;
+basis.Y = YY;
+basis.Upf = Upf;
+basis.Ypf = Ypf;
+
 
 %Visualise 1-body and pair-basis
 
@@ -198,7 +214,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,q,UU,YY,pairs,Upf,Ypf);
+        uu = matvec_2D_pairprecond_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     toc
@@ -284,7 +300,7 @@ if lr
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,q,UU,YY,pairs,Upf,Ypf),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 debug = 1; 
 
@@ -300,7 +316,7 @@ if debug
 
       %what's the resiudal?
     %  u = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
-      u = matvec_2D_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,q,UU,YY,pairs,Upf,Ypf);
+      u = matvec_2D_pairprecond_enhanced(tau,geom,basis);
 %       figure()
 %       semilogy(abs(u-fout))
 %       title('Residual in solution')
@@ -311,10 +327,9 @@ end
 % [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
 %     rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf);
 
-[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y] = getPairTransformationStokes(tau,rbase_in_c,rbase_in_f,refine,...
-    rimage_vec,opt,rout,q,UU,YY,pairs,Upf,Ypf);
+[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y] = getPairTransformationStokes(tau,geom,basis);
 
-warning('Think about postprocessing here')
+% Postprocessing uses the assembled Stokeslet strengths from all source sets.
    % if lr
    %      %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
    %      tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM);
@@ -330,27 +345,59 @@ warning('Think about postprocessing here')
 % lambda = [lambda_proxy; lambda_image]; 
 lambda =  [tau_stokes_x; tau_stokes_y];
 
-%% Compute forces
-disp('TODO: determine forces')
-% K = getKmat2D(rbase_in_c,0);
-% FT = zeros(3*P,1); 
-% for k= 1:P
-%     FT((k-1)*3+1:3*k) = K'*[tau_stokes_x((k-1)*N_c+1:k*N_c); tau_stokes_y((k-1)*N_c+1:k*N_c)];
-% end
-% 
-% K = getKmat2D(rbase_in_f,0);
-% has_neigh = sort(unique(pairs(:)));
-% for i = 1:length(has_neigh)
-%     k = has_neigh(i); 
-%     FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+ K'*[tau_stokes_x((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
-%         tau_stokes_y((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
-% end
+%% Compute net forces and torque
+% FT = [F_x; F_y; T_z] per particle, assembled from coarse, fine and
+% pair-specific fine source strengths.
+FT = zeros(3*P,1);
+
+% Coarse source contribution.
+Kc = getKmat2D(rbase_in_c,0);
+for k = 1:P
+    seg = (k-1)*3+1:3*k;
+    idx = coarse_ind{k};
+    FT(seg) = FT(seg) + Kc'*[tau_stokes_x(idx); tau_stokes_y(idx)];
+end
+
+% Fine and image-source contributions are stored particle-by-particle in
+% the same order as in getPairTransformationStokes.
+has_neigh = sort(unique(pairs(:)));
+Kf = getKmat2D(rbase_in_f,0);
+offset = P*N_c;
+
+% Number of image (extra) sources per particle for index bookkeeping.
+n_im = zeros(P,1);
+for row = 1:size(pairs,1)
+    i1 = pairs(row,1);
+    i2 = pairs(row,2);
+    n_im(i1) = n_im(i1) + length(rimage_vec{i1,i2});
+    n_im(i2) = n_im(i2) + length(rimage_vec{i2,i1});
+end
+
+for i = 1:length(has_neigh)
+    k = has_neigh(i);
+    seg = (k-1)*3+1:3*k;
+
+    % Contribution from fine proxy ring (N_f points).
+    fine_idx = offset + (1:N_f);
+    offset = offset + N_f;
+    FT(seg) = FT(seg) + Kf'*[tau_stokes_x(fine_idx); tau_stokes_y(fine_idx)];
+
+    % Contribution from pair-specific extra/image points.
+    nimk = n_im(k);
+    if nimk > 0
+        extra_idx = offset + (1:nimk);
+        offset = offset + nimk;
+        Kim = getKmat2D(rvec_in(extra_idx),q(k));
+        FT(seg) = FT(seg) + Kim'*[tau_stokes_x(extra_idx); tau_stokes_y(extra_idx)];
+    end
+end
+
 
 %extract force and torque separately
-% for k = 1:P
-%     F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
-%     T(k) = FT(3*k); 
-% end
+for k = 1:P
+    F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
+    T(k) = FT(3*k); 
+end
 
 
 %% Do the evaluation of the flow in check points , FMM is applied.
@@ -647,20 +694,23 @@ if test == 1
     delta = 0.05; %P = 5
     delta = 1e-2;
     %delta = 1;
-    q = grow_cluster(P,delta,2);
+    q = [0; 2+delta; 6];
+    %q = grow_cluster(P,delta,2);
     side = 2 + delta;               % neighbor center distance
     R = side / (2*sin(pi/P));         % ring radius
-    q = R * exp(1i * (0:P-1).' * (2*pi/P));
+    %q = R * exp(1i * (0:P-1).' * (2*pi/P));
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); rads = ones(P,1);
     lr = 20; 
     lr = 0; 
-    images = 0; 
+    images = 1; 
 
-   % [FT,lambda,it1,gmres_tol,err1] = solve_2D_res(q,U,W,rads,images, lr,visualise);
-    [FT,lambda,it2,gmres_tol,err2] = solve_res_precond_enhanced(q,U,W,rads,delta_pair,lr,visualise);
-    
+    [FT1,lambda,it1,gmres_tol,err1] = solve_2D_res(q,U,W,rads,images, lr,visualise);
+    [FT2,lambda,it2,gmres_tol,err2] = solve_res_precond_enhanced(q,U,W,rads,delta_pair,lr,visualise);
+    [FT3,lambda,it3,gmres_tol,err3] = solve_res_precond_images(q,U,W,rads,delta_pair,lr,visualise);
+
+
     str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
     disp(str)
     
@@ -678,6 +728,4 @@ else
     alignfigs;
 end
 end
-
-
 

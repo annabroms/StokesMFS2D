@@ -101,7 +101,7 @@ opt.mask = 0;
 opt.cut_off = 20; 
 
 %solve with Stresslets + Potential dipoles at image points
-s = [0 0 1 1]; % s = [S R T D]
+s = [0 0 1 1 0 0 0]; % s = [S R T D]
 opt.s = s; 
 mu = 1; %viscosity
 

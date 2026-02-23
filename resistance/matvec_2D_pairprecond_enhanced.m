@@ -1,56 +1,59 @@
-function res = matvec_2D_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rvec_out,q,U,Y,pairs,Upf,Ypf)
+function res = matvec_2D_pairprecond_enhanced(tau,geom,basis)
+%MATVEC_2D_PAIRPRECOND_ENHANCED Matrix-vector action for resistance pair preconditioner.
+%
+% Syntax:
+%   res = matvec_2D_pairprecond_enhanced(tau,geom,basis)
+%
+% Inputs:
+%   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.
+%   geom  - Geometry/problem struct with fields:
+%           rbase_in_c, rbase_in_f, refine, rimage_vec, opt, rvec_out, q, pairs.
+%   basis - Precomputed basis struct with fields:
+%           U, Y, Upf, Ypf.
+%
+% Output:
+%   res   - Matvec result at collocation points [u_x; u_y].
 
+rbase_in_c = geom.rbase_in_c;
+opt = geom.opt;
+rvec_out = geom.rvec_out;
+q = geom.q;
 
-%Transform data at collocation points to data at source points. 
-[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = getPairTransformationStokes(tau,rbase_in_c,rbase_in_f,refine,...
-    rimage_vec,opt,rvec_out,q,U,Y,pairs,Upf,Ypf); 
- 
-P = length(q); 
-N_large = size(rvec_out,1)/P;
-mu = 1; 
+% Transform data at collocation points to source strengths.
+[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = ...
+    getPairTransformationStokes(tau,geom,basis);
+
+P = opt.P;
+N_large = length(rvec_out)/P;
 PM = length(rvec_out);
+mu = 1;
 
-
-%% Get velocity field from fine grid
-
+%% Velocity field from all Stokeslet sources
 res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y);
 
-two_corr = 1; %identity correction for the pair
+two_corr = true; % identity correction for pair blocks
 
-
-%Need to subract off self-interactions and replace with identity diagonals
+% Subtract self-interactions and replace diagonal with identity.
 rout = rvec_out(1:N_large)-q(1,:);
-rin = rbase_in_c;
-Nii = singleLayer(rin,rout,mu);
+Nii = singleLayer(rbase_in_c,rout,mu);
 
 for i = 1:P
-    % Get sources on this particle from single layer
     tau_xy = [tau_stokes_x(coarse_ind{i}); tau_stokes_y(coarse_ind{i})];
-    
-    %rout = rvec_out((i-1)*N_large+1:i*N_large,:);
-    %rin = rbase_in_c+q(i);    
-    %Nii = singleLayer(rin,rout,mu); %why recomputed?
     uii = Nii*tau_xy;
 
-    %subract contribution in x
-    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2);
+    % subtract contribution in x
+    res((i-1)*N_large+1:i*N_large) = ...
+        res((i-1)*N_large+1:i*N_large)-uii(1:end/2);
 
-    %subract contribution in y
-    res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-        uii(end/2+1:end);
-   
+    % subtract contribution in y
+    res((i-1)*N_large+1+PM:i*N_large+PM) = ...
+        res((i-1)*N_large+1+PM:i*N_large+PM)-uii(end/2+1:end);
 end
 
 if two_corr
     res = res-u_corr;
-end 
-
+end
 
 res = res+tau;
 
-
-
-
-
 end
-
