@@ -22,10 +22,21 @@ rvec_out = geom.rvec_out;
 rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
+if isfield(opt,'use_cached_pair_transform')
+    use_cached_pair_transform = opt.use_cached_pair_transform;
+else
+    use_cached_pair_transform = true; % set true to use cached coarse lambda + pair-only fine loop
+end
 
-[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
-    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
-    getMobPairTransformationStokes(tau,geom,basis); 
+if use_cached_pair_transform
+    [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
+        getMobPairTransformationStokesCached(tau,geom,basis);
+else
+    [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
+        getMobPairTransformationStokes(tau,geom,basis);
+end
  
 P = opt.P; 
 PM = length(rvec_out);
@@ -33,7 +44,6 @@ N_large = PM/P;
 mu = 1; 
 N_c = opt.N_c;
 N_f = opt.N_f;
-use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 %% Get flow field from all source types

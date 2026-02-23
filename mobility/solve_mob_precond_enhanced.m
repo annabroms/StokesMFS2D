@@ -6,7 +6,7 @@ function [UW, lambda, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, 
 % correct the representation obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, T, rads, delta_pair, visualise)
+%   [UW, lambda, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, T, rads, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -18,7 +18,7 @@ function [UW, lambda, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, 
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
-%   lambdahat  - Solution vector of source strengths
+%   lambda     - Solution vector of source strengths
 %   it         - Number of GMRES iterations required
 %   gmres_tol  - Set GMRES tolerance
 %   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
@@ -36,7 +36,7 @@ function [UW, lambda, it, gmres_tol, maxres] = solve_mob_precond_enhanced(q, F, 
 %   solve_mob_precond_peanut - 2-body preconditioner with peanut
 %                              compression (in this version of the algorithm, only coarse sources
 %                              are needed at the solve stage).
-%   solve_res_precond_images   - 2-body preconditioned resistance solver
+%   solve_res_precond_enhanced   - 2-body preconditioned resistance solver
 %
 % To test: Call without arguments.
 %
@@ -105,6 +105,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 opt.Nclust = 200;
+opt.use_cached_pair_transform = false; % set true to use getMobPairTransformationStokesCached
 
 
 %% CREATE GRID
@@ -385,9 +386,15 @@ end
 
 %warning('work to be done for postprocessing here!')
 
-[~,~,tau_stokes_x,tau_stokes_y, ...
-    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
-    getMobPairTransformationStokes(tau,geom,basis);
+if isfield(opt,'use_cached_pair_transform') && opt.use_cached_pair_transform
+    [~,~,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
+        getMobPairTransformationStokesCached(tau,geom,basis);
+else
+    [~,~,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
+        getMobPairTransformationStokes(tau,geom,basis);
+end
 
 lambda = [tau_stokes_x; tau_stokes_y]; %This is the fine density
 %tau_proxy = [tau_stokes_nonpx; tau_stokes_nonpy];

@@ -14,21 +14,21 @@ function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
 %   basis - Struct with fields:
 %           U, Y, Lc, Upf, Ypf. (precomputed SVD factors)
 
-rvec_out = mustGetField(geom,'rvec_out');
-q = mustGetField(geom,'q');
-pairs = mustGetField(geom,'pairs');
+rvec_out = geom.rvec_out;
+q = geom.q;
+pairs = geom.pairs;
 
-rbase_in_c = mustGetField(geom,'rbase_in_c');
-rbase_in_f = mustGetField(geom,'rbase_in_f');
-refine = mustGetField(geom,'refine');
-rimage_vec = mustGetField(geom,'rimage_vec');
-opt = mustGetField(geom,'opt');
+rbase_in_c = geom.rbase_in_c;
+rbase_in_f = geom.rbase_in_f;
+refine = geom.refine;
+rimage_vec = geom.rimage_vec;
+opt = geom.opt;
 
-U = mustGetField(basis,'U');
-Y = mustGetField(basis,'Y');
-Lc = mustGetField(basis,'Lc');
-Upf = mustGetField(basis,'Upf');
-Ypf = mustGetField(basis,'Ypf');
+U = basis.U;
+Y = basis.Y;
+Lc = basis.Lc;
+Upf = basis.Upf;
+Ypf = basis.Ypf;
 
 P = length(q);
 N_coarse = opt.N_c;
@@ -374,11 +374,4 @@ tau_stokes_nonpx = vertcat(nonpx_chunks{:});
 tau_stokes_nonpy = vertcat(nonpy_chunks{:});
 rvec_in = vertcat(rvec_chunks{:});
 
-end
-
-function value = mustGetField(S, fieldname)
-if ~isfield(S, fieldname)
-    error('Missing required field ''%s''.', fieldname);
-end
-value = S.(fieldname);
 end

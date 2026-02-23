@@ -1,13 +1,13 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise,lr)
-%SOLVE_RES_PRECOND_PEANUT Solves a 2D Stokes resistance problem with circular
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,lr)
+%SOLVE_PRECOND_PEANUT_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
-%fine grid enhanced with approximate image points is used locally for every
+%fine grid enhanced with shielding Stokeslets near image points is used locally for every
 %close pair of particles to resolve challenging interactions. This fine grid is
 %compressed so that only coarse sources and collocation points are needed to 
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_res_precond_peanut(q, U, W, rads, delta_pair, N_peanut, visualise,lr)
+%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_precond_peanut_enhanced(q, U, W, rads, delta_pair, N_peanut, visualise,lr)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -20,7 +20,7 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_precond_peanut(q,U,W,
 %                to map fine sources to effective coarse sources, giving the
 %                same flow field exterior to the close pair of particles.
 %   visualise  - Logical flag: plot the configuration and solution details
-%   lr         - Flag for long-range preconditioning
+%   lr         - Flag for long-range preconditioningclose to
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -38,13 +38,13 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_precond_peanut(q,U,W,
 %
 % See also:
 %   solve_2D_res              - 1-body preconditioned resistance solver
-%   solve_res_precond_images - 2-body preconditioner without peanut compression
+%   solve_res_precond_enhanced - 2-body preconditioner without peanut compression
 %   solve_mob_precond_peanut   - 2-body preconditioned mobility solver
 %   with peanut compression
 %
 % To test: Call without arguments.
 %
-% Anna Broms, April 10, 2025
+% Anna Broms, Feb 23, 2026
 
 if nargin==0, test_solve_res; 
     return; end

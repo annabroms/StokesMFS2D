@@ -7,7 +7,7 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_enhanced(q,U,W,rads
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_res_precond_enhanced(q, U, W, rads, delta_pair, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_res_precond_enhanced(q, U, W, rads, delta_pair, lr, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -191,10 +191,6 @@ fout = [foutx; fouty];
 
 
 %% Construct check boundaries
-if nargin < 6
-    rcheck_dom = 100+100i; %some point far away
-end
-
 % Create new grid points, for which the accuracy of the solution is
 % to be evaluated. 
 rcheck_b = [];
@@ -228,6 +224,7 @@ if debug
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
+    title('Eigvals of paircorr enhanced res system matrix')
 
     [s,I] = mink(abs(D),3);
     Vsmall = V(:,I).*s';
@@ -236,59 +233,63 @@ if debug
     Mc = round(a_c*N_c);
     t = linspace(0,2*pi,Mc+1);
     t = t(1:end-1)'; 
-
-    for i = 1:3
-     
-        for k = 1:P  
-            Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
-            Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
-            Vp = abs(Vpx+1i*Vpy);
-            figure(31)
-            subplot(1,3,i)
-            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vp,40,Vp,'filled');
-            hold on
-            colorbar
-            view(0,90)
-
-            figure(32)
-            subplot(1,3,i)
-            plot(t,Vp)
-            hold on
-
-
-            figure(27)
-            subplot(1,3,i)
-            plot(t,Vpx)
-            hold on
-
-            figure(28)
-            subplot(1,3,i)
-            plot(t,Vpy)
-            hold on
-
-            figure(29)
-            subplot(1,3,i)
-            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
-            hold on
-            colorbar
-            view(0,90)
-
-            figure(30)
-            subplot(1,3,i)
-            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
-            hold on
-            colorbar
-            view(0,90)
-
-
+    
+    %% Visualise eigvecs of system matrix
+    eigvec_vis = 0; 
+    if eigvec_vis
+        for i = 1:3
+            for k = 1:P  
+                Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
+                Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+                Vp = abs(Vpx+1i*Vpy);
+                figure(31)
+                subplot(1,3,i)
+                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vp,40,Vp,'filled');
+                hold on
+                colorbar
+                view(0,90)
+    
+                figure(32)
+                subplot(1,3,i)
+                plot(t,Vp)
+                hold on
+    
+    
+                figure(27)
+                subplot(1,3,i)
+                plot(t,Vpx)
+                hold on
+    
+                figure(28)
+                subplot(1,3,i)
+                plot(t,Vpy)
+                hold on
+    
+                figure(29)
+                subplot(1,3,i)
+                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
+                hold on
+                colorbar
+                view(0,90)
+    
+                figure(30)
+                subplot(1,3,i)
+                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
+                hold on
+                colorbar
+                view(0,90)
+    
+    
+    
+            end
 
         end
-
     end
 end
 %% Experiment with left preconditioner based on deflation
 
 if lr
+    warning('Long range preconditioning not tested')
     rin_c = []; 
     for k = 1:P
         rin_c = [rin_c; rbase_in_c+q(k)];
@@ -324,25 +325,8 @@ end
 
 
 %% POSTPROCESS
-% [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
-%     rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf);
-
 [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y] = getPairTransformationStokes(tau,geom,basis);
 
-% Postprocessing uses the assembled Stokeslet strengths from all source sets.
-   % if lr
-   %      %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
-   %      tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM);
-   % 
-   %      tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2);
-   %      tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end);
-   %  end
-
-% rot = [];
-% lambda_image = [tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y; rot];
-% lambda_proxy = [tau_stokes_x; tau_stokes_y]; %This is the fine density
-% %And evaluate in new points rcheck_dom and rcheck_b
-% lambda = [lambda_proxy; lambda_image]; 
 lambda =  [tau_stokes_x; tau_stokes_y];
 
 %% Compute net forces and torque
@@ -364,7 +348,7 @@ has_neigh = sort(unique(pairs(:)));
 Kf = getKmat2D(rbase_in_f,0);
 offset = P*N_c;
 
-% Number of image (extra) sources per particle for index bookkeeping.
+% Number of (extra) sources per particle for index bookkeeping.
 n_im = zeros(P,1);
 for row = 1:size(pairs,1)
     i1 = pairs(row,1);
@@ -392,6 +376,10 @@ for i = 1:length(has_neigh)
     end
 end
 
+if offset ~= length(tau_stokes_x)
+    error('Force postprocessing indexing mismatch in solve_res_precond_enhanced.');
+end
+
 
 %extract force and torque separately
 for k = 1:P
@@ -402,12 +390,8 @@ end
 
 %% Do the evaluation of the flow in check points , FMM is applied.
 
-
 ftest_b = getVelocityField(rvec_in,rcheck_b,...
     tau_stokes_x,tau_stokes_y);
-%ftest = getVelocityField(rvec_in,rcheck_dom,...
-%    tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
-
 
 %% Compute residual at boundary
 fbound_x = ftest_b(1:length(rcheck_b));
@@ -423,9 +407,6 @@ for k = 1:P
     fb_x = [fb_x; fb_true(1:n_bound)];
     fb_y = [fb_y; fb_true(n_bound+1:end)];   
 end
-
-
-
 
 maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
 
@@ -728,4 +709,3 @@ else
     alignfigs;
 end
 end
-
