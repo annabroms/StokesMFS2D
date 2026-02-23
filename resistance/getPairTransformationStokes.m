@@ -155,24 +155,23 @@ for i = 1:P
                 %Store source strengths at source points for the different
                 %source types corresponding to the fine grid. 
 
-                warn('warning: old!')
-                if isempty(tau_stokes_fine_x{i})
-      
-                    tau_stokes_fine_x{i} = tau_mapped2(s_ind1_x) + tau_mapped(s_ind1_x);
-                    tau_stokes_fine_y{i} = tau_mapped2(s_ind1_y) + tau_mapped(s_ind1_y); 
-                else
-                    tau_stokes_fine_x{i} = tau_stokes_fine_x{i} + tau_mapped(s_ind1_x)+tau_mapped2(s_ind1_x);
-                    tau_stokes_fine_y{i} = tau_stokes_fine_y{i} + tau_mapped(s_ind1_y) + tau_mapped2(s_ind1_y);
+                pair_idx = [i; p2];
+                pair_f_x = {tau_mapped2(s_ind1_x) + tau_mapped(s_ind1_x), ...
+                    tau_mapped2(s_ind2_x) + tau_mapped(s_ind2_x)};
+                pair_f_y = {tau_mapped2(s_ind1_y) + tau_mapped(s_ind1_y), ...
+                    tau_mapped2(s_ind2_y) + tau_mapped(s_ind2_y)};
+
+                for pair_it = 1:2
+                    idx = pair_idx(pair_it);
+                    if isempty(tau_stokes_fine_x{idx})
+                        tau_stokes_fine_x{idx} = pair_f_x{pair_it};
+                        tau_stokes_fine_y{idx} = pair_f_y{pair_it};
+                    else
+                        tau_stokes_fine_x{idx} = tau_stokes_fine_x{idx} + pair_f_x{pair_it};
+                        tau_stokes_fine_y{idx} = tau_stokes_fine_y{idx} + pair_f_y{pair_it};
+                    end
                 end
-    
-                if isempty(tau_stokes_fine_x{p2})  
-                    tau_stokes_fine_x{p2} = tau_mapped2(s_ind2_x) + tau_mapped(s_ind2_x);
-                    tau_stokes_fine_y{p2} = tau_mapped2(s_ind2_y) + tau_mapped(s_ind2_y); 
-                else
-                    tau_stokes_fine_x{p2} = tau_stokes_fine_x{p2} + tau_mapped(s_ind2_x) + tau_mapped2(s_ind2_x);
-                    tau_stokes_fine_y{p2} = tau_stokes_fine_y{p2} + tau_mapped(s_ind2_y) + tau_mapped2(s_ind2_y);
-                end 
-    
+
 
                 
             
@@ -265,29 +264,31 @@ for i = 1:P
                
                 %tau_stokes_fine is not any more the same for every pair!
 
-                %Store source strengths for later evaluation.
-                if isempty(tau_stokes_fine_x{i})
-      
-                    tau_stokes_fine_x{i} = beta_tot(s_ind1_x);
-                    tau_stokes_fine_y{i} = beta_tot(s_ind1_y);
-                else
-                    tau_stokes_fine_x{i} = tau_stokes_fine_x{i} + beta_tot(s_ind1_x);
-                    tau_stokes_fine_y{i} = tau_stokes_fine_y{i} + beta_tot(s_ind1_y);
+                %Store source strengths for later evaluation. Here, "fine"
+                %refers to a set of proxy nodes that are the same for
+                %multiple contacts and should therefore not be done as multiple copies,
+                %while "extra" refers to nodes that are specific for a
+                %certain pair interaction.
+
+                pair_idx = [i; p2];
+                pair_f_x = {beta_tot(s_ind1_x), beta_tot(s_ind2_x)};
+                pair_f_y = {beta_tot(s_ind1_y), beta_tot(s_ind2_y)};
+                pair_e_x = {beta_tot(e_ind1_x), beta_tot(e_ind2_x)};
+                pair_e_y = {beta_tot(e_ind1_y), beta_tot(e_ind2_y)};
+
+                for pair_it = 1:2
+                    idx = pair_idx(pair_it);
+                    if isempty(tau_stokes_fine_x{idx})
+                        tau_stokes_fine_x{idx} = pair_f_x{pair_it};
+                        tau_stokes_fine_y{idx} = pair_f_y{pair_it};
+                    else
+                        tau_stokes_fine_x{idx} = tau_stokes_fine_x{idx} + pair_f_x{pair_it};
+                        tau_stokes_fine_y{idx} = tau_stokes_fine_y{idx} + pair_f_y{pair_it};
+                    end
+
+                    tau_stokes_extra_x{idx} = [tau_stokes_extra_x{idx}; pair_e_x{pair_it}];
+                    tau_stokes_extra_y{idx} = [tau_stokes_extra_y{idx}; pair_e_y{pair_it}];
                 end
-
-    
-                if isempty(tau_stokes_fine_x{p2})   
-                    tau_stokes_fine_x{p2} = beta_tot(s_ind2_x);
-                    tau_stokes_fine_y{p2} = beta_tot(s_ind2_y); 
-                else
-                    tau_stokes_fine_x{p2} = tau_stokes_fine_x{p2} + beta_tot(s_ind2_x);
-                    tau_stokes_fine_y{p2} = tau_stokes_fine_y{p2} + beta_tot(s_ind2_y);
-                end 
-
-                tau_stokes_extra_x{i} = [tau_stokes_extra_x{i}; beta_tot(e_ind1_x)];
-                tau_stokes_extra_y{i} = [tau_stokes_extra_y{i}; beta_tot(e_ind1_y)];
-                tau_stokes_extra_x{p2} = [tau_stokes_extra_x{p2}; beta_tot(e_ind2_x)];
-                tau_stokes_extra_y{p2} = [tau_stokes_extra_y{p2}; beta_tot(e_ind2_y)];
     
             end
 

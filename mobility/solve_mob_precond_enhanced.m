@@ -185,6 +185,24 @@ rimage_in = [];
 %Get pair basis
 [Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1});
 
+geom = struct();
+geom.rbase_in_c = rbase_in_c;
+geom.rbase_in_f = rbase_in_f;
+geom.refine = refine;
+geom.rimage_vec = rimage_vec;
+geom.opt = opt;
+geom.rvec_out = rout;
+geom.rcheck = rout;
+geom.q = q;
+geom.pairs = pairs;
+
+basis = struct();
+basis.U = U;
+basis.Y = Y;
+basis.Lc = Lc{1};
+basis.Upf = Upf;
+basis.Ypf = Ypf;
+
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');
@@ -211,7 +229,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_mob_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
+        uu = matvec_mob_pairprecond_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     figure()
@@ -345,8 +363,7 @@ if debug
 
 end
 
-
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_enhanced(x,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,1,rout);
 debug = 1; 
 
 %Modify to build with krylov preconditioning
@@ -358,7 +375,7 @@ if debug
 %     semilogy(e2);
       semilogy(resvec);
       title('GMRES convergence mobility, pair corrections', 'Interpreter','latex')
-      u2 = matvec_mob_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
+      u2 = matvec_mob_pairprecond_enhanced(tau,geom,basis);
 end 
 
 %% POSTPROCESS
@@ -369,8 +386,8 @@ end
 %warning('work to be done for postprocessing here!')
 
 [~,~,tau_stokes_x,tau_stokes_y, ...
-    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = getMobPairTransformationStokes(tau,rbase_in_c,rbase_in_f,refine,...
-    rimage_vec,opt,rout,q,U,Y,Lc{1},pairs,Upf,Ypf);
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
+    getMobPairTransformationStokes(tau,geom,basis);
 
 lambda = [tau_stokes_x; tau_stokes_y]; %This is the fine density
 %tau_proxy = [tau_stokes_nonpx; tau_stokes_nonpy];
@@ -414,7 +431,8 @@ for k = 1:P
 end
 
 %Using representation
-u_rhs = matvec_mob_pairprecond_enhanced(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,opt,rout,rcheck_b,q,U,Y,Lc{1},pairs,Upf,Ypf);
+geom.rcheck = rcheck_b;
+u_rhs = matvec_mob_pairprecond_enhanced(tau,geom,basis);
 
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
@@ -678,6 +696,3 @@ disp(str)
 alignfigs;
 
 end
-
-
-

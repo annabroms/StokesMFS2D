@@ -13,12 +13,9 @@ PM = length(rvec_out);
 
 %% Get velocity field from fine grid
 
-% res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,...
-%     tau_stress_all_x,tau_stress_all_y,tau_pot_all_x,tau_pot_all_y);
-
 res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y);
 
-two_corr = 1; 
+two_corr = 1; %identity correction for the pair
 
 
 %Need to subract off self-interactions and replace with identity diagonals
@@ -36,11 +33,11 @@ for i = 1:P
     uii = Nii*tau_xy;
 
     %subract contribution in x
-    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2);%+tau((i-1)*N_large+1:i*N_large);
+    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2);
 
     %subract contribution in y
     res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-        uii(end/2+1:end);%+tau((i-1)*N_large+PM+1:i*N_large+PM);
+        uii(end/2+1:end);
    
 end
 
