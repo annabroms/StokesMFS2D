@@ -1,71 +1,46 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
-%getPairBasisStokes computes pair corrections for a 2-body preconditioned
-%Stokes MFS solver for circular particles; it solves two LSQ problems via
-%SVDs per identified close particle pair and stores the factorisations for
-%a backward stable apply. Fine sources are determined via a fine BVP for each 
-%pair, and the equivalent coarse sources are computed via matching on a peanut 
-%boundary.
+function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
+%GETPAIRBASISSTOKES Build pair-basis pseudoinverse factors for 2D Stokes pair corrections.
 %
-%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasisStokes(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf)
+% Syntax:
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
 %
-%Input: 
-% q      - Vector of complex valued center coordinates for the P particles
-% N_f    - Number of proxy sources on the fine grid
-% a_f    - Upsampling factor for the fine grid so that the number of uniform
-%         fine collocation points is M_f = N_f*a_f
-% rads   - vector of size P containing the particle radii
-% rbase_in_c - Coarse grid of proxy sources on a single particle centered at the origin.
-% rbase_in_f - Fine grid of proxy sources on a single particle centered at the origin.
-% rimage_pairs - A cell array with cell {i,j} containing the image points for
-%             particle i in its near contact with particle j
-% refine     - A cell array with cell {i,j} containing the parameter values t 
-%             of collocation points on particle i in its near contact with 
-%             particle j
-% pairs     - Matrix with two columns containing a list of all pairs
-%             considered close. This can include more pairs than those in 
-%             need of image enhancement. 
-% opt       - struct containting parameters
-% project   - Boolean, true if solving mobility problem
-% Lc        - (optional) Projection matrix for single body coarse sources 
-%             onto the space of RBM, only for mobility
-% Lf        - (optional) Projection matrix for single body fine sources 
-%             onto the space of RBM, only for mobility
-% Kf        - (optional) Kf' maps fine sources to force and torque, only for mobility
+% Inputs:
+%   q            - P-by-1 complex particle centers.
+%   rbase_in_c   - Coarse proxy source nodes for one body at the origin.
+%   rbase_in_f   - Fine proxy source nodes for one body at the origin.
+%   rimage_pairs - Cell array; rimage_pairs{i,j} are extra/image points
+%                  used for pair (i,j).
+%   refine       - Cell array; refine{i,j} stores near-contact collocation
+%                  parameter values for pair (i,j).
+%   pairs        - Npair-by-2 list of close pairs [i, j].
+%   opt          - Options struct. Uses fields such as N_f, a_f, precomp,
+%                  N_peanut.
+%   project      - Optional logical flag. If true, build additional pair
+%                  projection blocks used by mobility variants.
+%   Lc           - Optional coarse one-body projector for mobility.
 %
-% Output:
+% Outputs:
+%   Uf, Yf  - Cell arrays with fine pair pseudoinverse factors. For each
+%             close pair (i,j), beta_pair = Yf{i,j}*(Uf{i,j}*rhs_pair).
+%   Up, Yp  - Cell arrays with peanut-compression pseudoinverse factors
+%             (empty when opt.N_peanut == 0).
+%   Cmap    - Cell array with direct coarse-to-coarse pair maps
+%             assembled from the factors above (empty when no peanut map).
+%   Cmap_F  - Reserved output for coarse-to-force/torque mapping; currently
+%             left empty unless provided by downstream extensions.
 %
-% Uf        - Cell array containing in cell {i,j} the matrix of left
-%             singular vectors for the fine evaluation on pair (i,j) multiplied by the
-%             evaluation matrix from the coarse sources on a fine grid
-% Yf        - Cell array containing in cell {i,j} the matrix formed by VS^+, with S^⁺ a diagonal matrix containing
-%             1/sigma for each singular value sigma that is above a set tol and V the 
-%             matrix formed by right singular vectors, computed from the
-%             fine evaluation on pair (i,j) (fine sources, fine collocation
-%             points. Determines the evaluation of fine sources for the
-%             pair togehter with Uf so that for each pair, beta =
-%             Yf*(Uf*lambda)
+% Notes:
+%   - Pair source ordering follows the assembled pair vectors in this file:
+%     particle i fine sources, i->j extra sources, particle j fine
+%     sources, j->i extra sources, with x-components stacked before y.
+%   - If opt.precomp is true, Uf{i,j} includes the coarse-to-fine
+%     evaluation operator (Npair) so runtime application avoids explicitly
+%     rebuilding that dense block.
 %
-% Up        - Cell array containing in cell {i,j} the matrix of left
-%             singular vectors for the evaluation of coarse sources on the peanut for pair (i,j) multiplied by the
-%             evaluation matrix from the fine sources on the peanut grid
-% Yp        - Cell array containing in cell {i,j} the matrix formed by VS^+, with S^⁺ a diagonal matrix containing
-%             1/sigma for each singular value sigma that is above a set tol and V the 
-%             matrix formed by right singular vectors, computed from the
-%             evaluation of coarse sources on the peanut corresponding to
-%             pair (i,j). Determines coarse sources equivalent to fine
-%             sources, together with Up. For each matrix in Up,
-%             lambda_effective = Yp*(Up*beta), with beta the fine sources.
-%
-% Cmap      - Compresses the four matrix blocks above together so that in
-%             cell {ij}, Yp*(Up*Yf*(Uf)), which maps lambda_effective
-%             <-lambda_coarse
-% Cmap_F    - A similar effective mapping for the contribution to the
-%             fource and torque
-%
-% Note: Peanut compression is done if opt.NPeanut > 0. Only particles with
-% unit radius supported so far.
-%
-% Anna Broms Feb 13, 2026
+% Anna Broms, Feb 13, 2026
 
 if nargin<9
     Lc = [];
@@ -118,18 +93,14 @@ for i = 1:P
             %% get fine grid for a pair 
             %fine grid on second particle in pair
             p2 = pairs(neigh(k),2);  
-            rin_2_f = q(p2)+rbase_in_f; 
-
-            % image locations
-            %rimage = [rimage_pairs{i,p2}; rimage_pairs{p2,i}];
-       
+            rin_2_f = q(p2)+rbase_in_f;        
 
             % collocation points for the pair
             nout = ceil(a_f*N_f); 
           % nout = ceil(a2*(opt.N_c+size(rimage,1))); %Old choice
             t = linspace(0,2*pi,nout+1);
             t = t(1:end-1)';
-            rout_base = rads(k)*(cos(t)+1i*sin(t));
+            rout_base = cos(t)+1i*sin(t);
             fine_1 = refine{i,p2};
             fine_2 = refine{p2,i};
             rout_f = [q(i)+rout_base; fine_1 ;q(p2)+rout_base; fine_2];
@@ -165,11 +136,11 @@ for i = 1:P
 %                 % DEBUG
 %                 mapped = rand(opt.N_c*2,1);
 %                 tau_mapped= rand(opt.N_c*2,1);
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
+%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2); 
 %                 Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,1);
 %                 R2 = -Nother*tau_mapped; %read off on particle 2
 %                  
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
+%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,,refine,q,p2,i); 
 %                 Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,1);
 %                 R1 = -Nother2*mapped; %read off on particle 1
 %               
@@ -215,7 +186,6 @@ for i = 1:P
 end
 
 end
-
 
 
 

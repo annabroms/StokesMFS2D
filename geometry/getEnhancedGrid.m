@@ -30,7 +30,6 @@ q = q(:);
 P = numel(q);
 
 rads = ones(P,1);
-if isfield(opt, 'rads'), rads = opt.rads(:); end
 Nclust = opt.Nclust;
 beta = opt.beta;
 if isfield(opt,'Rp_f')

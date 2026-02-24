@@ -1,74 +1,65 @@
-function res = matvec_2D_peanut_enhanced(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,opt,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up, Yp,Cmap,debug)
-%Resistance matvec with peanut compressions for the pair corrections
+function res = matvec_2D_peanut_enhanced(tau,geom,basis)
+%MATVEC_2D_PEANUT_ENHANCED Matrix-vector action for resistance peanut preconditioner based on Stokeslet souces only.
+%
+% Syntax:
+%   res = matvec_2D_peanut_enhanced(tau,geom,basis)
+%
+% Inputs:
+%   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.
+%   geom  - Geometry/problem struct with fields:
+%           rbase_in_c, rvec_in, opt, rvec_out, rcheck, q, pairs,
+%           rbase_in_f, refine, rimage_vec.
+%   basis - Precomputed basis struct with fields:
+%           U, Y, Upf, Ypf, DC_all, YC_all, Cmap.
+%
+% Output:
+%   res   - Matvec result at collocation/check points [u_x; u_y].
 
-% Us, Ys SVD factors for self-interaction block
-% Ucf, Ycf cell array of SVD factors for pair-corrections using fine grid
-% (N_f stokeslets + image points)
-% Up, Yp factors for peanut compression
+rbase_in_c = geom.rbase_in_c;
+rvec_in = geom.rvec_in;
+opt = geom.opt;
+rvec_out = geom.rvec_out;
+q = geom.q;
 
 P = length(q);
 N_large = length(rvec_out)/P;
-mu = 1; 
 PM = length(rvec_out);
 N_c = opt.N_c;
+mu = 1;
 
-%Transform coarse \mu -> coarse \lambda
-[tau_stokes_x, tau_self_x, ~,~,tau_stokes_y,tau_self_y,~,~,u_corr] = transform_peanut_stokes(tau,rbase_in_c,...
-    rbase_in_f,rbase_out_f,refine,rimage_vec,opt,rvec_out,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up,Yp,Cmap,debug);
+if isfield(opt,'use_fmm_velocity')
+    use_fmm_velocity = opt.use_fmm_velocity;
+else
+    use_fmm_velocity = true;
+end
 
+% Transform coarse boundary data to compressed coarse/fine source strengths.
+[tau_stokes_x, tau_self_x, ~, ~, tau_stokes_y, tau_self_y, ~, ~, u_corr] = ...
+    transform_peanut_stokes(tau,geom,basis);
 
-%[ufmm,vfmm] = stokesSLPfmm(tau_stokes_x,tau_stokes_y,real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),...
-       %  0,5); %the last number here determines the tolerance. Higher number: higher tolerance. 
+% Evaluate flow induced by compressed source strengths.
+res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,use_fmm_velocity);
 
-  
-%NOTE! ERRORS ACCUMULATE WITH FMM IF LARGE SOURCE STRENGTHS 
+% Replace compressed pair blocks by local fine representation.
+res = res + u_corr;
 
-%[udirect,vdirect] = StokesletDirect(real(rvec_in),imag(rvec_in),real(rvec_out),imag(rvec_out),tau_stokes_x,tau_stokes_y,length(rvec_out));
-% See the SLP FMM test in the fast tools folder
-
-
-%res = [udirect'/4/pi; vdirect'/4/pi];
-%res = [ufmm; vfmm];
-
-res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y);
-
-res = res+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 
-% adding the fine representation instead
-
-
-%Need to subract off the 1-body basis contribution computed twice
+% Subtract duplicated self-contribution and enforce identity on diagonal.
 rout = rvec_out(1:N_large)-q(1);
 Nii = singleLayer(rbase_in_c,rout,mu);
 
 for i = 1:P
-    % Get sources on this particle from single layer
-        %tau_xy = [tau_stokes_x(coarse_ind{i});
-        %tau_stokes_y(coarse_ind{i})]; %Probably the wrong thing to do as
-        %this includes the effect of the peanut compressed pair
-        %corrections. 
+    coarse_ind = (i-1)*N_c+1:i*N_c;
+    tau_xy = [tau_self_x(coarse_ind); tau_self_y(coarse_ind)];
+    uii = Nii*tau_xy;
 
-        coarse_ind = (i-1)*N_c+1:i*N_c;
+    % x-component block
+    res((i-1)*N_large+1:i*N_large) = ...
+        res((i-1)*N_large+1:i*N_large) - uii(1:end/2) + tau((i-1)*N_large+1:i*N_large);
 
-      %  tau_xy = [tau_self_x(coarse_ind{i}); tau_self_y(coarse_ind{i})];
-        tau_xy = [tau_self_x(coarse_ind); tau_self_y(coarse_ind)];
-        
-        uii = Nii*tau_xy;
-
-        %subract contribution in x
-        res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2)+tau((i-1)*N_large+1:i*N_large);
-
-        %subract contribution in y
-        res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-            uii(end/2+1:end)+tau((i-1)*N_large+PM+1:i*N_large+PM);
-    
+    % y-component block
+    res((i-1)*N_large+PM+1:i*N_large+PM) = ...
+        res((i-1)*N_large+PM+1:i*N_large+PM) - uii(end/2+1:end) + ...
+        tau((i-1)*N_large+PM+1:i*N_large+PM);
 end
 
-
-
- 
-
-
-
-
 end
-

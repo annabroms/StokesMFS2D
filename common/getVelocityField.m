@@ -1,65 +1,81 @@
-function res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,rot,stress_x,stress_y,pot_x,pot_y)
-%GETVELOCITYFIELD Evaluates the 2D Stokes velocity field from various source types
+function res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,rot,stress_x,stress_y,pot_x,pot_y,use_fmm)
+%GETVELOCITYFIELD Evaluate the 2D Stokes velocity field from configured source types.
 %
 % Syntax:
-%   res = getVelocityField(rvec_in, rcheck, stok_x, stok_y, rimage, nimage, ...
-%                          rot, stress_x, stress_y,pot_x, pot_y,)
+%   res = getVelocityField(rvec_in,rcheck,stok_x,stok_y)
+%   res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,use_fmm)
+%   res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,...
+%                          rot,stress_x,stress_y,pot_x,pot_y)
+%   res = getVelocityField(...,use_fmm)
 %
 % Inputs:
-%   rvec_in   - Complex vector of source points for Stokeslets 
-%   rcheck    - Complex vector of target points where the velocity field is evaluated
-%   stok_x    - Real vector of x-force strengths for Stokeslets (same length as rvec_in)
-%   stok_y    - Real vector of y-force strengths for Stokeslets
-%   rimage    - Complex vector of image source locations 
-%   nimage    - Complex vector encoding stresslet "directions" at image points (stored as x + iy)
-%   rot       - Real vector of torques (strengths for rotlets)
-%   stress_x  - Real vector of x-strengths for stresslet dipoles
-%   stress_y  - Real vector of y-strengths for stresslet dipoles
-%   pot_x     - Real vector of x-strengths for potential dipoles
-%   pot_y     - Real vector of y-strengths for potential dipoles
-
+%   rvec_in   - Complex source locations for Stokeslets.
+%   rcheck    - Complex target locations.
+%   stok_x    - x-strengths for Stokeslets at rvec_in.
+%   stok_y    - y-strengths for Stokeslets at rvec_in.
+%   rimage    - Complex image-source locations (optional).
+%   nimage    - Complex image normals/directions (optional).
+%   rot       - Rotlet strengths at image sources (optional).
+%   stress_x  - x-strengths for stresslets at image sources (optional).
+%   stress_y  - y-strengths for stresslets at image sources (optional).
+%   pot_x     - x-strengths for potential dipoles at image sources (optional).
+%   pot_y     - y-strengths for potential dipoles at image sources (optional).
+%   use_fmm   - Logical flag for Stokeslet evaluation:
+%               true  -> use `stfmm2d` (default)
+%               false -> use `stokesletDirect`
 %
 % Output:
-%   res       - 2N vector containing the evaluated velocity field at the N target points 
-%               (x-velocity components; y-velocity components)
+%   res       - Stacked velocity [u_x; u_y] at target points.
 %
-% Description:
-%   Computes the 2D Stokes velocity field at given target points due to:
-%   - Direct Stokeslets at `rvec_in, using fmm2d
-%   - Stresslets and potential dipoles at `rimage` 
-%   Multiple source contributions are combined into a total velocity field.
-%
-% See also:
-%   getPotdip, getStresslets, 
-%
-% Anna Broms, April 25, 2025
+% Notes:
+%   The `use_fmm` switch applies only to direct Stokeslet sources
+%   (`rvec_in`, `stok_x`, `stok_y`). Image-source contributions are evaluated
+%   with their existing direct routines.
 
-if size(rvec_in,1)
-    eps = 1e-10;
-    
-    targ = [real(rcheck)';imag(rcheck)'];
-    srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
-    srcinfo.stoklet = [stok_x'; stok_y'];
-    U = stfmm2d(eps, srcinfo, 0, targ, 1); % might want to change eps here
-    res = [U.pottarg(1,:)';U.pottarg(2,:)']/2/pi;
-else
-    res = zeros(size(rcheck,1)*2,1);
+% Allow shorthand: getVelocityField(rvec_in,rcheck,stok_x,stok_y,use_fmm)
+if nargin == 5 && isscalar(rimage) && (islogical(rimage) || isnumeric(rimage))
+    use_fmm = logical(rimage);
+    rimage = [];
+    nimage = [];
+    rot = [];
+    stress_x = [];
+    stress_y = [];
+    pot_x = [];
+    pot_y = [];
+elseif nargin < 12 || isempty(use_fmm)
+    use_fmm = true;
 end
-   
 
-% With the old FMM from Lukas Bystricky
-% [ufmm,vfmm] = stokesSLPfmm(stok_x,stok_y,real(rvec_in),imag(rvec_in),real(rcheck),imag(rcheck),...
-%        0,5); % 5 sets high accuracy
-%res = [ufmm; vfmm];
+rvec_in = rvec_in(:);
+rcheck = rcheck(:);
+stok_x = stok_x(:);
+stok_y = stok_y(:);
 
-if nargin > 4
-    %Not computed with FMM... to be replaced
+n_tar = numel(rcheck);
+n_src = numel(rvec_in);
 
-    u_rot = getRotlets(rot,rimage,rcheck); 
+if n_src > 0
+    if use_fmm
+        fmm_eps = 1e-10;
+        targ = [real(rcheck)'; imag(rcheck)'];
+        srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
+        srcinfo.stoklet = [stok_x'; stok_y'];
+        U = stfmm2d(fmm_eps, srcinfo, 0, targ, 1);
+        res = [U.pottarg(1,:)'; U.pottarg(2,:)']/2/pi;
+    else
+        [udirect,vdirect] = stokesletDirect(real(rvec_in),imag(rvec_in),...
+            real(rcheck),imag(rcheck),stok_x,stok_y,n_src);
+        res = [udirect; vdirect];
+    end
+else
+    res = zeros(2*n_tar,1);
+end
+
+if nargin > 4 && ~isempty(rimage)
+    u_rot = getRotlets(rot,rimage,rcheck);
     u_stress = getStresslets(stress_x,stress_y,rimage,rcheck,real(nimage),imag(nimage));
-    u_pot = getPotdip(pot_x, pot_y,rimage,rcheck);
-
-    res = res+u_rot+u_stress+u_pot; 
+    u_pot = getPotdip(pot_x,pot_y,rimage,rcheck);
+    res = res + u_rot + u_stress + u_pot;
 end
 
 end

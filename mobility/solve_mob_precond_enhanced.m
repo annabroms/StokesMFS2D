@@ -184,7 +184,7 @@ rimage_in = [];
 %Get pair basis
 %[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
 %Get pair basis
-[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1});
+[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1});
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
