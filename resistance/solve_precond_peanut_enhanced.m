@@ -105,10 +105,13 @@ Rp_f = max([1-sep_f,0.01]);  % and fine grid
 %accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rp_c)^2/Rp_c;  
 
-if nargin < 6
+if nargin < 5
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
+elseif nargin < 8
+    lr = 0; 
 end
 
+ 
 opt = get2Dparams(); 
 opt.s = s;
 opt.Rp_c = Rp_c;
@@ -117,7 +120,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads; 
+opt.Nclust = 200;
 opt.N_peanut = N_peanut;
 opt.s = s; 
 opt.mask = 0; %cutoff in long range preconditioning
@@ -138,6 +141,10 @@ tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1);
 tout_f = tout_f(1:end-1)';
 rbase_out_f = cos(tout_f)+1i*sin(tout_f);
 rbase_out_c = cos(tout_c)+1i*sin(tout_c);
+
+tin_f = linspace(0,2*pi,N_f+1);
+tin_f = tin_f(1:end-1)'; 
+rbase_in_f = Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f);
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin); 
@@ -146,14 +153,17 @@ for k = 1:P
     rvec_in_c = [rvec_in_c; q(k)+rbase_in_c];
 end
 
-%Construct image grid
-%Will return only the basic outer grid, else refined outer grid 
-%[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base]
-[rout,~,~,~,~,pair_points,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+% get discretization
+rout = []; 
+for k = 1:P
+    rout = [rout; rbase_out_c+q(k)];
+end
+ 
+[~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 
-%Get pair basis                                                %q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf)
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+%Get pair basis                                               
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_F] = getPairBasisStokes(q,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
@@ -221,8 +231,8 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
-            refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Cmap_F,debug);
+        uu = matvec_2D_peanut_enhanced(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
+            refine,rimage_vec,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Cmap_F,debug);
         CC(:,k) = uu;
     end
     toc
@@ -248,7 +258,7 @@ if lr
    %Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Zi,Yi,opt);    
    [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_peanut(x,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);   
 else                                                                                 
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_peanut_enhanced(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 end
 
 debug = 1; 
@@ -261,7 +271,7 @@ title('GMRES convergence with peanut compression, resistance', 'interpreter','la
 
 if visualise
     %check residual
-    restot = (matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)-fout);
+    restot = (matvec_2D_peanut_enhanced(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug)-fout);
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')
@@ -332,8 +342,8 @@ if lr
        
 else
     %Prepare for evaluating flow field and evaluate in new points rcheck_dom and rcheck_b
-    [tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = transform_peanut(tau,...
-        rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0,0);
+    [tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = transform_peanut_stokes(tau,...
+        rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,opt,rout,rcheck_b,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0,0);
 end
 
 % if lr 
@@ -352,11 +362,9 @@ warning('Check what sources to report')
 %Not yet adopted to random evaluation points. 
 
 %% Do the evaluation of the flow in check points 
-ftest_b = getVelocityField(rvec_in_c, rcheck_b, tau_stokes_x, tau_stokes_y, [], [], ...
-                           [],[],[],[],[]);
+ftest_b = getVelocityField(rvec_in_c, rcheck_b, tau_stokes_x, tau_stokes_y);
 rcheck_dom = [100+100i; -50+50i];
-ftest = getVelocityField(rvec_in_c, rcheck_dom, tau_stokes_x, tau_stokes_y,[], [], ...
-                           [], [], [],[], [])
+ftest = getVelocityField(rvec_in_c, rcheck_dom, tau_stokes_x, tau_stokes_y);
 
 
 ftest_b = ftest_b+u_corr; 
@@ -655,7 +663,7 @@ end
 function test_solve_res
 
 close all; 
-test = 2; 
+test = 1; 
 delta_pair = 0.2; 
 N_peanut = 400; 
 
@@ -677,7 +685,7 @@ if test == 1
     rads = [1; 1; 1]; 
     visualise = 1; 
     
-    [FT,lambda,it1,gmres_res, err1] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise);
+    [FT,lambda,it1,gmres_res, err1] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise);
     F = [FT(1:3:end) FT(2:3:end)];
     T = FT(3:3:end); 
     [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);

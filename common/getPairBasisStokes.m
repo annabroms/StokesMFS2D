@@ -191,7 +191,7 @@ for i = 1:P
                 rout_peanut = createPeanut(q(i),q(p2),N_peanut,debug);    
                 rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
                % [DC,YC] = getPeanutBlock(rin_pair_c,rin_pair,rout_peanut,[nimage{i,p2}; nimage{p2,i}],rimage,s,Lc_pair,Lf_pair); 
-                [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,rimage,Lc_pair,Lf_pair); 
+                [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair); 
                           
 
                 Up{i,p2} = DC;
