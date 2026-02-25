@@ -1,10 +1,10 @@
 function [tau_stokes_x, tau_self_x, tau_beta_x, tau_cf_x, ...
-    tau_stokes_y, tau_self_y, tau_beta_y, tau_cf_y, u_corr] = transform_peanut_stokes(tau,geom,basis)
+    tau_stokes_y, tau_self_y, tau_beta_y, tau_cf_y, u_corr, rimage_k] = transform_peanut_stokes(tau,geom,basis)
 %TRANSFORM_PEANUT_STOKES Map coarse boundary data to coarse and fine Stokes source strengths.
 %
 % Syntax:
 %   [tau_stokes_x,tau_self_x,tau_beta_x,tau_cf_x,...
-%    tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = ...
+%    tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr,rimage_k] = ...
 %       transform_peanut_stokes(tau,geom,basis)
 %
 % Inputs:
@@ -17,13 +17,16 @@ function [tau_stokes_x, tau_self_x, tau_beta_x, tau_cf_x, ...
 % Outputs:
 %   tau_stokes_x - Coarse x-source strengths used in the compressed representation.
 %   tau_self_x   - One-body coarse x-source strengths (used for self-block subtraction).
-%   tau_beta_x   - Fine x-source strengths from pair-local solves (for postprocessing).
+%   tau_beta_x   - Cell array with per-particle pair-source strengths in x,
+%                  ordered as [fine-body; fine-image].
 %   tau_cf_x     - Reserved coarse x-storage for alternative compressed maps.
 %   tau_stokes_y - Coarse y-source strengths used in the compressed representation.
 %   tau_self_y   - One-body coarse y-source strengths (used for self-block subtraction).
-%   tau_beta_y   - Fine y-source strengths from pair-local solves (for postprocessing).
+%   tau_beta_y   - Cell array with per-particle pair-source strengths in y,
+%                  ordered as [fine-body; fine-image].
 %   tau_cf_y     - Reserved coarse y-storage for alternative compressed maps.
 %   u_corr       - Pair correction that replaces compressed pair blocks by fine pair evaluation.
+%   rimage_k     - Per-particle concatenated image/source nodes from all close pairs.
 
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
@@ -56,10 +59,13 @@ precomp = opt.precomp;
 % Preallocate coarse/fine source storage.
 tau_stokes_x = zeros(N_c*P,1);
 tau_stokes_y = zeros(N_c*P,1);
-tau_beta_x = zeros(N_f*P,1);
-tau_beta_y = zeros(N_f*P,1);
+tau_beta_f_x = zeros(N_f*P,1);
+tau_beta_f_y = zeros(N_f*P,1);
+tau_beta_e_x_chunks = repmat({cell(0,1)},P,1);
+tau_beta_e_y_chunks = repmat({cell(0,1)},P,1);
 tau_cf_x = zeros(N_c*P,1);
 tau_cf_y = zeros(N_c*P,1);
+rimage_k = cell(P,1);
 
 % Pair correction evaluated on rcheck_out.
 u_corr = zeros(2*N_check*P,1);
@@ -83,6 +89,13 @@ tau_self_x = tau_stokes_x;
 tau_self_y = tau_stokes_y;
 
 if isempty(pairs)
+    tau_beta_x = cell(P,1);
+    tau_beta_y = cell(P,1);
+    for k = 1:P
+        fine_ind = (k-1)*N_f+1:k*N_f;
+        tau_beta_x{k} = tau_beta_f_x(fine_ind);
+        tau_beta_y{k} = tau_beta_f_y(fine_ind);
+    end
     return;
 end
 
@@ -96,6 +109,8 @@ for pair_row = 1:size(pairs,1)
 
     lambda_i = [tau_self_x(coarse_i); tau_self_y(coarse_i)];
     lambda_p2 = [tau_self_x(coarse_p2); tau_self_y(coarse_p2)];
+    rimage_k{i} = [rimage_k{i}; rimage_vec{i,p2}];
+    rimage_k{p2} = [rimage_k{p2}; rimage_vec{p2,i}];
 
     if precomp
         rhs = [lambda_i(1:N_c); lambda_p2(1:N_c); ...
@@ -126,13 +141,30 @@ for pair_row = 1:size(pairs,1)
         tau_peanut_tot = YC_all{i,p2}*tau_peanut_temp;
     end
 
-    % Store fine source strengths for postprocessing.
+    % Pair-local indexing in tau_mapped_tot:
+    % [f_i_x; e_i_x; f_p2_x; e_p2_x; f_i_y; e_i_y; f_p2_y; e_p2_y]
+    im_nr = length(rimage_vec{i,p2});
+    f_ind1_x = 1:N_f;
+    e_ind1_x = N_f+1:N_f+im_nr;
+    f_ind2_x = N_f+im_nr+1:2*N_f+im_nr;
+    e_ind2_x = 2*N_f+im_nr+1:2*N_f+2*im_nr;
+    f_ind1_y = 2*N_f+2*im_nr+1:3*N_f+2*im_nr;
+    e_ind1_y = 3*N_f+2*im_nr+1:3*N_f+3*im_nr;
+    f_ind2_y = 3*N_f+3*im_nr+1:4*N_f+3*im_nr;
+    e_ind2_y = 4*N_f+3*im_nr+1:4*N_f+4*im_nr;
+
+    % Store fine/body and fine/image strengths for postprocessing.
     fine_i = (i-1)*N_f+1:i*N_f;
     fine_p2 = (p2-1)*N_f+1:p2*N_f;
-    tau_beta_x(fine_i) = tau_beta_x(fine_i) + tau_mapped_tot(1:N_f);
-    tau_beta_x(fine_p2) = tau_beta_x(fine_p2) + tau_mapped_tot(N_f+1:2*N_f);
-    tau_beta_y(fine_i) = tau_beta_y(fine_i) + tau_mapped_tot(2*N_f+1:3*N_f);
-    tau_beta_y(fine_p2) = tau_beta_y(fine_p2) + tau_mapped_tot(3*N_f+1:4*N_f);
+    tau_beta_f_x(fine_i) = tau_beta_f_x(fine_i) + tau_mapped_tot(f_ind1_x);
+    tau_beta_f_x(fine_p2) = tau_beta_f_x(fine_p2) + tau_mapped_tot(f_ind2_x);
+    tau_beta_f_y(fine_i) = tau_beta_f_y(fine_i) + tau_mapped_tot(f_ind1_y);
+    tau_beta_f_y(fine_p2) = tau_beta_f_y(fine_p2) + tau_mapped_tot(f_ind2_y);
+
+    tau_beta_e_x_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_x);
+    tau_beta_e_x_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_x);
+    tau_beta_e_y_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_y);
+    tau_beta_e_y_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_y);
 
     % Evaluate pair correction on check grid.
     rout_pair = [rcheck_out((i-1)*N_check+1:i*N_check,:); ...
@@ -162,6 +194,20 @@ for pair_row = 1:size(pairs,1)
     tau_stokes_x(coarse_p2) = tau_stokes_x(coarse_p2) + tau_peanut_tot(N_c+1:2*N_c);
     tau_stokes_y(coarse_i) = tau_stokes_y(coarse_i) + tau_peanut_tot(2*N_c+1:3*N_c);
     tau_stokes_y(coarse_p2) = tau_stokes_y(coarse_p2) + tau_peanut_tot(3*N_c+1:4*N_c);
+end
+
+% Assemble per-particle pair-source vectors [f; e].
+tau_beta_x = cell(P,1);
+tau_beta_y = cell(P,1);
+for k = 1:P
+    fine_ind = (k-1)*N_f+1:k*N_f;
+    if isempty(tau_beta_e_x_chunks{k})
+        tau_beta_x{k} = tau_beta_f_x(fine_ind);
+        tau_beta_y{k} = tau_beta_f_y(fine_ind);
+    else
+        tau_beta_x{k} = [tau_beta_f_x(fine_ind); vertcat(tau_beta_e_x_chunks{k}{:})];
+        tau_beta_y{k} = [tau_beta_f_y(fine_ind); vertcat(tau_beta_e_y_chunks{k}{:})];
+    end
 end
 
 end

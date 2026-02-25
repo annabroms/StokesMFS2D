@@ -1,9 +1,9 @@
-function [UW,lambdahat,it,gmres_tol,maxres] = solve_2D_mob(q,F,T,rads,image,lr,visualise)
+function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_2D_mob(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode)
 %SOLVE_2D_MOB Solves a 2D Stokes mobility problem with circular particles
 % using 1-body preconditioned recompleted MFS.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, maxres] = solve_2D_mob(q, F, T, rads, image, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_2D_mob(q, F, T, rads, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
@@ -14,13 +14,19 @@ function [UW,lambdahat,it,gmres_tol,maxres] = solve_2D_mob(q,F,T,rads,image,lr,v
 %   lr        - 0,1,2,..: sets use of long-range preconditioning. If false, no
 %               lr precond. lr > 1 determines the coarse space.
 %   visualise - Logical flag: plot the configuration and solution details
+%   gmres_tol - Optional GMRES tolerance (default 1e-10)
+%   debug     - Optional logical flag: build/draw dense matrix CC and its
+%               eigenvalues (default false)
+%   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
+%               or 'rel'
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
 %   lambdahat  - Solution vector of source strengths
 %   it         - Number of GMRES iterations required using GMRES with low stagnation control (J. Helsing).
 %   gmres_tol  - Set GMRES tolerance
-%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   rel_res    - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   abs_res    - Maximum absolute residual in a test (non-collocation) set of boundary nodes
 %
 % See also:
 %   solve_mob_precond_images - 2-body preconditioning enhanced with images for mobility
@@ -36,20 +42,16 @@ if nargin==0, test_solve_mob;
     return; end
 
 P = length(q);
-if nargin < 4
-    
-    rads = ones(P,1); 
-    image = 1; 
-    visualise = 0; 
-elseif nargin < 5
-    image = 1; 
-    visualise = 0; 
-    lr = 0; 
-elseif nargin < 6
-    visualise = 0; 
-    lr = 0; 
-elseif nargin < 7
-    visualise = 0; 
+if nargin < 4 || isempty(rads), rads = ones(P,1); end
+if nargin < 5 || isempty(image), image = 1; end
+if nargin < 6 || isempty(lr), lr = 0; end
+if nargin < 7 || isempty(visualise), visualise = 0; end
+if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+surface_error_mode = lower(char(surface_error_mode));
+if ~any(strcmp(surface_error_mode, {'abs','rel'}))
+    error('surface_error_mode must be ''abs'' or ''rel''.')
 end
 
 
@@ -67,8 +69,7 @@ end
 %% PARAMS
 %GMRES
 maxit = 1600; 
-gmres_tol = 1e-6; % not enough if we want to resolve forces
-%gmres_tol = 1e-10; 
+solver_name = 'solve_2D_mob';
 
 project_proxy = 1; %version of the algorithm project_proxy = 0 corresponds to the version where also image points are projected
 
@@ -189,8 +190,7 @@ if lr
     end
 end
 
-% Build system matrix to see what it looks like. 
-debug = 0;
+% Build system matrix to inspect conditioning/eigenvalues if requested.
 if debug && lr
     x = zeros(2*length(rout),1);
     tic
@@ -207,6 +207,7 @@ if debug && lr
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
     %Check eigvals of system matrix
@@ -217,6 +218,7 @@ if debug && lr
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 
@@ -322,10 +324,27 @@ u_rhs = u_rhs-S_0;
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs';
 max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
-maxres = max(abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end)))/max_abs
+res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
+abs_res = max(res);
+if max_abs > 0
+    rel_vec = res/max_abs;
+else
+    rel_vec = res;
+end
+rel_res = max(rel_vec);
+fprintf('Relative boundary error: %.3e\n', rel_res);
+fprintf('Absolute boundary error: %.3e\n', abs_res);
 
 
 if visualise
+    if strcmp(surface_error_mode,'rel')
+        boundary_err_plot = rel_vec;
+        boundary_err_label = 'relative';
+    else
+        boundary_err_plot = res;
+        boundary_err_label = 'absolute';
+    end
+
     %% Visualise residual
     figure()
     subplot(1,2,1)
@@ -335,10 +354,11 @@ if visualise
     axis tight
     legend('RHS flow field','LHS flow field','interpreter','latex')
     subplot(1,2,2)
-    semilogy(abs(u_rhs-u_lhs'));
-    legend('Residual','interpreter','latex')
+    semilogy(boundary_err_plot);
+    legend(sprintf('%s boundary error', boundary_err_label),'interpreter','none')
     axis tight
-    sgtitle('Check solution flow field, 1-body precond mob','interpreter','latex')
+    title(sprintf('%s: Boundary %s error', solver_name, boundary_err_label), 'interpreter','none')
+    sgtitle([solver_name ': check solution flow field'],'interpreter','none')
     
     %% Visualise density
     lambda_x = lambdahat(1:length(rin));

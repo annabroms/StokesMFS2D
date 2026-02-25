@@ -1,4 +1,4 @@
-function [U,Y] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
+function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
 %GETPAIRBLOCKSTOKES Build pseudoinverse factors for a 2-body Stokes pair block.
 %
 % Syntax:
@@ -31,7 +31,7 @@ function [U,Y] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
 
 mu = 1; 
 
-debug = 0;
+debug = 1;
 %debug: visualise grid for the pair
 if debug
     figure(8)
@@ -39,7 +39,6 @@ if debug
     plot(real(rin_pair),imag(rin_pair),'r+')
     hold on
     plot(real(rout_f),imag(rout_f),'bo')
-    plot(real(rimage),imag(rimage),'k*')
 end
 
 if isempty(Lr_pair)
@@ -66,7 +65,7 @@ tol = 1e-11; %4 nov: seems to work well but results in peaks in close to touchin
 tol = 1e-14;
 %tol = eps; % I don't think this is reasonable. Just to understand what happens now. 
 
-[Y,U] = getPseudoFactors(Atot,tol,1); 
+[Y,U] = getPseudoFactors(Atot,tol,0); 
 
 
 end

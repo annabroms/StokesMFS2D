@@ -113,7 +113,7 @@ for i = 1:P
 
             if precomp || two_parts
                 %Read off coarse contribution in fine grid of other
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2); 
                 %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
                 %R2 = -Nother*tau_mapped; %read off on particle 2
     
@@ -122,7 +122,7 @@ for i = 1:P
                     tau_mapped(1:N_c),tau_mapped(N_c+1:2*N_c),N_c);
                 R2  = -[u2; v2];
     
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i); 
                 %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
                 %R1 = -Nother2*mapped; %read off on particle 1
     

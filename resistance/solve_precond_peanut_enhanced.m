@@ -1,4 +1,4 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise)
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug)
 %SOLVE_PRECOND_PEANUT_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
 %fine grid enhanced with shielding Stokeslets near image points is used locally for every
@@ -20,6 +20,9 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_precond_peanut_enhanced(q
 %                to map fine sources to effective coarse sources, giving the
 %                same flow field exterior to the close pair of particles.
 %   visualise  - Logical flag: plot the configuration and solution details
+%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
+%   debug      - Optional logical flag: build/draw dense matrix CC and its
+%                eigenvalues for diagnostics (default false)
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -48,6 +51,9 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_precond_peanut_enhanced(q
 if nargin==0, test_solve_res; 
     return; end
 
+if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 9 || isempty(debug), debug = false; end
+
 P = length(q); % number of particles
 
 %% Checks 
@@ -60,8 +66,7 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-gmres_tol = 1e-6; %not enough given the residual we seek
-gmres_tol = 1e-8; 
+solver_name = 'solve_precond_peanut_enhanced';
 
 % Grid params
 %Set coarse and fine grid. 
@@ -70,7 +75,7 @@ gmres_tol = 1e-8;
 N_c = 60;  %100 better here? 
 %N_c = 50;
 
-N_f = 100;
+N_f = 60;
 %N_f = N_c; %debug
 
 %N_c = 250; 
@@ -117,7 +122,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 
-opt.cmap = 1;
+opt.cmap = 0;
 opt.P = P; 
 opt.use_fmm_velocity = true; % set false to evaluate Stokeslet part with stokesletDirect
 
@@ -208,8 +213,7 @@ end
 
 %% Solve system
 
-% Build the matrix to check it out
-debug = 1;
+% Build the matrix to inspect conditioning/eigenvalues if requested.
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -225,19 +229,19 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
+    figure();
     [~,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'b+')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvec_2D_peanut_enhanced(x,geom,basis), ...
     fout,2*size(rout,1),maxit,gmres_tol,1,rout);
-
-debug = 1; 
-debug = 0; 
 
 figure()
 semilogy(resvec); 
@@ -256,7 +260,7 @@ end
 % Prepare for evaluating flow field in rcheck_b.
 geom_eval = geom;
 geom_eval.rcheck = rcheck_b;
-[tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = ...
+[tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr,rimage_k] = ...
     transform_peanut_stokes(tau,geom_eval,basis);
 
 
@@ -305,13 +309,13 @@ for k= 1:P
     FT((k-1)*3+1:3*k) = K'*[tau_self_x((k-1)*N_c+1:k*N_c); tau_self_y((k-1)*N_c+1:k*N_c)];
 end
 
-% %Then, due to all fine sources.
-Kf = getKmat2D(rbase_in_f,0);
+% Then, due to all pair sources (fine-body + fine-image).
 has_neigh = sort(unique(pairs(:)));
 for i = 1:length(has_neigh)
-    k = has_neigh(i); 
-    FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+Kf'*[tau_beta_x((k-1)*N_f+1:k*N_f); 
-        tau_beta_y((k-1)*N_f+1:k*N_f)];
+    k = has_neigh(i);
+    src_k = [rbase_in_f+q(k); rimage_k{k}];
+    Kpair = getKmat2D(src_k,q(k));
+    FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+Kpair'*[tau_beta_x{k}; tau_beta_y{k}];
 end
 
 % % Alternative way to account for all the fine sources
@@ -583,23 +587,36 @@ if test == 1
     % q = [0; 2+delta; x+1i*y];
     
     
+    
     U = [1 0; 0 0; 0 1]; %translational velocities for particles
     W = [1; 1; 1]; %angular velocities
     % U = U*1e-5;
     % W = W*1e-5;
     rads = [1; 1; 1]; 
     visualise = 1; 
+
+    q = [0; 2+delta];
+   % q = q+5;
+    U = U(1:2,:);
+    W = W(1:2); 
+    rads = rads(1:2); 
+
+    gmres_tol = 1e-10;
+    debug = 0; 
     
-    [FT,lambda,it1,gmres_res, err1] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise);
-    F = [FT(1:3:end) FT(2:3:end)];
-    T = FT(3:3:end); 
+    [FT1,lambda,it1,gmres_res, err1] = solve_precond_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug);
+    [FT2,lambda2,it2,gmres_res2, err2] = solve_res_precond_peanut(q,U,W,rads,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
+    [FT3,lambda,it3,gmres_res, err3] = solve_res_precond_enhanced(q,U,W,rads,delta_pair,0,visualise,gmres_tol,debug);
+    
+    F = [FT2(1:3:end) FT2(2:3:end)];
+    T = FT2(3:3:end); 
     [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
     Ures = [U W]';
     
     
     % Compare to solution with pair corrections but without peanut compression
     visualise = 0; 
-    [FTp,lambda,it2,gmres_tol, err2] = solve_res_precond_images(q,U,W,rads,delta_pair,visualise);
+    [FTp,lambda,it2,gmres_tol, err2] = solve_res_precond_images(q,U,W,rads,delta_pair,0,visualise,gmres_tol,debug);
     
     str = sprintf('Two way error is %1.3e',norm(Ures(:)-UW));
     disp(str); 

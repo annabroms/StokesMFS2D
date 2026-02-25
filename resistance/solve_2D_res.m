@@ -1,4 +1,4 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,visualise)
+function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,visualise,gmres_tol,debug)
 %SOLVE_2D_RES Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS.
 %
@@ -14,6 +14,9 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,v
 %   visualise - Logical flag: plot the configuration and solution details
 %   lr        - 0,1,2,..: sets use of long-range preconditioning. If false, no
 %               lr precond. lr > 1 determines the coarse space.
+%   gmres_tol - Optional GMRES tolerance (default 1e-10)
+%   debug     - Optional logical flag: build/draw dense matrix CC and its
+%               eigenvalues for diagnostics (default false)
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -36,6 +39,9 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,v
 if nargin==0, test_solve_res2; 
     return; end
 
+if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 9 || isempty(debug), debug = false; end
+
 P = length(q);
 
 %% Checks
@@ -53,9 +59,7 @@ end
 % GMRES PARAMS
 maxit = 1600;
 %maxit = 500;
-gmres_tol = 1e-6;
-%gmres_tol = 1e-10; %don't choose too large! It will impact the force resolution!
-%gmres_tol = 1e-16;
+solver_name = 'solve_2D_res';
 % Params to determine grid
 opt = get2Dparams(); 
 a = opt.a_c;
@@ -285,7 +289,6 @@ end
 %delete precond
 %% Look at eigvals and eigvecs of the system matrix
 % Build the matrix to check it out
-debug = 0;
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -301,12 +304,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 
     num_eigs = 5; 
     [ss,I] = maxk(abs(D),num_eigs);
@@ -396,15 +401,14 @@ if lr
 end
 
 %% Build matrix again and check eigvals, using the preconditioning
-debug = 0; 
-if debug
+if debug && lr
     x = zeros(2*length(rout),1);
     tic
     for k = 1:2*length(rout)
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt);
+        uu = lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt);
         CC(:,k) = uu;
     end
     toc
@@ -412,12 +416,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC| (LR)'],'interpreter','none')
     skeel(CC)
 
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
+    title([solver_name ': eigenvalues of CC (LR)'],'interpreter','none')
 
     num_eigs = 5; 
     [ss,I] = maxk(abs(D),num_eigs);

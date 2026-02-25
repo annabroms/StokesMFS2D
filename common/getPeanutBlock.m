@@ -74,7 +74,7 @@ if project
     Npeanut = Npeanut*Lc_pair;
 end
 
-%tol = 1e-6;
+%tol = 1e-6;Lc
 tol = 1e-12;
 tol = 1e-14;
 %tol = eps; 

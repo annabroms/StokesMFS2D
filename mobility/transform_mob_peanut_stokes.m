@@ -70,7 +70,7 @@ rimage_k = cell(P,1);
 
 u_corr = zeros(2*N_check*P,1); 
 precomp = opt.precomp;  
-use_matrix_free_projection = true; % set false to use the original K-based projector
+use_matrix_free_projection = false; % set false to use the original K-based projector
 
 % Phase 1 
 for i = 1:P

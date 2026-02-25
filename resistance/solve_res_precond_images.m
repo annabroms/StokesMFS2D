@@ -1,4 +1,4 @@
-function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_images(q,U,W,rads,delta_pair,lr,visualise)
+function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_images(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug)
 %SOLVE_RES_PRECOND_IMAGES Solves a 2D Stokes resistance problem with circular
 %particles using MFS with 2-body preconditioning. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -17,6 +17,9 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_images(q,U,W,rads,d
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   lr         - long range preconditioning 
 %   visualise  - Logical flag: plot the configuration and solution details
+%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
+%   debug      - Optional logical flag: build/draw dense matrix CC and its
+%                eigenvalues for diagnostics (default false)
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -48,6 +51,9 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_images(q,U,W,rads,d
 if nargin==0, test_solve_res; 
     return; end
 
+if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 9 || isempty(debug), debug = false; end
+
 P = length(q);
 
 %% Checks
@@ -60,9 +66,7 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-%gmres_tol = 1e-6; %not enough given the residual we seek
-gmres_tol = 1e-10; 
-%gmres_tol = 1e-6; 
+solver_name = 'solve_res_precond_images';
 
 % Grid params
 P = length(q); 
@@ -229,8 +233,7 @@ for k = 1:P
 end
 
 %% SOLVE SYSTEM
-% Build the matrix to check it out
-debug = 0;
+% Build the matrix to inspect conditioning/eigenvalues if requested.
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -246,12 +249,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 
     [s,I] = mink(abs(D),3);
     Vsmall = V(:,I).*s';
@@ -337,13 +342,13 @@ if lr
 else                                                                                 
     [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 end
-debug = 1; 
+plot_gmres = true; 
 
 %With Krylov precond, do something like
 %[tau, e2, precond] = precond_gmres(@(x) matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
 %it = length(e2); 
 
-if debug
+if plot_gmres
       figure()
 %     semilogy(e2);
       semilogy(resvec);
@@ -720,6 +725,5 @@ else
     alignfigs;
 end
 end
-
 
 

@@ -1,4 +1,4 @@
-function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
+function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise, gmres_tol, debug, surface_error_mode)
 %SOLVE_MOB_PRECOND_IMAGES Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -7,7 +7,7 @@ function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F,
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -16,13 +16,19 @@ function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F,
 %   rads       - Px1 vector of particle radii
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   visualise  - Logical flag: plot the configuration and solution details
+%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
+%   debug      - Optional logical flag: build/draw dense matrix CC and its
+%                eigenvalues (default false)
+%   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
+%                or 'rel'
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
 %   lambdahat  - Solution vector of source strengths
 %   it         - Number of GMRES iterations required
 %   gmres_tol  - Set GMRES tolerance
-%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   rel_res    - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   abs_res    - Maximum absolute residual in a test (non-collocation) set of boundary nodes
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
@@ -46,12 +52,20 @@ function [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_images(q, F,
 if nargin==0, test_solve_mob; 
     return; end
 
+if nargin < 6 || isempty(visualise), visualise = 0; end
+if nargin < 7 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 8 || isempty(debug), debug = false; end
+if nargin < 9 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+surface_error_mode = lower(char(surface_error_mode));
+if ~any(strcmp(surface_error_mode, {'abs','rel'}))
+    error('surface_error_mode must be ''abs'' or ''rel''.')
+end
+
 
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-gmres_tol = 1e-6; 
-gmres_tol = 1e-10; 
+solver_name = 'solve_mob_precond_images';
 
 %Grid params
 P = length(q); 
@@ -92,7 +106,7 @@ Rp_f = max([1-sep_f,0.01]);  % and fine grid
 %accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rp_c)^2/Rp_c;  
 
-if nargin < 5
+if nargin < 5 || isempty(delta_pair)
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
 end
 
@@ -208,7 +222,6 @@ end
 %% SOLVE SYSTEM
 % Build the matrix to check it out
 
-debug = 1;
 if debug
     x = zeros(size(urhs));
     for k = 1:size(urhs,1)
@@ -221,6 +234,7 @@ if debug
     figure()
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
     get_nullspace = 0;
@@ -234,6 +248,7 @@ if debug
         plot(real(D),imag(D),'+')
         xlabel('Re \lambda')
         ylabel('Im \lambda')
+        title([solver_name ': eigenvalues of CC'],'interpreter','none')
             
         [s,I] = mink(abs(D),3);
 
@@ -242,9 +257,12 @@ if debug
         
             [UU,S,VV] = svd(CC);
             SS = diag(S);
-            figure()
-            semilogy(SS)
-            semilogy(SS,'+')
+            plot_singular_values = false;
+            if plot_singular_values
+                figure()
+                semilogy(SS)
+                semilogy(SS,'+')
+            end
             [s2,I2] = mink(SS,6);
         
             UUs = UU(:,I2);
@@ -351,13 +369,13 @@ end
 
 
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
-debug = 1; 
+plot_gmres = true; 
 
 %Modify to build with krylov preconditioning
 %[tau, e2, precond] = precond_gmres(@(x) ...)
 %it = length(e2); 
 
-if debug
+if plot_gmres
       figure()
 %     semilogy(e2);
       semilogy(resvec);
@@ -430,8 +448,16 @@ u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion f
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs;
 max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
-err_vec =  abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end))/max_abs;
-maxres = max(err_vec)
+res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
+abs_res = max(res);
+if max_abs > 0
+    err_vec = res/max_abs;
+else
+    err_vec = res;
+end
+rel_res = max(err_vec);
+fprintf('Relative boundary error: %.3e\n', rel_res);
+fprintf('Absolute boundary error: %.3e\n', abs_res);
 
 
 %Some visualisation stuff... 
@@ -487,8 +513,17 @@ if visualise
         rvis = [rvis; aa*(rcheck_b(n_bound*(k-1)+1:k*n_bound)-q(k))+q(k)];
     end
 
+    if strcmp(surface_error_mode,'rel')
+        err_plot = err_vec;
+        err_label = 'relative';
+    else
+        err_plot = res;
+        err_label = 'absolute';
+    end
+    err_plot_log = log10(max(err_plot, eps));
+
     figure()
-    scatter3(real(rvis),imag(rvis),log10(abs(err_vec)),30,log10(abs(err_vec)),'filled');
+    scatter3(real(rvis),imag(rvis),err_plot_log,30,err_plot_log,'filled');
     hold on
     plot(real(rcheck_b),imag(rcheck_b),'k.')
     c = colorbar;
@@ -498,9 +533,9 @@ if visualise
     set(gca,'xtick',[])
     set(gca,'ytick',[])
     c.TickLabelInterpreter = 'latex';
-    ylabel(c,'Relative residual $\log_{10}$','interpreter','latex','FontSize',14)
+    ylabel(c, sprintf('%s boundary error (log10)', err_label), 'interpreter','none','FontSize',14)
     c.FontSize = 14;
-    title('Relative residual mob pair corr','interpreter','latex')
+    title(sprintf('%s: Boundary %s error', solver_name, err_label), 'interpreter','none')
 
 
     %% Visualise source strengths
@@ -675,6 +710,3 @@ disp(str)
 alignfigs;
 
 end
-
-
-

@@ -49,7 +49,7 @@ Nf = singleLayer(rin_pair_f,rout_peanut,mu);
 
 %% If mobility, need to project so that the fine sources don't contribute to force and torque
 if ~isempty(Lf_pair)
-    Ntot = Nf*Lf_pair;
+    Ntot = Nf-Nf*Lf_pair; % we want the I-L action to project off force/torque contribution
     project = 1; 
 else
     Ntot = Nf; %matrix in the rhs of the matching LSQ problem representing the fine grid
@@ -74,7 +74,7 @@ tol = 1e-14;
 %tol = 1e-8; 
 
 %Determine factors for the pseudoinverse of the coarse evaluation
-[Y,U]  = getPseudoFactors(Npeanut,tol);
+[Y,U]  = getPseudoFactors(Npeanut,tol,0);
 %Get mapping to determine (coarse sources) lambda <- beta (fine sources) 
 DC = U'*Ntot;
 

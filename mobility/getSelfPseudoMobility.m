@@ -49,7 +49,7 @@ if nargin<8
 end
     
 mu = 1;
-visualise = 1; % Plot singular values?
+visualise = 0; % Keep singular-value plotting disabled by default
 
 N = size(rin_vec,1)/P; %Proxy sources per body. Assumed the same for everyone.
 

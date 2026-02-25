@@ -1,4 +1,4 @@
-function [U,Y] = getPairBlock(q,rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr_pair,project_all)
+function [U,Y,Ntot] = getPairBlock(q,rin_pair_f,rout_f,rimage,nimage,s,Lf_pair,Lr_pair,project_all)
 %getPairBlock computes factorisation of the pair correction for two
 %circular particles in Stokes flow solved with MFS
 %
@@ -88,7 +88,7 @@ tol = 1e-11; %4 nov: seems to work well but results in peaks in close to touchin
 tol = 1e-14;
 %tol = eps; % I don't think this is reasonable. Just to understand what happens now. 
 
-[Y,U] = getPseudoFactors(Ntot,tol,1); 
+[Y,U] = getPseudoFactors(Ntot,tol,0); 
 
 
 end

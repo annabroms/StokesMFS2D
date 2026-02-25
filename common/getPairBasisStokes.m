@@ -1,4 +1,4 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
 %GETPAIRBASISSTOKES Build pair-basis pseudoinverse factors for 2D Stokes pair corrections.
 %
 % Syntax:
@@ -6,6 +6,8 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt)
 %   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
 %
 % Inputs:
 %   q            - P-by-1 complex particle centers.
@@ -21,6 +23,8 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,
 %   project      - Optional logical flag. If true, build additional pair
 %                  projection blocks used by mobility variants.
 %   Lc           - Optional coarse one-body projector for mobility.
+%   debug        - Optional logical flag. If true, visualizes pair geometry
+%                  (sources and collocation nodes) for each processed pair.
 %
 % Outputs:
 %   Uf, Yf  - Cell arrays with fine pair pseudoinverse factors. For each
@@ -42,9 +46,14 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,
 %
 % Anna Broms, Feb 13, 2026
 
-if nargin<9
-    Lc = [];
+if nargin < 8 || isempty(project)
     project = 0;
+end
+if nargin < 9
+    Lc = [];
+end
+if nargin < 10 || isempty(debug)
+    debug = false;
 end
 
 
@@ -106,7 +115,34 @@ for i = 1:P
             rout_f = [q(i)+rout_base; fine_1 ;q(p2)+rout_base; fine_2];
             
             %fine grid of Stokeslets
-            rin_pair = [rin_1_f; rimage_pairs{i,p2}; rin_2_f; rimage_pairs{p2,i}];
+            rimage_i = rimage_pairs{i,p2};
+            rimage_p2 = rimage_pairs{p2,i};
+            rin_pair = [rin_1_f; rimage_i; rin_2_f; rimage_p2];
+
+            if debug
+                figure(801);
+                clf;
+                plot(real(rin_1_f),imag(rin_1_f),'r.','MarkerSize',10);
+                hold on;
+                plot(real(rin_2_f),imag(rin_2_f),'b.','MarkerSize',10);
+                plot(real(q(i)+rout_base),imag(q(i)+rout_base),'ro','MarkerSize',4);
+                plot(real(q(p2)+rout_base),imag(q(p2)+rout_base),'bo','MarkerSize',4);
+                plot(real(fine_1),imag(fine_1),'r+','MarkerSize',6); 
+                plot(real(fine_2),imag(fine_2),'b+','MarkerSize',6);
+                if ~isempty(rimage_i)
+                    plot(real(rimage_i),imag(rimage_i),'ks','MarkerSize',5);
+                end
+                if ~isempty(rimage_p2)
+                    plot(real(rimage_p2),imag(rimage_p2),'kd','MarkerSize',5);
+                end
+                plot(real(q(i)),imag(q(i)),'rx','MarkerSize',10,'LineWidth',1.5);
+                plot(real(q(p2)),imag(q(p2)),'bx','MarkerSize',10,'LineWidth',1.5);
+                axis equal;
+                grid on;
+                title(sprintf('getPairBasisStokes pair (%d,%d)',i,p2), ...
+                    'Interpreter','none');
+                drawnow;
+            end
             
             %% Projection trick (Mobility only)
             % Need the matrix that maps fine sources to rigid body
@@ -120,11 +156,13 @@ for i = 1:P
                 Lf_pair = getLfPair(Kf1,Kf2); 
             else
                 Lr_pair = []; 
+                Lf_pair = [];
             end
             
             %% Compute fine basis pseudoinverse
             %Takes in fine grid with image enhancement and fine collocation
-            %points. 
+            %points.
+         
             [Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair);
 
             if opt.precomp
@@ -158,17 +196,19 @@ for i = 1:P
 
             if N_peanut %If true: compress on peanut described by N_peanut points, i.e. find mapping for equivalent coarse sources
                 
-                debug = 0; 
-                rout_peanut = createPeanut(q(i),q(p2),N_peanut,debug);    
+                peanut_debug = 0; 
+                rout_peanut = createPeanut(q(i),q(p2),N_peanut,peanut_debug);    
                 rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
-               % [DC,YC] = getPeanutBlock(rin_pair_c,rin_pair,rout_peanut,[nimage{i,p2}; nimage{p2,i}],rimage,s,Lc_pair,Lf_pair); 
+                %[DC,YC] = getPeanutBlock(rin_pair_c,rin_pair,rout_peanut,[],[],[0 0 0 0 0 0],Lc_pair,Lf_pair); 
                 [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair); 
                           
 
                 Up{i,p2} = DC;
                 Yp{i,p2} = YC;
                 % Determine coarse to coarse map for the pair
-                Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
+                if opt.cmap
+                    Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
+                end
 
                 %Construct mapping also to the fource and torque vector
                 %Cmap_F{i,p2} = 
@@ -186,7 +226,5 @@ for i = 1:P
 end
 
 end
-
-
 
 

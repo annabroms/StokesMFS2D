@@ -46,10 +46,10 @@ res = res+u_corr; %Subtraction of the contribution from the peanut compressed ba
 if isequal(rcheck,rvec_out)
 
     rbase_out_rel = rvec_out(1:N_large)-q(1);
-    if ~use_matrix_free_BKt
-        B = getKmat2D(rbase_out_rel,0);
-        K = getKmat2D(rbase_in_f,0);
-    end
+    % if ~use_matrix_free_BKt
+    %     B = getKmat2D(rbase_out_rel,0);
+    %     K = getKmat2D(rbase_in_f,0);
+    % end
     
     %This part is already taken care of... i.e. we never add and subtract the same thing. 
     % for k= 1:P

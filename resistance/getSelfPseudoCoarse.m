@@ -47,7 +47,7 @@ end
 solve_xy = 1; %order unknowns as x, then y globally
 
 mu = 1; 
-visualise = 1; 
+visualise = 0; % Keep singular-value plotting disabled by default
 
 N = size(rin_vec,1)/P;
 
@@ -125,6 +125,5 @@ for i = 1:P
 end
 
 end
-
 
 

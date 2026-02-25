@@ -1,4 +1,4 @@
-function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise)
+function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
 %SOLVE_MOB_PRECOND_PEANUT Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -7,7 +7,7 @@ function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, maxres] = solve_mob_precond_peanut(q, F, T, rads, delta_pair, N_peanut, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_peanut(q, F, T, rads, delta_pair, N_peanut, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -20,13 +20,19 @@ function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,
 %                to map fine sources to effective coarse sources, giving the
 %                same flow field exterior to the close pair of particles.
 %   visualise  - Logical flag: plot the configuration and solution details
+%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
+%   debug      - Optional logical flag: build/draw dense matrix CC and its
+%                eigenvalues (default false)
+%   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
+%                or 'rel'
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
 %   lambda     - Solution vector of source strengths
 %   it         - Number of GMRES iterations required
 %   gmres_tol  - Set GMRES tolerance
-%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   rel_res    - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   abs_res    - Maximum absolute residual in a test (non-collocation) set of boundary nodes
 %
 % Description:
 %   The FMM is used for Stokeslet evaluation. No other source types are
@@ -49,12 +55,19 @@ function [UW,lambda,it,gmres_tol, maxres] = solve_mob_precond_peanut(q,F,T,rads,
 if nargin==0, test_solve_mob; 
     return; end
 
+if nargin < 7 || isempty(visualise), visualise = 0; end
+if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
+if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+surface_error_mode = lower(char(surface_error_mode));
+if ~any(strcmp(surface_error_mode, {'abs','rel'}))
+    error('surface_error_mode must be ''abs'' or ''rel''.')
+end
 
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-gmres_tol = 1e-6; %not enough given the residual we seek
-gmres_tol = 1e-10; 
+solver_name = 'solve_mob_precond_peanut';
 
 % Grid params
 P = length(q); 
@@ -94,7 +107,7 @@ Rp_f = max([1-sep_f,0.01]);  % and fine grid
 %accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rp_c)^2/Rp_c;  
 
-if nargin < 6
+if nargin < 5 || isempty(delta_pair)
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
 end
 
@@ -114,7 +127,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 
-opt.cmap = 1; 
+opt.cmap = 0; 
  
 
 %% CREATE GRID
@@ -155,7 +168,7 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 %A = buildCoarseMap(UB_all,YB_all,UC_all,YC_all,U,Y);
 
 
-%Visualisation for presentation / paper
+%Visualisation for presentation / paper);
 % if visualise
 %     figure(2) 
 %     hold on
@@ -237,7 +250,6 @@ end
 %% Solve system
 
 % Build the matrix to check it out
-debug = 1;
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -255,6 +267,7 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
+    title([solver_name ': log_{10} |CC|'],'interpreter','none')
     skeel(CC)
 
     [V,D] = eig(CC);
@@ -263,9 +276,9 @@ if debug
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
-debug = 0;                                                                                                                                           
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 figure()
@@ -338,58 +351,19 @@ u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion f
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs;
 max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
-err_vec =  abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end))/max_abs;
-maxres = max(err_vec)
+res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
+abs_res = max(res);
+if max_abs > 0
+    err_vec = res/max_abs;
+else
+    err_vec = res;
+end
+rel_res = max(err_vec);
+fprintf('Relative boundary error: %.3e\n', rel_res);
+fprintf('Absolute boundary error: %.3e\n', abs_res);
 
  
 if visualise
-%     % Plot residual in x, y components separately
-%     figure(9)
-%     subplot(2,2,1)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(1:end/2))),30,log10(abs(diff_vec(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in x velocity')
-% 
-% 
-%     subplot(2,2,2)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(end/2+1:end))),30,log10(abs(diff_vec(end/2+1:end))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in y velocity')
-% 
-%     % Visualise the actual velocity in the rhs and lhs
-%     subplot(2,2,3)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_rhs(1:end/2))),30,log10(abs(u_rhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity rhs')
-% 
-%     subplot(2,2,4)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_lhs(1:end/2))),30,log10(abs(u_lhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity lhs')
-% 
-% 
-%     sgtitle('Error on boundary mob peanut compression','interpreter','latex')
-
 
     rvis = [];
     aa = 0.9;
@@ -397,8 +371,17 @@ if visualise
         rvis = [rvis; aa*(rcheck_b(n_bound*(k-1)+1:k*n_bound)-q(k))+q(k)];
     end
 
+    if strcmp(surface_error_mode,'rel')
+        err_plot = err_vec;
+        err_label = 'relative';
+    else
+        err_plot = res;
+        err_label = 'absolute';
+    end
+    err_plot_log = log10(max(err_plot, eps));
+
     figure()
-    scatter3(real(rvis),imag(rvis),log10(abs(err_vec)),30,log10(abs(err_vec)),'filled');
+    scatter3(real(rvis),imag(rvis),err_plot_log,30,err_plot_log,'filled');
     hold on
     plot(real(rcheck_b),imag(rcheck_b),'k.')
     c = colorbar;
@@ -408,9 +391,9 @@ if visualise
     set(gca,'xtick',[])
     set(gca,'ytick',[])
     c.TickLabelInterpreter = 'latex';
-    ylabel(c,'Relative residual $\log_{10}$','interpreter','latex','FontSize',18)
+    ylabel(c, sprintf('%s boundary error (log10)', err_label), 'interpreter','none','FontSize',18)
     c.FontSize = 18; 
-    title('Mobility peanut')
+    title(sprintf('%s: Boundary %s error', solver_name, err_label), 'interpreter','none')
 
 
     %% Visualise source strengths
@@ -583,6 +566,3 @@ disp(str)
 alignfigs(3);
 
 end
-
-
-

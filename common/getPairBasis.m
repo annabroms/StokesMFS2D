@@ -1,4 +1,4 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf,debug)
 %getPairCorrection computes pair corrections for a 2-body preconditioned
 %Stokes MFS solver for circular particles; it solves two LSQ problems via
 %SVDs per identified close particle pair and stores the factorisations for
@@ -6,7 +6,7 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 %pair, and the equivalent coarse sources are computed via matching on a peanut 
 %boundary.
 %
-%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf)
+%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf,debug)
 %
 %Input: 
 % q      - Vector of complex valued center coordinates for the P particles
@@ -31,6 +31,8 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 % Lf        - (optional) Projection matrix for single body fine sources 
 %             onto the space of RBM, only for mobility
 % Kf        - (optional) Kf' maps fine sources to force and torque, only for mobility
+% debug     - (optional) Logical flag. If true, visualizes pair geometry
+%             (sources and collocation nodes) for each processed pair.
 %
 % Output:
 %
@@ -68,10 +70,20 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 % Anna Broms April 4, 2025
 
 
-if nargin<11 
+if nargin < 11 || isempty(project)
+    project = 0;
+end
+if nargin < 12
     Lc = [];
-    project = 0; 
+end
+if nargin < 13
     Lf = [];
+end
+if nargin < 14
+    Kf = [];
+end
+if nargin < 15 || isempty(debug)
+    debug = false;
 end
 
 P = length(q); 
@@ -143,6 +155,27 @@ for i = 1:P
             
             %fine grid of Stokeslets
             rin_pair = [rin_1_f; rin_2_f];
+
+            if debug
+                figure(800);
+                clf;
+                plot(real(rin_1_f),imag(rin_1_f),'r.','MarkerSize',10);
+                hold on;
+                plot(real(rin_2_f),imag(rin_2_f),'b.','MarkerSize',10);
+                plot(real(q(i)+rout_base),imag(q(i)+rout_base),'ro','MarkerSize',4);
+                plot(real(q(p2)+rout_base),imag(q(p2)+rout_base),'bo','MarkerSize',4);
+                plot(real(fine_1),imag(fine_1),'r+','MarkerSize',6);
+                plot(real(fine_2),imag(fine_2),'b+','MarkerSize',6);
+                if ~isempty(rimage)
+                    plot(real(rimage),imag(rimage),'ks','MarkerSize',5);
+                end
+                plot(real(q(i)),imag(q(i)),'rx','MarkerSize',10,'LineWidth',1.5);
+                plot(real(q(p2)),imag(q(p2)),'bx','MarkerSize',10,'LineWidth',1.5);
+                axis equal;
+                grid on;
+                title(sprintf('getPairBasis pair (%d,%d)',i,p2), ...
+                    'Interpreter','none');
+            end
             
             %% Projection trick (Mobility only)
             % Need the matrix that maps fine sources to rigid body
@@ -191,8 +224,8 @@ for i = 1:P
 
             if N_peanut %If true: compress on peanut described by N_peanut points, i.e. find mapping for equivalent coarse sources
                 
-                debug = 0; 
-                rout_peanut = createPeanut(q(i),q(p2),N_peanut,debug);    
+                peanut_debug = 0; 
+                rout_peanut = createPeanut(q(i),q(p2),N_peanut,peanut_debug);    
                 rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
                 [DC,YC] = getPeanutBlock(rin_pair_c,rin_pair,rout_peanut,[nimage{i,p2}; nimage{p2,i}],rimage,s,Lc_pair,Lf_pair); 
                           
@@ -218,7 +251,6 @@ for i = 1:P
 end
 
 end
-
 
 
 
