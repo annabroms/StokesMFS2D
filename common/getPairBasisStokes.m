@@ -173,16 +173,10 @@ for i = 1:P
          
             [Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair);
 
-            if opt.precomp
-
-                %build matrix to get the evaluation of coarse Stokeslets on one
-                %particle in the pair at the time, zero on the other
-                Npair = evaluateCoarseOnPair([q(i),q(p2)],rbase_in_c,rout_f);
- 
-                Uf{i,p2} = -Uf_pair'*Npair; 
-            else
-                Uf{i,p2} = Uf_pair';
-            end
+            %build matrix to get the evaluation of coarse Stokeslets on one
+            %particle in the pair at the time, zero on the other
+            Npair = evaluateCoarseOnPair([q(i),q(p2)],rbase_in_c,rout_f);
+            Uf{i,p2} = -Uf_pair'*Npair; 
 
             Yf{i,p2} = Yf_pair; 
 
@@ -195,17 +189,12 @@ for i = 1:P
   
                 if opt.cmap
                     % Determine coarse to coarse map for the pair
-                    Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
+                    Cmap{i,p2} = YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
                     %Construct mapping also for the 
                     % i) fource and torque vector (ONLY for resistance), or
                     % ii) RBM vector (ONLY for mobility)
-                    if project  % mobility problem
-                        % contribu
-                        Cmap_FU{i,p2} = Lf_pair*Yf_pair*(Uf_pair'*Npair);
-                    else % resistance problem
-                        %contribution from RBM vector from pair
-                        Cmap_FU{i,p2} = -Lf_pair*Yf_pair*(Uf_pair'*Npair);
-                    end
+                    Kft_pair = getKftPair(Kf1,Kf2); 
+                    Cmap_FU{i,p2} = Kft_pair*Yf_pair*(Uf_pair'*Npair);                   
                 else
                     % Store compression for the fine grid
                     Up{i,p2} = DC;

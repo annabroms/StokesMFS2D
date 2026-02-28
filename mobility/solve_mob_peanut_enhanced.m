@@ -242,8 +242,8 @@ end
 %And evaluate residual in new points rcheck_b
 
 % Recover coarse and fine sources from data on the boundary
-[tau_stokes_x, tau_stokes_nonpx,~, tau_beta_x,tau_stokes_y, ...
-    tau_stokes_nonpy,~,tau_beta_y,~,rimage_k] = ...
+[tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y, ...
+    tau_stokes_nonpy,tau_self_y,tau_beta_y,~,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom_check,basis_mob);
 lambda_c = [tau_stokes_x; tau_stokes_y];
 
@@ -252,23 +252,48 @@ lambda_c = [tau_stokes_x; tau_stokes_y];
 %First due to all coarse sources
 Kc = getKmat2D(rbase_in_c,0);
 UW= zeros(3*P,1); 
+warning('are the right sources used here?')
 for k= 1:P
     UW((k-1)*3+1:3*k) = -Kc'*[tau_stokes_nonpx((k-1)*N_c+1:k*N_c); tau_stokes_nonpy((k-1)*N_c+1:k*N_c)];
 end
 
-% Then, due to all pair sources (fine-body + fine-image).
-has_neigh = sort(unique(pairs(:)));
-for i = 1:length(has_neigh)
-    k = has_neigh(i);
-    rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
-    fx_k = tau_beta_x{k};
-    fy_k = tau_beta_y{k};
-    rel_k = rsrc_k - q(k);
+if opt.cmap
+    for pair_it = 1:size(pairs,1)
+        i = pairs(pair_it,1);
+        p2 = pairs(pair_it,2);
 
-    rbm_k = [sum(fx_k); ...
-             sum(fy_k); ...
-             sum((-imag(rel_k)).*fx_k + real(rel_k).*fy_k)];
-    UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-rbm_k;
+        coarse_i = (i-1)*N_c+1:i*N_c;
+        coarse_p2 = (p2-1)*N_c+1:p2*N_c;
+
+        warning('check sign in formulae')
+
+        %Here the projected sources are used, as (I-L) is not yet
+        %applied for Cmap_FU.
+        rhs_pair = [tau_self_x(coarse_i); tau_self_x(coarse_p2); ...
+                    tau_self_y(coarse_i); tau_self_y(coarse_p2)];
+
+        % Determine rigid body motion for the pair, using ansatz
+        pair_vel = Cmap_FU{i,p2}*rhs_pair;
+        UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i)+ pair_vel(1:3); 
+        UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2)+ pair_vel(4:6);
+
+    end
+
+else
+    % Then, due to all pair sources (fine-body + fine-image).
+    has_neigh = sort(unique(pairs(:)));
+    for i = 1:length(has_neigh)
+        k = has_neigh(i);
+        rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
+        fx_k = tau_beta_x{k};
+        fy_k = tau_beta_y{k};
+        rel_k = rsrc_k - q(k);
+    
+        rbm_k = [sum(fx_k); ...
+                 sum(fy_k); ...
+                 sum((-imag(rel_k)).*fx_k + real(rel_k).*fy_k)];
+        UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-rbm_k;
+    end
 end
 
 %% CHECK RESIDUAL AT SURFACE
@@ -527,7 +552,7 @@ P = 4;
 q = [0; 2+delta; 7; 9+delta];
 
 
-P = 2; 
+P = 5; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));
@@ -557,7 +582,7 @@ N_peanut = 400;
 gmres_tol = 1e-6;
 images = 1; 
 lr = 0; 
-debug = 1; 
+debug = 0; 
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 [UW2,lambdahat2,it2,gmres_tol, rel2, abs2] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug);
 % [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);

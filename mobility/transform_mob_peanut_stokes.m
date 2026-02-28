@@ -108,7 +108,7 @@ s_ind2_x = opt.N_c+1:2*opt.N_c;
 s_ind1_y = 2*opt.N_c+1:3*opt.N_c;
 s_ind2_y = 3*opt.N_c+1:4*opt.N_c;
 
-% Phase 2
+% Phase 2: correct for all close pairs
 for i = 1:P
 
     % Reuse phase-1 coarse projected mapping (lambda_coarse) for this body.
@@ -134,45 +134,18 @@ for i = 1:P
             %send in two particles with the fine grid 
             p2 = pairs(neigh(k),2); 
 
-            rimage_k{i} = [rimage_k{i}; rimage_vec{i,p2}];
-            rimage_k{p2} = [rimage_k{p2}; rimage_vec{p2,i}];
-
             coarse_ind_p2 = (p2-1)*N_c+1:p2*N_c;
             lambda_coarse_p2 = [tau_self_x(coarse_ind_p2); tau_self_y(coarse_ind_p2)];
 
-            %% First, determine beta, the fine sources
-            if ~precomp                
-                
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2); 
-                %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
-                %R2 = -Nother*tau_mapped; %read off on particle 2
-    
-                [u2,v2] = stokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
-                    real(rout_fine_other),imag(rout_fine_other),...
-                    lambda_coarse_i(1:N_c),lambda_coarse_i(N_c+1:2*N_c),N_c);
-                R2  = -[u2; v2];
-    
-                %% Do a similar thing for the other order of the particles in the pair
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i); 
-                %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
-                %R1 = -Nother2*mapped; %read off on particle 1
-    
-                %To be replaced with C implementation?
-                [u1,v1] = stokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
-                    real(rout_fine_other),imag(rout_fine_other),...
-                    lambda_coarse_p2(1:N_c),lambda_coarse_p2(N_c+1:2*N_c),N_c);
-                R1 = -[u1; v1];
-
-            
-                rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
-
-            else              
-                rhs = [lambda_coarse_i(1:end/2); lambda_coarse_p2(1:end/2); ...
+            % Collect coarse source strengths on body 1 and body 2
+            rhs = [lambda_coarse_i(1:end/2); lambda_coarse_p2(1:end/2); ...
                     lambda_coarse_i(end/2+1:end); lambda_coarse_p2(end/2+1:end)];
-            end
    
+            % TODO: should only be needed if cmap is false
             pair_mapped = Upf{i,p2}*rhs; 
             tau_mapped_tot = Ypf{i,p2}*pair_mapped;
+            rimage_k{i} = [rimage_k{i}; rimage_vec{i,p2}];
+            rimage_k{p2} = [rimage_k{p2}; rimage_vec{p2,i}];
 
             %now we have beta. Lets do peanut compression from
             %here
@@ -180,11 +153,23 @@ for i = 1:P
             if opt.cmap
                 tau_peanut_ntot = Cmap{i,p2}*rhs;
             else
+
                 tau_peanut_temp = DC_all{i,p2}*tau_mapped_tot;
                 tau_peanut_ntot = YC_all{i,p2}*tau_peanut_temp;
             end
 
             tau_peanut_tot= Lc_pair*tau_peanut_ntot; 
+            
+            %Store
+            tau_stokes_x((i-1)*N_c+1:N_c*i) = tau_stokes_x((i-1)*N_c+1:N_c*i)+...
+                    tau_peanut_tot(s_ind1_x);
+            tau_stokes_y((i-1)*N_c+1:N_c*i) = tau_stokes_y((i-1)*N_c+1:N_c*i)+...
+                tau_peanut_tot(s_ind1_y);
+
+            tau_stokes_x((p2-1)*N_c+1:N_c*p2) = tau_stokes_x((p2-1)*N_c+1:N_c*p2)+...
+                tau_peanut_tot(s_ind2_x);
+            tau_stokes_y((p2-1)*N_c+1:N_c*p2) = tau_stokes_y((p2-1)*N_c+1:N_c*p2)+...
+                tau_peanut_tot(s_ind2_y);
 
             % Pair-local indexing in tau_mapped_tot:
             % [f_i_x; e_i_x; f_p2_x; e_p2_x; f_i_y; e_i_y; f_p2_y; e_p2_y]
@@ -198,16 +183,6 @@ for i = 1:P
             f_ind2_y = 3*N_f+3*im_nr+1:4*N_f+3*im_nr;
             e_ind2_y = 4*N_f+3*im_nr+1:4*N_f+4*im_nr;
 
-            %Store
-            tau_stokes_x((i-1)*N_c+1:N_c*i) = tau_stokes_x((i-1)*N_c+1:N_c*i)+...
-                    tau_peanut_tot(s_ind1_x);
-            tau_stokes_y((i-1)*N_c+1:N_c*i) = tau_stokes_y((i-1)*N_c+1:N_c*i)+...
-                tau_peanut_tot(s_ind1_y);
-
-            tau_stokes_x((p2-1)*N_c+1:N_c*p2) = tau_stokes_x((p2-1)*N_c+1:N_c*p2)+...
-                tau_peanut_tot(s_ind2_x);
-            tau_stokes_y((p2-1)*N_c+1:N_c*p2) = tau_stokes_y((p2-1)*N_c+1:N_c*p2)+...
-                tau_peanut_tot(s_ind2_y);
 
             % Store pair-source strengths for BC correction:
             % - body-fine (f) terms are summed on the fine grid,

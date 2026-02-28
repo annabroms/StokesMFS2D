@@ -122,7 +122,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 
-opt.cmap = 0;
+opt.cmap = 1;
 opt.P = P; 
 opt.use_fmm_velocity = true; % set false to evaluate Stokeslet part with stokesletDirect
 
