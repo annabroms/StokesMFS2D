@@ -31,8 +31,8 @@ function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
 
 mu = 1; 
 
-debug = 1;
 %debug: visualise grid for the pair
+debug = 0;
 if debug
     figure(8)
     clf; 
@@ -58,12 +58,7 @@ else
     Atot = S;
 end 
 
-
-%tol = 1e-6;
-%tol = 1e-14; %Good level of truncation it seems, for close contacts. Tried with a line of circles.
-tol = 1e-11; %4 nov: seems to work well but results in peaks in close to touching points
-tol = 1e-14;
-%tol = eps; % I don't think this is reasonable. Just to understand what happens now. 
+tol = 1e-14; %SVD truncation level
 
 [Y,U] = getPseudoFactors(Atot,tol,0); 
 

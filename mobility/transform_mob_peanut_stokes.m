@@ -72,7 +72,7 @@ u_corr = zeros(2*N_check*P,1);
 precomp = opt.precomp;  
 use_matrix_free_projection = false; % set false to use the original K-based projector
 
-% Phase 1 
+% Phase 1. Get projected source strengths at proxy nodes from data at boundary 
 for i = 1:P
 
     coarse_ind = (i-1)*N_c+1:i*N_c;  
@@ -210,7 +210,9 @@ for i = 1:P
                 tau_peanut_tot(s_ind2_y);
 
             % Store pair-source strengths for BC correction:
-            % - body-fine (f) terms are summed on the shared fine grid
+            % - body-fine (f) terms are summed on the fine grid,
+            %   potentially shared per body between more than one pair
+            %   
             % - image-fine (e) terms are concatenated per pair
             tau_beta_f_x((i-1)*N_f+1:N_f*i) = tau_beta_f_x((i-1)*N_f+1:N_f*i)+tau_mapped_tot(f_ind1_x);
             tau_beta_f_x((p2-1)*N_f+1:N_f*p2) = tau_beta_f_x((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(f_ind2_x);
@@ -285,7 +287,7 @@ for i = 1:P
        
 end
 
-% Assemble per-particle pair-source vectors [f; e] for BC correction.
+% Assemble per-particle pair-source vectors [fine; enhanced]
 tau_beta_x = cell(P,1);
 tau_beta_y = cell(P,1);
 for k = 1:P

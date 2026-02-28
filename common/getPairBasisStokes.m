@@ -1,5 +1,6 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
-%GETPAIRBASISSTOKES Build pair-basis pseudoinverse factors for 2D Stokes pair corrections.
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
+%GETPAIRBASISSTOKES Build pair-basis pseudoinverse factors for 2D Stokes
+%pair corrections.
 %
 % Syntax:
 %   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
@@ -10,31 +11,33 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
 %
 % Inputs:
-%   q            - P-by-1 complex particle centers.
-%   rbase_in_c   - Coarse proxy source nodes for one body at the origin.
-%   rbase_in_f   - Fine proxy source nodes for one body at the origin.
-%   rimage_pairs - Cell array; rimage_pairs{i,j} are extra/image points
+%   q            - P-by-1 complex particle centers. rbase_in_c   - Coarse
+%   proxy source nodes for one body at the origin. rbase_in_f   - Fine
+%   proxy source nodes for one body at the origin. rimage_pairs - Cell
+%   array; rimage_pairs{i,j} are extra enhancing source points
 %                  used for pair (i,j).
 %   refine       - Cell array; refine{i,j} stores near-contact collocation
 %                  parameter values for pair (i,j).
-%   pairs        - Npair-by-2 list of close pairs [i, j].
-%   opt          - Options struct. Uses fields such as N_f, a_f, precomp,
+%   pairs        - Npair-by-2 list of close pairs [i, j]. opt          -
+%   Options struct. Uses fields such as N_f, a_f, precomp,
 %                  N_peanut.
 %   project      - Optional logical flag. If true, build additional pair
 %                  projection blocks used by mobility variants.
-%   Lc           - Optional coarse one-body projector for mobility.
-%   debug        - Optional logical flag. If true, visualizes pair geometry
+%   Lc           - Optional coarse one-body projector for mobility. debug
+%   - Optional logical flag. If true, visualizes pair geometry
 %                  (sources and collocation nodes) for each processed pair.
 %
 % Outputs:
 %   Uf, Yf  - Cell arrays with fine pair pseudoinverse factors. For each
 %             close pair (i,j), beta_pair = Yf{i,j}*(Uf{i,j}*rhs_pair).
 %   Up, Yp  - Cell arrays with peanut-compression pseudoinverse factors
-%             (empty when opt.N_peanut == 0).
+%             (empty when opt.N_peanut == 0 or opt.cmap.
 %   Cmap    - Cell array with direct coarse-to-coarse pair maps
-%             assembled from the factors above (empty when no peanut map).
-%   Cmap_F  - Reserved output for coarse-to-force/torque mapping; currently
-%             left empty unless provided by downstream extensions.
+%             assembled from the factors above (empty when no peanut map
+%             and if opt.cmap is false).
+%   Cmap_FU  - Reserved output for coarse-to-force/torque mapping,
+%             alternatively coarse-to-RBM mapping (empty when no peanut map
+%             and if opt.cmap is false).
 %
 % Notes:
 %   - Pair source ordering follows the assembled pair vectors in this file:
@@ -56,9 +59,7 @@ if nargin < 10 || isempty(debug)
     debug = false;
 end
 
-
-
-P = length(q); 
+P = opt.P;  
 Uf = cell(P);
 Yf = cell(P);
 N_peanut = opt.N_peanut; 
@@ -66,15 +67,22 @@ N_peanut = opt.N_peanut;
 
 %If using peanut compression 
 if N_peanut
-    Up = cell(P);
-    Yp = cell(P);
-    Cmap = cell(P);
-    Cmap_F = cell(P);
+    if opt.cmap
+        Up = [];
+        Yp = [];
+        Cmap = cell(P);
+        Cmap_FU = cell(P);
+    else
+        Up = cell(P);
+        Yp = cell(P);
+        Cmap = [];
+        Cmap_FU = [];
+    end
 else
     Up = [];
     Yp = [];
     Cmap = [];
-    Cmap_F = [];
+    Cmap_FU = [];
 end
 
 
@@ -171,22 +179,6 @@ for i = 1:P
                 %particle in the pair at the time, zero on the other
                 Npair = evaluateCoarseOnPair([q(i),q(p2)],rbase_in_c,rout_f);
  
-%                 % DEBUG
-%                 mapped = rand(opt.N_c*2,1);
-%                 tau_mapped= rand(opt.N_c*2,1);
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2); 
-%                 Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,1);
-%                 R2 = -Nother*tau_mapped; %read off on particle 2
-%                  
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,,refine,q,p2,i); 
-%                 Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,1);
-%                 R1 = -Nother2*mapped; %read off on particle 1
-%               
-%                 rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];
-%                 rhs2 = -Npair*[tau_mapped(1:end/2); mapped(1:end/2); tau_mapped(end/2+1:end); mapped(end/2+1:end)];
-
-                %rhs and rhs2 should be the same!
-
                 Uf{i,p2} = -Uf_pair'*Npair; 
             else
                 Uf{i,p2} = Uf_pair';
@@ -198,22 +190,28 @@ for i = 1:P
                 
                 peanut_debug = 0; 
                 rout_peanut = createPeanut(q(i),q(p2),N_peanut,peanut_debug);    
-                rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
-                %[DC,YC] = getPeanutBlock(rin_pair_c,rin_pair,rout_peanut,[],[],[0 0 0 0 0 0],Lc_pair,Lf_pair); 
+                rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];      
                 [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair); 
-                          
-
-                Up{i,p2} = DC;
-                Yp{i,p2} = YC;
-                % Determine coarse to coarse map for the pair
+  
                 if opt.cmap
+                    % Determine coarse to coarse map for the pair
                     Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
+                    %Construct mapping also for the 
+                    % i) fource and torque vector (ONLY for resistance), or
+                    % ii) RBM vector (ONLY for mobility)
+                    if project  % mobility problem
+                        % contribu
+                        Cmap_FU{i,p2} = Lf_pair*Yf_pair*(Uf_pair'*Npair);
+                    else % resistance problem
+                        %contribution from RBM vector from pair
+                        Cmap_FU{i,p2} = -Lf_pair*Yf_pair*(Uf_pair'*Npair);
+                    end
+                else
+                    % Store compression for the fine grid
+                    Up{i,p2} = DC;
+                    Yp{i,p2} = YC;
                 end
-
-                %Construct mapping also to the fource and torque vector
-                %Cmap_F{i,p2} = 
-
-
+ 
             end
              
     

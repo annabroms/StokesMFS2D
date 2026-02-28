@@ -153,7 +153,7 @@ end
 
 
 %Get pair basis                                               
-[UB_all,YB_all,UC_all,YC_all,Cmap,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
@@ -178,7 +178,7 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
-
+basis.Cmap_FU = Cmap_FU; 
 
 %Visualise 1-body and pair-basis
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,[],refine,UB_all,YB_all,UU,YY,[],[],N_c,N_f,a_c,a_f,rads)

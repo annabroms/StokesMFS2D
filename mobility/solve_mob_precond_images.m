@@ -684,6 +684,10 @@ q = [0; 2+delta; 4+2*delta];
 % y = sqrt((2+delta)^2-(1+delta/2)^2);
 % q = [0; 2+delta; x+1i*y];
 
+rng(5); 
+P = 3; 
+q = grow_cluster(P,delta,2);
+
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
 rads = [1; 1; 1]; 
@@ -698,7 +702,7 @@ visualise = 1;
 images = 1; 
 delta_pair = 0.2; 
 lr= 0; 
-[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 

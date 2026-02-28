@@ -1,5 +1,7 @@
-function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
-%SOLVE_MOB_PEANUT_ENHANCED Solve a 2D Stokes mobility problem with peanut-compressed pair corrections.
+function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
+%SOLVE_MOB_PEANUT_ENHANCED Solve a 2D Stokes mobility problem with
+%peanut-compressed pair corrections. The enhanced discretisation for each
+%pair consists of Stokeslets only. 
 %
 % Syntax:
 %   [UW,lambda,it,gmres_tol,rel_res,abs_res] = solve_mob_peanut_enhanced( ...
@@ -20,7 +22,8 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q
 %
 % Outputs:
 %   UW         - Rigid-body motion vector [Ux1; Uy1; W1; ...; UxP; UyP; WP].
-%   lambda     - Stacked coarse source strengths [lambda_x; lambda_y].
+%   lambda_c   - Stacked coarse source strengths [lambda_x; lambda_y]
+%                based on compressed grid.
 %   it         - GMRES iterations.
 %   gmres_tol  - GMRES tolerance used.
 %   rel_res    - Maximum relative boundary residual on an independent check grid.
@@ -28,7 +31,8 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q
 %
 % Notes:
 %   - Call with no inputs to run the built-in test.
-%   - Pair-source contributions in UW include both body-fine and image-fine nodes.
+%   - All Stokeslet sources contribute to the rigid body velocities
+%     computed in UW.
 %
 % Anna Broms, Feb 23, 2026
 
@@ -38,7 +42,7 @@ if nargin==0, test_solve_mob;
 if nargin < 6 || isempty(visualise), visualise = 0; end
 if nargin < 7 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 8 || isempty(debug), debug = false; end
-if nargin < 9 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+if nargin < 9 || isempty(surface_error_mode), surface_error_mode = 'rel'; end
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -46,25 +50,21 @@ end
 
 %% SET PARAMS
 %GMRES params
-maxit = 800; 
-solver_name = 'solve_mob_peanut_enhanced';
+maxit = 800; % max GMRES iterations
+solver_name = 'mob_peanut_enhanced';
 
-% Grid params
-P = length(q); 
 %Set coarse and fine grid. 
-
 %Play with N_c, N_f, a (a_f). 
-N_c = 60;  %100 better here? 
+N_c = 80;  %Number of Stokeslets per body on coarse grid.
+% higher resolution better here for dense systems
 %N_c = 150; 
-%N_c = 100; 
-%N_c = 200; 
-N_f = 150; 
-%N_f = N_c; %debug
+
+N_f = 150; %Number of Stokeslets per body on coarse grid. Only used for the 2-body BVP
+%N_f = N_c; 
 
 %N_c = 250; 
-a_c = 1.2; 
-
-a_f = 1.2; %upsampling factor for the fine grid
+a_c = 1.2; % ratio between number of source and collocation points for coarse proxy grid
+a_f = 1.2; % ... for the fine proxy grid
 
 tol_c = 1e-12; %I think this works reasonably
 %tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff  
@@ -75,14 +75,15 @@ sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
 Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
 Rp_f = max([1-sep_f,0.01]);  % and fine grid
-%Rp_c = 0.85;
-%Rp_f = Rp_c; %debug
+%Rp_f = Rp_c; %testing
 
-%accumulation point, given Rg and delta. Closed formula from fixed point of reflection formula
+%radius for which additional, enhancing nodes, should not be used. Based on
+%closed formula from fixed point of reflection.
 accstop = (1-Rp_c)^2/Rp_c;  
 
 if nargin < 4 || isempty(delta_pair)
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
+    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop). 
+    % We may choose delta_pair larger than accstop.
 end
 
 opt = get2Dparams(); 
@@ -92,17 +93,18 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.N_peanut = N_peanut;
+opt.N_peanut = N_peanut; %numer of points on peanut boundary
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
 % %Less storage required.
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 
-opt.cmap = 0; 
-opt.Nclust = 200; %points on ellipse segments, for now (not the actual number as some will fall inside the proxy curve)
- 
+opt.cmap = 1; % Use coarse to coarse mapping by multiplying together all factors needed for the fine grid mapping 
+opt.Nclust = 100; %points on ellipse segments, for now (not the actual number as some will fall inside the proxy curve)
 
-%% CREATE GRID
+P = length(q);
+opt.P = P; 
+%% Discretize
 %Outer basic grid
 tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c_all(1:end-1)';
@@ -125,12 +127,9 @@ for k = 1:P
     rout = [rout; rbase_out_c+q(k)];
 end
 
-
-%get evaluation of lambda0
+%% Prepare completion flow, one- and two-body factorisations
+%get completion flow: evaluation of lambda0
 [urhs,~] = getRecompletionFlow(rvec_in_c,rout,q,F,T); 
-
-Kf = getKmat2D(rbase_in_f,0);
-Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 rimage_in = []; 
@@ -138,78 +137,15 @@ rimage_in = [];
 
 %Get pair basis
 plot_grid = 0; 
-[UB_all,YB_all,UC_all,YC_all,Cmap,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},plot_grid);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},plot_grid);
                               
-%build the mapping that maps coarse boundary data to coarse proxy data
-%A = buildCoarseMap(UB_all,YB_all,UC_all,YC_all,U,Y);
 
-
-%Visualisation for presentation / paper
-% if visualise
-%     figure(2) 
-%     hold on
-%     
-%     tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1);
-%     tout_f = tout_f(1:end-1)';
-%     rbase_out_f = cos(tout_f)+1i*sin(tout_f);
-%     rin_f = [];
-%     rout_plot = [];
-%     for k = 1:P
-%         rin_f = [rin_f; q(k)+rbase_in_f]; %just for visuals
-%         rout_plot = [rout_plot; q(k)+rbase_out_c]; %just for visuals
-%     end
-%     fill(real(rout_plot(1:end/2)),imag(rout_plot(1:end/2)),[0 0 0],'FaceAlpha',0.1,'EdgeColor','none')
-%     hold on
-%     fill(real(rout_plot(end/2+1:end)),imag(rout_plot(end/2+1:end)),[0 0 0],'FaceAlpha',0.1,'EdgeColor','none')
-% 
-%     red = [231,51,57]/256;
-%     yellow = [251,186,0]/256;
-%     blue = [25,105,188]/256;
-%     newred = 0.7*red+0.3*yellow;
-%     plot(real(rvec_in_c),imag(rvec_in_c),'k.');
-%     hold on
-%     %plot(real(rin_f),imag(rin_f),'.','Color',newred);
-%     
-%     
-% %     rf1 = refine{1,2};
-% %     rf2 = refine{2,1};
-% %     plot(real(rout_f),imag(rout_f),'.','Color',blue)
-% %     plot(cos(rf1),sin(rf1),'.','Color',blue)
-% %     plot(cos(rf2)+real(q(2)),sin(rf2)+imag(q(2)),'.','Color',blue)
-%     
-%     plot(real(rout_plot),imag(rout_plot),'.','Color',blue)
-%     rimage1 = rimage_vec{2,1};
-%     rimage2 = rimage_vec{1,2};
-%     rimage1 = rimage1(end);
-%     rimage2 = rimage2(1); 
-%     plot(real(rimage1),imag(rimage1),'.','Color',newred,'MarkerSize',18)
-%     plot(real(rimage2),imag(rimage2),'.','Color',newred,'MarkerSize',18);
-%     axis equal
-% 
-%     delta = abs(q(1)-q(2))-2;
-%     alpha = acos((2+delta)/4);
-%     x = 1+delta/2;
-%     y = 2*sin(alpha);
-% 
-% %     third = x+cos(tout_c_all)+1i*y+1i*sin(tout_c_all);
-% %     plot(real(third),imag(third),'k--');
-% % 
-% %     third2 = x+cos(tout_c_all)-1i*y+1i*sin(tout_c_all);
-% %     plot(real(third2),imag(third2),'k--');
-% 
-% end
-
-
-
-
+% TODO: update visualisation:
 %Visualise 1-body and pair-basis
 %warning('Deactivate opt.precomp');
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
 
-
-Lc_pair = getILpair(Lc{1});
-
-
+Lc_pair = getILpair(Lc{1}); %I-L projection with coarse grid for a pair. TODO: replace.
 
 %% Construct check boundaries
 %rcheck_dom = 100+100i; %some point far away
@@ -223,6 +159,7 @@ for k = 1:P
     rcheck_b = [rcheck_b; q(k)+cos(t)+1i*sin(t)];
 end
 
+%% Repackage to prepare for solve
 % Shared input structs for matvec and transform calls.
 % Use dot-assignment to keep cell fields intact and avoid struct-array expansion.
 geom_solve = struct();
@@ -246,15 +183,15 @@ basis_mob.Ypf = YB_all;
 basis_mob.DC_all = UC_all;
 basis_mob.YC_all = YC_all;
 basis_mob.Cmap = Cmap;
+basis_mob.Cmap_FU = Cmap_FU; 
 basis_mob.Lc_pair = Lc_pair;
-
 
 geom_check = geom_solve;
 geom_check.rcheck = rcheck_b;
 
 %% Solve system
 
-% Build the matrix to check it out
+% Debug mode: build the matrix to check it out
 if debug
     x = zeros(2*length(rout),1);
     tic
@@ -279,9 +216,10 @@ if debug
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of CC'],'interpreter','latex')
 end
 
+% Solve
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob),...
     urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
 
@@ -292,10 +230,10 @@ title('GMRES convergence with peanut compression, mobility', 'interpreter','late
 
 if visualise
     %check residual
-    restot = matvec_mob_peanut_enhanced(tau,geom_solve,basis_mob)./urhs;
+    restot = (matvec_mob_peanut_enhanced(tau,geom_solve,basis_mob)-urhs)./urhs;
     figure()
     semilogy(abs(restot))
-    title('Rel res at colloc points for mob peanut')
+    title([solver_name ': Rel res at colloc points'],'interpreter','latex')
 end
 % hold on
 % semilogy(resvec2); 
@@ -303,10 +241,11 @@ end
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 
+% Recover coarse and fine sources from data on the boundary
 [tau_stokes_x, tau_stokes_nonpx,~, tau_beta_x,tau_stokes_y, ...
     tau_stokes_nonpy,~,tau_beta_y,~,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom_check,basis_mob);
-lambda = [tau_stokes_x; tau_stokes_y];
+lambda_c = [tau_stokes_x; tau_stokes_y];
 
 %%% Get rigid body motion. 
 
@@ -348,19 +287,11 @@ S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T);
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
                     %This is accordinng to the representation of the flow
 
-%debug                    
-% figure()
-% subplot(1,2,1)
-% plot(u_rhs);
-% hold on
-% plot(u_lhs);
-% subplot(1,2,2)
-% semilogy(abs(u_rhs-u_lhs));
-
-
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs;
-max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
+
+%max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
+max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
 res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
 abs_res = max(res); 
 if max_abs > 0
@@ -371,8 +302,6 @@ end
 rel_res = max(rel_vec);
 fprintf('Relative boundary error: %.3e\n', rel_res);
 fprintf('Absolute boundary error: %.3e\n', abs_res);
-
-
 
  
 if visualise
@@ -456,9 +385,9 @@ if visualise
 
 
     %% Visualise source strengths
-%     figure()
-%     semilogy(abs(lambda))
-%     title('Source strengths mobility, peanut compression')
+    figure()
+    semilogy(abs(lambda_c))
+    title('Source strengths mobility, peanut compression')
     
 end
 
@@ -598,13 +527,16 @@ P = 4;
 q = [0; 2+delta; 7; 9+delta];
 
 
-P = 3; 
+P = 2; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));
 %q(1) = 8;
 %q = q+5; 
 %q = q-q(1);
+
+rng(5); 
+q = grow_cluster(P,delta,2);
 
 
 F = [real(q) imag(q)]; 
@@ -621,11 +553,15 @@ delta_pair = 0.5;
 
 %compare to a solution with image enhancement
 N_peanut = 400; 
-[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
-[UW2,lambdahat2,it2,gmres_tol, rel2, abs2] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise);
-[UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
-[UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_precond_enhanced(q,F,T,delta_pair,visualise);
-
+%[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+gmres_tol = 1e-6;
+images = 1; 
+lr = 0; 
+debug = 1; 
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+[UW2,lambdahat2,it2,gmres_tol, rel2, abs2] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug);
+% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
+% [UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_precond_enhanced(q,F,T,delta_pair,visualise);
 alignfigs(3);
 
 end

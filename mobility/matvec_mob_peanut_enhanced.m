@@ -23,13 +23,13 @@ rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
 
+Cmap_FU = basis.Cmap_FU;
+
 P = length(q);
 N_large = length(rvec_out)/P;
 mu = 1; 
 PM = length(rvec_out);
-N_f = opt.N_f;
 N_c = opt.N_c; 
-use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 %Transform coarse \mu -> coarse \lambda
@@ -64,10 +64,14 @@ if isequal(rcheck,rvec_out)
     for i = 1:length(has_neigh)
         k = has_neigh(i); 
 
-        % tau_beta_{x,y}{k} stores all pair-source strengths on particle k
-        % as [fine-body; fine-image], matching source points [rbase_in_f+q(k); rimage_k{k}].
-        rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
-        bcvec = applyBKt2D(rbase_out_rel,0,rsrc_k,q(k),tau_beta_x{k},tau_beta_y{k});
+        if opt.cmap % this is done on a per-pair basis, not per particle
+            bvec = Cmap_FU*[tau_self_x((k-1)*N_c+1:k*N_c); tau_self_y((k-1)*N_c+1:k*N_c)];
+        else
+            % tau_beta_{x,y}{k} stores all pair-source strengths on particle k
+            % as [fine-body; fine-image], matching source points [rbase_in_f+q(k); rimage_k{k}].
+            rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
+            bcvec = applyBKt2D(rbase_out_rel,0,rsrc_k,q(k),tau_beta_x{k},tau_beta_y{k});
+        end
 
         res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
         res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);

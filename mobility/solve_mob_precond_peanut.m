@@ -286,7 +286,7 @@ semilogy(resvec);
 title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
 
 
-if visualise
+if debug
     %check residual
     restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
     figure()
@@ -350,6 +350,7 @@ u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion f
 
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs;
+
 max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
 res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
 abs_res = max(res);

@@ -199,22 +199,6 @@ for i = 1:P
                 %particle in the pair at the time, zero on the other
                 Npair = evaluateCoarseOnPair([q(i),q(p2)],rbase_in_c,rout_f);
  
-%                 % DEBUG
-%                 mapped = rand(opt.N_c*2,1);
-%                 tau_mapped= rand(opt.N_c*2,1);
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
-%                 Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,1);
-%                 R2 = -Nother*tau_mapped; %read off on particle 2
-%                  
-%                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
-%                 Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,1);
-%                 R1 = -Nother2*mapped; %read off on particle 1
-%               
-%                 rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];
-%                 rhs2 = -Npair*[tau_mapped(1:end/2); mapped(1:end/2); tau_mapped(end/2+1:end); mapped(end/2+1:end)];
-
-                %rhs and rhs2 should be the same!
-
                 Uf{i,p2} = -Uf_pair'*Npair; 
             else
                 Uf{i,p2} = Uf_pair';
