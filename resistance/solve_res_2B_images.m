@@ -1,13 +1,13 @@
-function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug)
-%SOLVE_RES_PRECOND_ENHANCED Solves a 2D Stokes resistance problem with circular
+function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug)
+%SOLVE_RES_PRECOND_IMAGES Solves a 2D Stokes resistance problem with circular
 %particles using MFS with 2-body preconditioning. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
 % source strengths on each close pair of particles. The fine sources,
-% including shielding of image points, correct the representation
+% including sources at approximate image points, correct the representation
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_res_precond_enhanced(q, U, W, rads, delta_pair, lr, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_res_2B_images(q, U, W, rads, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -30,23 +30,23 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_precond_enhanced(q,U,W,rads
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
-%   to improve solution accuracy for near-contact particle configurations.
-%   The FMM is used for Stokeslet evaluation.
+%   along with image systems to improve solution accuracy for near-contact particle configurations.
+%   The FMM is used for Stokeslet evaluation, while other source types use direct summation.
 %
 % Notes:
 %   - This is an MFS generalisation of the Cheng-Greengard idea (1998/2000)
-%   - Intended to match solve_mob_precond_images, but applied to a resistance problem rather than mobility.
+%   - Intended to match solve_mob_2B_images, but applied to a resistance problem rather than mobility.
 %
 % See also:
-%   solve_2D_res              - 1-body preconditioned resistance solver
-%   solve_res_precond_peanut - 2-body preconditioner with peanut
+%   solve_res_1B              - 1-body preconditioned resistance solver
+%   solve_res_peanut_images - 2-body preconditioner with peanut
 %                              compression (in this version of the algorithm, only coarse sources
 %                              are needed at the solve stage).
-%   solve_mob_precond_images   - 2-body preconditioned mobility solver
+%   solve_mob_2B_images   - 2-body preconditioned mobility solver
 %
 % To test: Call without arguments.
 %
-% Anna Broms, Feb 13, 2025
+% Anna Broms, April 9, 2025
 
 if nargin==0, test_solve_res; 
     return; end
@@ -66,7 +66,7 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_res_precond_enhanced';
+solver_name = 'solve_res_2B_images';
 
 % Grid params
 P = length(q); 
@@ -80,7 +80,7 @@ N_c = 60;  %100 better here?
 %N_c = 150; 
 %N_c = 100; 
 N_f = 150; 
-N_f = 60;
+%N_f = 100;
 %N_f = N_c; %debug
 
 %N_c = 250; 
@@ -94,6 +94,11 @@ tol_c = 1e-12; %I think this works reasonably
 
 %tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+
+
+s = [0 0 1 1 0 0 0]; %set type of singularities at image points
+%s = [1 0 1 1]; %Other singularities? Currently not supported! But code can
+%be changed!
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
@@ -110,13 +115,14 @@ if nargin < 5
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
 end
  
+opt.s = s;
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
 opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-
+opt.s = s; 
 opt.P = P; 
 opt.N_peanut = 0; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
@@ -124,7 +130,6 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 opt.lr = lr; %using long range preconditioning? 
-opt.Nclust = 200; %trial nodes at ellipse segments. 
 
 
 %% CREATE GRID
@@ -136,42 +141,61 @@ rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin); 
-tin_f = linspace(0,2*pi,N_f+1);
-tin_f = tin_f(1:end-1)'; 
-rbase_in_f = Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f); 
 
 %Construct image grid
 %will return only the basic outer grid, else refined outer grid 
-
-rout = []; 
-for k = 1:P
-    rout = [rout; rbase_out_c+q(k)];
-end
  
-[~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+[rout,~,rin,rimage,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+% pairs = [2,3];
+% figure()
+% for k = 1:P
+%     plot(real(rbase_out_c+q(k)),imag(rbase_out_c+q(k)),'k-')
+%     hold on   
+%     scatter(real(rbase_in_c+q(k)),imag(rbase_in_c+q(k)),20,'filled','b')  
+% end
+% %axis off
+% axis equal
+% ylim([-5.5,3])
+% set(gcf,'Color','white')
+% 
+% figure()
+% for k = 1:P
+%     if k ==2
+%         fill(real(rbase_out_c+q(k)),imag(rbase_out_c+q(k)),[229 229 229]/255, 'EdgeColor', 'none');
+%     end
+%     hold on
+% 
+% 
+%     if find(k==pairs(:))
+%         scatter(real(rbase_in_f+q(k)),imag(rbase_in_f+q(k)),20,'filled','r') 
+%         plot(real(rbase_out_c+q(k)),imag(rbase_out_c+q(k)),'k-','LineWidth',2)
+%     else
+%         plot(real(rbase_out_c+q(k)),imag(rbase_out_c+q(k)),'k-','LineWidth',1)
+%         scatter(real(rbase_in_c+q(k)),imag(rbase_in_c+q(k)),20,'filled','b','MarkerFaceAlpha',0.5,'MarkerEdgeAlpha',0.5) 
+%         t_cc = linspace(0,2*pi,50);
+%         rbase_out_cc = cos(t_cc)+1i*sin(t_cc);
+%         plot(real(rbase_out_cc+q(k)),imag(rbase_out_cc+q(k)),'--','Color',[0.9 0.9,0.9])
+%     end
+% end
+% for i = 1:size(pairs,1)
+%     j = pairs(i,1);
+%     k = pairs(i,2);  
+%     scatter(real(rimage_vec{j,k}),imag(rimage_vec{j,k}),20,'filled','r');
+%     scatter(real(rimage_vec{k,j}),imag(rimage_vec{k,j}),20,'filled','r');
+% end
+% %
+% axis equal
+% %ylim([-5.5,1.])
+% %axis off
+% set(gcf,'Color','white')
+
 
 %Get pair basis
-[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
-
-geom = struct();
-geom.rbase_in_c = rbase_in_c;
-geom.rbase_in_f = rbase_in_f;
-geom.refine = refine;
-geom.rimage_vec = rimage_vec;
-geom.opt = opt;
-geom.rvec_out = rout;
-geom.q = q;
-geom.pairs = pairs;
-
-basis = struct();
-basis.U = UU;
-basis.Y = YY;
-basis.Upf = Upf;
-basis.Ypf = Ypf;
 
 
 %Visualise 1-body and pair-basis
@@ -195,6 +219,10 @@ fout = [foutx; fouty];
 
 
 %% Construct check boundaries
+if nargin < 6
+    rcheck_dom = 100+100i; %some point far away
+end
+
 % Create new grid points, for which the accuracy of the solution is
 % to be evaluated. 
 rcheck_b = [];
@@ -213,7 +241,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_pairprecond_enhanced(x,geom,basis);
+        uu = matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
         CC(:,k) = uu;
     end
     toc
@@ -237,63 +265,59 @@ if debug
     Mc = round(a_c*N_c);
     t = linspace(0,2*pi,Mc+1);
     t = t(1:end-1)'; 
-    
-    %% Visualise eigvecs of system matrix
-    eigvec_vis = 0; 
-    if eigvec_vis
-        for i = 1:3
-            for k = 1:P  
-                Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
-                Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
-                Vp = abs(Vpx+1i*Vpy);
-                figure(31)
-                subplot(1,3,i)
-                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vp,40,Vp,'filled');
-                hold on
-                colorbar
-                view(0,90)
-    
-                figure(32)
-                subplot(1,3,i)
-                plot(t,Vp)
-                hold on
-    
-    
-                figure(27)
-                subplot(1,3,i)
-                plot(t,Vpx)
-                hold on
-    
-                figure(28)
-                subplot(1,3,i)
-                plot(t,Vpy)
-                hold on
-    
-                figure(29)
-                subplot(1,3,i)
-                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
-                hold on
-                colorbar
-                view(0,90)
-    
-                figure(30)
-                subplot(1,3,i)
-                scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
-                hold on
-                colorbar
-                view(0,90)
-    
-    
-    
-            end
+
+    for i = 1:3
+     
+        for k = 1:P  
+            Vpx = Vsmall((k-1)*Mc+1:k*Mc,i);
+            Vpy = Vsmall((k-1)*Mc+Mc*P+1:k*Mc+Mc*P,i);
+            Vp = abs(Vpx+1i*Vpy);
+            figure(31)
+            subplot(1,3,i)
+            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vp,40,Vp,'filled');
+            hold on
+            colorbar
+            view(0,90)
+
+            figure(32)
+            subplot(1,3,i)
+            plot(t,Vp)
+            hold on
+
+
+            figure(27)
+            subplot(1,3,i)
+            plot(t,Vpx)
+            hold on
+
+            figure(28)
+            subplot(1,3,i)
+            plot(t,Vpy)
+            hold on
+
+            figure(29)
+            subplot(1,3,i)
+            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpx,40,Vpx,'filled');
+            hold on
+            colorbar
+            view(0,90)
+
+            figure(30)
+            subplot(1,3,i)
+            scatter3(real(q(k))+sin(t),imag(q(k))+cos(t),Vpy,40,Vpy,'filled');
+            hold on
+            colorbar
+            view(0,90)
+
+
 
         end
+
     end
 end
 %% Experiment with left preconditioner based on deflation
 
 if lr
-    warning('Long range preconditioning not tested')
     rin_c = []; 
     for k = 1:P
         rin_c = [rin_c; rbase_in_c+q(k)];
@@ -305,8 +329,19 @@ if lr
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 
+
+% Check older versions. Any symmetry speedups implemented? 
+
+%res = matvec_2D_pairprecond_images(x,rbase_in_c,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf)
+%res = matvec_2D_pairprecond(x,rvec_in,rvec_out,q,UU,Y,B);
+%[tau,flag,relres,it,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
+if lr
+   Pf = applyPmat(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Z,Y,opt);    
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_pairprecond(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s,Sinv,Z,Y),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);   
+else                                                                                 
+    [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+end
 plot_gmres = true; 
 
 %With Krylov precond, do something like
@@ -320,8 +355,7 @@ if plot_gmres
       title('Convergence resistance with pair corr','interpreter','latex')
 
       %what's the resiudal?
-    %  u = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
-      u = matvec_2D_pairprecond_enhanced(tau,geom,basis);
+      u = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
 %       figure()
 %       semilogy(abs(u-fout))
 %       title('Residual in solution')
@@ -329,73 +363,53 @@ end
 
 
 %% POSTPROCESS
-[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y] = getPairTransformationStokes(tau,geom,basis);
+[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
+    rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf);
 
-lambda =  [tau_stokes_x; tau_stokes_y];
+warning('Think about postprocessing here')
+   % if lr
+   %      %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
+   %      tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM);
+   % 
+   %      tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2);
+   %      tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end);
+   %  end
 
-%% Compute net forces and torque
-% FT = [F_x; F_y; T_z] per particle, assembled from coarse, fine and
-% pair-specific fine source strengths.
-FT = zeros(3*P,1);
+rot = [];
+lambda_image = [tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y; rot];
+lambda_proxy = [tau_stokes_x; tau_stokes_y]; %This is the fine density
+%And evaluate in new points rcheck_dom and rcheck_b
+lambda = [lambda_proxy; lambda_image]; 
 
-% Coarse source contribution.
-Kc = getKmat2D(rbase_in_c,0);
-for k = 1:P
-    seg = (k-1)*3+1:3*k;
-    idx = coarse_ind{k};
-    FT(seg) = FT(seg) + Kc'*[tau_stokes_x(idx); tau_stokes_y(idx)];
+
+%% Compute forces
+K = getKmat2D(rbase_in_c,0);
+FT = zeros(3*P,1); 
+for k= 1:P
+    FT((k-1)*3+1:3*k) = K'*[tau_stokes_x((k-1)*N_c+1:k*N_c); tau_stokes_y((k-1)*N_c+1:k*N_c)];
 end
 
-% Fine and image-source contributions are stored particle-by-particle in
-% the same order as in getPairTransformationStokes.
+K = getKmat2D(rbase_in_f,0);
 has_neigh = sort(unique(pairs(:)));
-Kf = getKmat2D(rbase_in_f,0);
-offset = P*N_c;
-
-% Number of (extra) sources per particle for index bookkeeping.
-n_im = zeros(P,1);
-for row = 1:size(pairs,1)
-    i1 = pairs(row,1);
-    i2 = pairs(row,2);
-    n_im(i1) = n_im(i1) + length(rimage_vec{i1,i2});
-    n_im(i2) = n_im(i2) + length(rimage_vec{i2,i1});
-end
-
 for i = 1:length(has_neigh)
-    k = has_neigh(i);
-    seg = (k-1)*3+1:3*k;
-
-    % Contribution from fine proxy ring (N_f points).
-    fine_idx = offset + (1:N_f);
-    offset = offset + N_f;
-    FT(seg) = FT(seg) + Kf'*[tau_stokes_x(fine_idx); tau_stokes_y(fine_idx)];
-
-    % Contribution from pair-specific extra/image points.
-    nimk = n_im(k);
-    if nimk > 0
-        extra_idx = offset + (1:nimk);
-        offset = offset + nimk;
-        Kim = getKmat2D(rvec_in(extra_idx),q(k));
-        FT(seg) = FT(seg) + Kim'*[tau_stokes_x(extra_idx); tau_stokes_y(extra_idx)];
-    end
+    k = has_neigh(i); 
+    FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+ K'*[tau_stokes_x((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
+        tau_stokes_y((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
 end
-
-if offset ~= length(tau_stokes_x)
-    error('Force postprocessing indexing mismatch in solve_res_precond_enhanced.');
-end
-
 
 %extract force and torque separately
-for k = 1:P
-    F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
-    T(k) = FT(3*k); 
-end
+% for k = 1:P
+%     F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
+%     T(k) = FT(3*k); 
+% end
 
 
 %% Do the evaluation of the flow in check points , FMM is applied.
-
 ftest_b = getVelocityField(rvec_in,rcheck_b,...
-    tau_stokes_x,tau_stokes_y);
+    tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
+%ftest = getVelocityField(rvec_in,rcheck_dom,...
+%    tau_stokes_x,tau_stokes_y,rimage_in,nimage_in,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y);
+
 
 %% Compute residual at boundary
 fbound_x = ftest_b(1:length(rcheck_b));
@@ -412,7 +426,11 @@ for k = 1:P
     fb_y = [fb_y; fb_true(n_bound+1:end)];   
 end
 
-maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
+
+
+
+maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+fprintf('Max surf rel res at new nodes %.3e\n', maxres);
 
 %Some visualisation stuff... 
 if visualise
@@ -490,7 +508,7 @@ if visualise
 
     %% Visualise density
     figure()
-    semilogy(abs(lambda))
+    semilogy(abs([lambda_proxy;lambda_image]))
     ylabel('Magnitude of MFS coefficients','interpreter','latex')
     title('Pair corr resistance')
 
@@ -649,7 +667,7 @@ end
 function test_solve_res
 
 close all; 
-delta = 0.01; 
+delta = 0.001; 
 q = [0; 2+delta; (2+delta)*1i]; %center coordinates
 
 %or, instead, three cireles in triangle - this DOES NOT converge to a good
@@ -673,29 +691,24 @@ delta_pair = 0.2;
 test = 1; % 1 or 2
 %% compare to a solution with 1 body precond only
 if test == 1
-    %[FT,lambda,it1,gmres_tol,err1] = solve_2D_res(q,U,W,rads,images, visualise);
+    %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, visualise);
     rng(9);
-    P = 3;
-    delta = 0.05; %P = 5
-    delta = 1e-2;
+    P = 40;
+    delta = 0.01; %P = 5
     %delta = 1;
-    q = [0; 2+delta; 6];
-    %q = grow_cluster(P,delta,2);
-    side = 2 + delta;               % neighbor center distance
-    R = side / (2*sin(pi/P));         % ring radius
-    %q = R * exp(1i * (0:P-1).' * (2*pi/P));
+    q = grow_cluster(P,delta,2);
+    % side = 2 + delta;               % neighbor center distance
+    % R = side / (2*sin(pi/P));         % ring radius
+    % q = R * exp(1i * (0:P-1).' * (2*pi/P));
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); rads = ones(P,1);
     lr = 20; 
     lr = 0; 
-    images = 1; 
-
-    [FT1,lambda,it1,gmres_tol,err1] = solve_2D_res(q,U,W,rads,images, lr,visualise);
-    [FT2,lambda,it2,gmres_tol,err2] = solve_res_precond_enhanced(q,U,W,rads,delta_pair,lr,visualise);
-    [FT3,lambda,it3,gmres_tol,err3] = solve_res_precond_images(q,U,W,rads,delta_pair,lr,visualise);
-
-
+    images = 0; 
+    [FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, lr,visualise);
+    [FT,lambda,it2,gmres_tol,err2] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
+    
     str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
     disp(str)
     
@@ -704,12 +717,13 @@ else
     
     %% determine 2-way error (solve resistance followed by mob)
     lr = 0;
-    [FT,lambda,it1,gmres_res, err_res] = solve_res_precond_images(q,U,W,rads,delta_pair,lr,visualise);
+    [FT,lambda,it1,gmres_res, err_res] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
     F = [FT(1:3:end) FT(2:3:end)];
     T = FT(3:3:end); 
-    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
     Ures = [U W]';
     str = sprintf('Two way error is %1.3e, with resistance residual %1.3e and mobility residual %1.3e',norm(Ures(:)-UW),err_res,err_mob)
     alignfigs;
 end
 end
+

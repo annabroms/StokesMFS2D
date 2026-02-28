@@ -1,4 +1,4 @@
-function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise, gmres_tol, debug, surface_error_mode)
+function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rads, delta_pair, visualise, gmres_tol, debug, surface_error_mode)
 %SOLVE_MOB_PRECOND_IMAGES Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -7,7 +7,7 @@ function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_im
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_images(q, F, T, rads, delta_pair, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rads, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -39,11 +39,11 @@ function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_im
 %   - Intended to match solve_2D_precond_images, but applied to a mobility problem rather than resistance.
 %
 % See also:
-%   solve_2D_mob              - 1-body preconditioned mobility solver
-%   solve_mob_precond_peanut - 2-body preconditioner with peanut
+%   solve_mob_1B              - 1-body preconditioned mobility solver
+%   solve_mob_peanut_images - 2-body preconditioner with peanut
 %                              compression (in this version of the algorithm, only coarse sources
 %                              are needed at the solve stage).
-%   solve_res_precond_images   - 2-body preconditioned resistance solver
+%   solve_res_2B_images   - 2-body preconditioned resistance solver
 %
 % To test: Call without arguments.
 %
@@ -65,7 +65,7 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_mob_precond_images';
+solver_name = 'solve_mob_2B_images';
 
 %Grid params
 P = length(q); 
@@ -702,11 +702,11 @@ visualise = 1;
 images = 1; 
 delta_pair = 0.2; 
 lr= 0; 
-%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 
-[UW2,lambda,it2,gmres_tol,err2] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+[UW2,lambda,it2,gmres_tol,err2] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

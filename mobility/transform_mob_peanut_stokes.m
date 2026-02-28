@@ -1,11 +1,11 @@
-function [tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x, ...
-    tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr,rimage_k] = ...
+function [lam_stokes_x, lam_stokes_nonpx,lam_self_x, lam_beta_x, ...
+    lam_stokes_y,lam_stokes_nonpy,lam_self_y,lam_beta_y,u_corr,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom,basis)
 %TRANSFORM_MOB_PEANUT_STOKES Map coarse boundary data to compressed Stokes sources.
 %
 % Syntax:
-%   [tau_stokes_x,tau_stokes_nonpx,tau_self_x,tau_beta_x,...
-%    tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr,rimage_k] = ...
+%   [lam_stokes_x,lam_stokes_nonpx,lam_self_x,lam_beta_x,...
+%    lam_stokes_y,lam_stokes_nonpy,lam_self_y,lam_beta_y,u_corr,rimage_k] = ...
 %       transform_mob_peanut_stokes(tau,geom,basis)
 %
 % Inputs:
@@ -16,10 +16,10 @@ function [tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x, ...
 %           U, Y, Lc, Upf, Ypf, DC_all, YC_all, Cmap, Lc_pair.
 %
 % Outputs:
-%   tau_stokes_x, tau_stokes_y     - Projected coarse source strengths.
-%   tau_stokes_nonpx, tau_stokes_nonpy - Unprojected coarse source strengths.
-%   tau_self_x, tau_self_y         - One-body coarse projected strengths.
-%   tau_beta_x, tau_beta_y         - Cell arrays with per-particle pair-source strengths
+%   lam_stokes_x, lam_stokes_y     - Projected coarse source strengths.
+%   lam_stokes_nonpx, lam_stokes_nonpy - Unprojected coarse source strengths.
+%   lam_self_x, lam_self_y         - One-body coarse projected strengths.
+%   lam_beta_x, lam_beta_y         - Cell arrays with per-particle pair-source strengths
 %                                    ordered as [fine-body; fine-image].
 %   u_corr                         - Pair-local correction on the check grid.
 %   rimage_k                       - Per-particle image-source locations accumulated from pair corrections.
@@ -55,15 +55,15 @@ PM2 = length(rcheck_out);
 %map densities back
 
 %Preallocate
-tau_stokes_x = zeros(N_c*P,1); 
-tau_stokes_y = zeros(N_c*P,1);
-tau_stokes_nonpx = zeros(N_c*P,1);
-tau_stokes_nonpy = zeros(N_c*P,1);
+lam_stokes_x = zeros(N_c*P,1); 
+lam_stokes_y = zeros(N_c*P,1);
+lam_stokes_nonpx = zeros(N_c*P,1);
+lam_stokes_nonpy = zeros(N_c*P,1);
 
-tau_beta_f_x = zeros(N_f*P,1);
-tau_beta_f_y = zeros(N_f*P,1);
-tau_beta_e_x_chunks = repmat({cell(0,1)},P,1);
-tau_beta_e_y_chunks = repmat({cell(0,1)},P,1);
+lam_beta_f_x = zeros(N_f*P,1);
+lam_beta_f_y = zeros(N_f*P,1);
+lam_beta_e_x_chunks = repmat({cell(0,1)},P,1);
+lam_beta_e_y_chunks = repmat({cell(0,1)},P,1);
 
 rimage_k = cell(P,1);
 
@@ -85,23 +85,23 @@ for i = 1:P
     step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other?
     tau_mapped = Y{1}*step1; %this is the mapped density for this particle to throw in to the kernel
 
-    tau_stokes_nonpx(coarse_ind) = tau_mapped(1:N_c);
-    tau_stokes_nonpy(coarse_ind) = tau_mapped(N_c+1:end);
+    lam_stokes_nonpx(coarse_ind) = tau_mapped(1:N_c);
+    lam_stokes_nonpy(coarse_ind) = tau_mapped(N_c+1:end);
 
     %Project
     tau_i_x = tau_mapped(1:N_c);
     tau_i_y = tau_mapped(N_c+1:end);
     tau_mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
 
-    tau_stokes_x(coarse_ind) = tau_mapped(1:N_c);
-    tau_stokes_y(coarse_ind) = tau_mapped(N_c+1:end);
+    lam_stokes_x(coarse_ind) = tau_mapped(1:N_c);
+    lam_stokes_y(coarse_ind) = tau_mapped(N_c+1:end);
 
 end
 
 
 %For subtracting off self-contribution in matvec
-tau_self_x = tau_stokes_x;
-tau_self_y = tau_stokes_y; 
+lam_self_x = lam_stokes_x;
+lam_self_y = lam_stokes_y; 
 
 s_ind1_x = 1:opt.N_c; 
 s_ind2_x = opt.N_c+1:2*opt.N_c;
@@ -113,7 +113,7 @@ for i = 1:P
 
     % Reuse phase-1 coarse projected mapping (lambda_coarse) for this body.
     coarse_ind_i = (i-1)*N_c+1:i*N_c;
-    lambda_coarse_i = [tau_self_x(coarse_ind_i); tau_self_y(coarse_ind_i)];
+    lambda_coarse_i = [lam_self_x(coarse_ind_i); lam_self_y(coarse_ind_i)];
 
     %check if particle is in pair.
     if ~isempty(pairs)
@@ -135,7 +135,7 @@ for i = 1:P
             p2 = pairs(neigh(k),2); 
 
             coarse_ind_p2 = (p2-1)*N_c+1:p2*N_c;
-            lambda_coarse_p2 = [tau_self_x(coarse_ind_p2); tau_self_y(coarse_ind_p2)];
+            lambda_coarse_p2 = [lam_self_x(coarse_ind_p2); lam_self_y(coarse_ind_p2)];
 
             % Collect coarse source strengths on body 1 and body 2
             rhs = [lambda_coarse_i(1:end/2); lambda_coarse_p2(1:end/2); ...
@@ -161,14 +161,14 @@ for i = 1:P
             tau_peanut_tot= Lc_pair*tau_peanut_ntot; 
             
             %Store
-            tau_stokes_x((i-1)*N_c+1:N_c*i) = tau_stokes_x((i-1)*N_c+1:N_c*i)+...
+            lam_stokes_x((i-1)*N_c+1:N_c*i) = lam_stokes_x((i-1)*N_c+1:N_c*i)+...
                     tau_peanut_tot(s_ind1_x);
-            tau_stokes_y((i-1)*N_c+1:N_c*i) = tau_stokes_y((i-1)*N_c+1:N_c*i)+...
+            lam_stokes_y((i-1)*N_c+1:N_c*i) = lam_stokes_y((i-1)*N_c+1:N_c*i)+...
                 tau_peanut_tot(s_ind1_y);
 
-            tau_stokes_x((p2-1)*N_c+1:N_c*p2) = tau_stokes_x((p2-1)*N_c+1:N_c*p2)+...
+            lam_stokes_x((p2-1)*N_c+1:N_c*p2) = lam_stokes_x((p2-1)*N_c+1:N_c*p2)+...
                 tau_peanut_tot(s_ind2_x);
-            tau_stokes_y((p2-1)*N_c+1:N_c*p2) = tau_stokes_y((p2-1)*N_c+1:N_c*p2)+...
+            lam_stokes_y((p2-1)*N_c+1:N_c*p2) = lam_stokes_y((p2-1)*N_c+1:N_c*p2)+...
                 tau_peanut_tot(s_ind2_y);
 
             % Pair-local indexing in tau_mapped_tot:
@@ -189,15 +189,15 @@ for i = 1:P
             %   potentially shared per body between more than one pair
             %   
             % - image-fine (e) terms are concatenated per pair
-            tau_beta_f_x((i-1)*N_f+1:N_f*i) = tau_beta_f_x((i-1)*N_f+1:N_f*i)+tau_mapped_tot(f_ind1_x);
-            tau_beta_f_x((p2-1)*N_f+1:N_f*p2) = tau_beta_f_x((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(f_ind2_x);
-            tau_beta_f_y((i-1)*N_f+1:N_f*i) = tau_beta_f_y((i-1)*N_f+1:N_f*i)+tau_mapped_tot(f_ind1_y);
-            tau_beta_f_y((p2-1)*N_f+1:N_f*p2) = tau_beta_f_y((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(f_ind2_y);
+            lam_beta_f_x((i-1)*N_f+1:N_f*i) = lam_beta_f_x((i-1)*N_f+1:N_f*i)+tau_mapped_tot(f_ind1_x);
+            lam_beta_f_x((p2-1)*N_f+1:N_f*p2) = lam_beta_f_x((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(f_ind2_x);
+            lam_beta_f_y((i-1)*N_f+1:N_f*i) = lam_beta_f_y((i-1)*N_f+1:N_f*i)+tau_mapped_tot(f_ind1_y);
+            lam_beta_f_y((p2-1)*N_f+1:N_f*p2) = lam_beta_f_y((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(f_ind2_y);
 
-            tau_beta_e_x_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_x);
-            tau_beta_e_x_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_x);
-            tau_beta_e_y_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_y);
-            tau_beta_e_y_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_y);
+            lam_beta_e_x_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_x);
+            lam_beta_e_x_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_x);
+            lam_beta_e_y_chunks{i}{end+1,1} = tau_mapped_tot(e_ind1_y);
+            lam_beta_e_y_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_y);
 
             %% Evaluate flow field on pair and subtract this contribution. 
             % Replace with fine grid on the pair
@@ -263,16 +263,16 @@ for i = 1:P
 end
 
 % Assemble per-particle pair-source vectors [fine; enhanced]
-tau_beta_x = cell(P,1);
-tau_beta_y = cell(P,1);
+lam_beta_x = cell(P,1);
+lam_beta_y = cell(P,1);
 for k = 1:P
     fine_ind = (k-1)*N_f+1:k*N_f;
-    if isempty(tau_beta_e_x_chunks{k})
-        tau_beta_x{k} = tau_beta_f_x(fine_ind);
-        tau_beta_y{k} = tau_beta_f_y(fine_ind);
+    if isempty(lam_beta_e_x_chunks{k})
+        lam_beta_x{k} = lam_beta_f_x(fine_ind);
+        lam_beta_y{k} = lam_beta_f_y(fine_ind);
     else
-        tau_beta_x{k} = [tau_beta_f_x(fine_ind); vertcat(tau_beta_e_x_chunks{k}{:})];
-        tau_beta_y{k} = [tau_beta_f_y(fine_ind); vertcat(tau_beta_e_y_chunks{k}{:})];
+        lam_beta_x{k} = [lam_beta_f_x(fine_ind); vertcat(lam_beta_e_x_chunks{k}{:})];
+        lam_beta_y{k} = [lam_beta_f_y(fine_ind); vertcat(lam_beta_e_y_chunks{k}{:})];
     end
 end
 

@@ -30,7 +30,7 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,l
 %                          resistance
 %   solve_precond_peanut - 2-body preconditioning with peanut compression
 %                          for resistance
-%   solve_2D_res         - 1-body preconditioned resistance formulation
+%   solve_res_1B         - 1-body preconditioned resistance formulation
 %   (can also be called with lr, but then acting on the sources instead of
 %   the boundary velocity values mu).
 %
@@ -527,7 +527,8 @@ for k = 1:P
     fb_x = [fb_x; fb_true(1:n_bound)];
     fb_y = [fb_y; fb_true(n_bound+1:end)];
 end
-maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
+maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+fprintf('Max surf rel res at new nodes %.3e\n', maxres);
 
 
 %% Get force and torque
@@ -674,11 +675,11 @@ U = [1 0; 0 0]; %translational velocities
 W = [1; 1]; %angular velocities 
 rads = [1; 1]; 
 visualise = 1; 
-[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[FT,lambda, it, gmres_tol, err_im] = solve_2D_res(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err_im] = solve_res_1B(q,U,W,rads,images,visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)
@@ -705,6 +706,6 @@ rads = ones(P,1);
 visualise = 0; 
 lr = 5; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
 
-[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
 
 end

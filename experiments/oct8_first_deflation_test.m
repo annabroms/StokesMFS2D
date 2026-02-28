@@ -31,11 +31,11 @@ for i = 1:length(deltavec)
             U = rand(P,2); %translational velocities 
             W = rand(P,1); %angular velocities 
             % lr = 0;
-            % [~,~, it_0, ~, err_0] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+            % [~,~, it_0, ~, err_0] = solve_res_1B(q,U,W,rads,images,lr,visualise);
             % lr = 1;
-            % [~,~, it_1, ~, err_1] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+            % [~,~, it_1, ~, err_1] = solve_res_1B(q,U,W,rads,images,lr,visualise);
             lr = 2;
-            [~,~, it_2, ~, err_2] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+            [~,~, it_2, ~, err_2] = solve_res_1B(q,U,W,rads,images,lr,visualise);
 
             iters_0(i,k,j) = it_0;
             iters_1(i,k,j) = it_1;

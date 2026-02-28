@@ -1,9 +1,10 @@
-function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_2D_mob(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode)
-%SOLVE_2D_MOB Solves a 2D Stokes mobility problem with circular particles
-% using 1-body preconditioned recompleted MFS.
+function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_mob_1B(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode)
+%SOLVE_MOB_1B Solves a 2D Stokes mobility problem with circular particles
+% using 1-body preconditioned recompleted MFS, with a combination of source
+% types at enhancing nodes
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_2D_mob(q, F, T, rads, image, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_1B(q, F, T, rads, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
@@ -29,9 +30,9 @@ function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_2D_mob(q,F,T,rads,i
 %   abs_res    - Maximum absolute residual in a test (non-collocation) set of boundary nodes
 %
 % See also:
-%   solve_mob_precond_images - 2-body preconditioning enhanced with images for mobility
-%   solve_mob_precond_peanut - 2-body preconditioning with peanut compression for mobility
-%   solve_2D_res             - 1-body preconditioned resistance formulation
+%   solve_mob_2B_images - 2-body preconditioning enhanced with images for mobility
+%   solve_mob_peanut_images - 2-body preconditioning with peanut compression for mobility
+%   solve_res_1B             - 1-body preconditioned resistance formulation
 %
 % To test, call without arguments
 %
@@ -69,7 +70,7 @@ end
 %% PARAMS
 %GMRES
 maxit = 1600; 
-solver_name = 'solve_2D_mob';
+solver_name = 'solve_mob_1B';
 
 project_proxy = 1; %version of the algorithm project_proxy = 0 corresponds to the version where also image points are projected
 
@@ -422,11 +423,11 @@ T = [1; 1]; %torques on the particles
 rads = [1; 1]; 
 visualise = 1; 
 lr = 0; %long range preconditioning
-[UW,lambda_mob,it,gmres_tol,err] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+[UW,lambda_mob,it,gmres_tol,err] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)

@@ -26,8 +26,8 @@ rads = ones(P,1);
 visualise = 0; 
 lr = 20; %lr = 3  %the number of modes will be lr-2. 
 [FT_mu,lambda, it_res_mu, gmres_tol, err_res_mu] = solve_2D_res_lr(q,U,W,rads,images,lr,visualise);
-[FT,lambda, it_res, gmres_tol, err_res] = solve_2D_res(q,U,W,rads,images,lr,visualise);
-[FT2,lambda2, it_res2, gmres_tol, err_res2] = solve_2D_res(q,U,W,rads,images,0,visualise);
+[FT,lambda, it_res, gmres_tol, err_res] = solve_res_1B(q,U,W,rads,images,lr,visualise);
+[FT2,lambda2, it_res2, gmres_tol, err_res2] = solve_res_1B(q,U,W,rads,images,0,visualise);
 FT = rand(1,P*3); 
-[UW,lambda_mob,it_mob,gmres_tol,err_mob] = solve_2D_mob(q,[FT(1:3:end)' FT(2:3:end)'],FT(3:3:end)',rads,images, lr, visualise);
-[UW2,lambda_mob,it_mob2,gmres_tol,err_mob2] = solve_2D_mob(q,[FT(1:3:end)' FT(2:3:end)'],FT(3:3:end)',rads,images, 0, visualise);
+[UW,lambda_mob,it_mob,gmres_tol,err_mob] = solve_mob_1B(q,[FT(1:3:end)' FT(2:3:end)'],FT(3:3:end)',rads,images, lr, visualise);
+[UW2,lambda_mob,it_mob2,gmres_tol,err_mob2] = solve_mob_1B(q,[FT(1:3:end)' FT(2:3:end)'],FT(3:3:end)',rads,images, 0, visualise);

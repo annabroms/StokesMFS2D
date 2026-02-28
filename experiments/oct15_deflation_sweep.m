@@ -26,7 +26,7 @@ for k = 1:length(deltavec)
         W = rand(P,1); %angular velocities 
         for l = 1:length(lrvec)
             lr = lrvec(l);
-            [FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+            [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
             if it > 200
                 disp('Waiting')
             end

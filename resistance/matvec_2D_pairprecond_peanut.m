@@ -13,7 +13,7 @@ PM = length(rvec_out);
 N_c = opt.N_c;
 
 %Transform coarse \mu -> coarse \lambda
-[tau_stokes_x, tau_self_x, ~,~,tau_stokes_y,tau_self_y,~,~,u_corr] = transform_peanut(tau,rbase_in_c,...
+[tau_stokes_x, tau_self_x, ~,tau_stokes_y,tau_self_y,~,u_corr] = transform_peanut(tau,rbase_in_c,...
     rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up,Yp,Cmap,debug);
 
 
@@ -71,4 +71,3 @@ end
 
 
 end
-

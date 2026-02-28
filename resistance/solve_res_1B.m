@@ -1,9 +1,9 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,visualise,gmres_tol,debug)
-%SOLVE_2D_RES Solves a 2D Stokes resistance problem with circular particles
+function [FT,lambda, it, gmres_tol, maxres] = solve_res_1B(q,U,W,rads,image,lr,visualise,gmres_tol,debug)
+%SOLVE_RES_1B Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS.
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res(q, U, W, rads, image, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_res_1B(q, U, W, rads, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
@@ -26,11 +26,11 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res(q,U,W,rads,image,lr,v
 %   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
 %
 % See also:
-%   solve_precond_images - 2-body preconditioning enhanced with images for
+%   solve_res_2B_images - 2-body preconditioning enhanced with images for
 %                          resistance
-%   solve_precond_peanut - 2-body preconditioning with peanut compression
+%   solve_res_peanut_images - 2-body preconditioning with peanut compression
 %                          for resistance
-%   solve_2D_mob         - 1-body preconditioned mobility formulation
+%   solve_mob_1B         - 1-body preconditioned mobility formulation
 %
 % To test, call without arguments
 %
@@ -59,7 +59,7 @@ end
 % GMRES PARAMS
 maxit = 1600;
 %maxit = 500;
-solver_name = 'solve_2D_res';
+solver_name = 'solve_res_1B';
 % Params to determine grid
 opt = get2Dparams(); 
 a = opt.a_c;
@@ -648,7 +648,8 @@ for k = 1:P
     fb_x = [fb_x; fb_true(1:n_bound)];
     fb_y = [fb_y; fb_true(n_bound+1:end)];
 end
-maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2))
+maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+fprintf('Max surf rel res at new nodes %.3e\n', maxres);
 
 
 %% Get force and torque
@@ -795,11 +796,11 @@ U = [1 0; 0 0]; %translational velocities
 W = [1; 1]; %angular velocities 
 rads = [1; 1]; 
 visualise = 1; 
-[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[FT,lambda, it, gmres_tol, err_im] = solve_2D_res(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err_im] = solve_res_1B(q,U,W,rads,images,visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)
@@ -826,6 +827,6 @@ rads = ones(P,1);
 visualise = 0; 
 lr = 5; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
 
-[FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
 
 end

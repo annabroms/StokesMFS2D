@@ -151,15 +151,19 @@ for i = 1:P
                     'Interpreter','none');
                 drawnow;
             end
+
+            if opt.cmap || project
+                Kf1 = getKmat2D(rin_pair(1:end/2),q(i));
+                Kf2 = getKmat2D(rin_pair(end/2+1:end),q(p2));
+            end
             
             %% Projection trick (Mobility only)
             % Need the matrix that maps fine sources to rigid body
             % velocities to close the system 
+
             if project
                 B1 = getKmat2D([q(i)+rout_base; fine_1],q(i));
                 B2 = getKmat2D([q(p2)+rout_base; fine_2],q(p2));
-                Kf1 = getKmat2D(rin_pair(1:end/2),q(i));
-                Kf2 = getKmat2D(rin_pair(end/2+1:end),q(p2));
                 Lr_pair = getLrPair(B1,B2,Kf1,Kf2);  
                 Lf_pair = getLfPair(Kf1,Kf2); 
             else

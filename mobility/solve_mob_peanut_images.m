@@ -1,4 +1,4 @@
-function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
+function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
 %SOLVE_MOB_PRECOND_PEANUT Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -7,7 +7,7 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_precond_peanut(q,
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_precond_peanut(q, F, T, rads, delta_pair, N_peanut, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_peanut_images(q, F, T, rads, delta_pair, N_peanut, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
@@ -43,8 +43,8 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_precond_peanut(q,
 %   - Aims to test an MFS generalisation of the idea presented by Cheng-Greengard (1998)
 %
 % See also:
-%   solve_2D_mob              - 1-body preconditioned mobility solver
-%   solve_mob_precond_images - 2-body preconditioner without peanut compression
+%   solve_mob_1B              - 1-body preconditioned mobility solver
+%   solve_mob_2B_images - 2-body preconditioner without peanut compression
 %   solve_precond_peanut   - 2-body preconditioned resistance solver
 %   with peanut compression
 %
@@ -67,7 +67,7 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_mob_precond_peanut';
+solver_name = 'solve_mob_peanut_images';
 
 % Grid params
 P = length(q); 
@@ -555,11 +555,11 @@ rads = ones(size(q));
 %rads = [1; 1; 1; 1]; 
 visualise = 1; 
 delta_pair = 0.2; 
-%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
 
 %compare to a solution with image enhancement
 N_peanut = 1200; 
-[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
+[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
 
 str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

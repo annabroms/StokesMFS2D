@@ -31,7 +31,7 @@ for k = 1:length(Pvec)
             
             for m = 1:length(svec)
                 lr = svec(m)+3;
-                [FT,lambda, it, gmres_tol, err] = solve_2D_res(q,U,W,rads,images,lr,visualise);
+                [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
                 it_lm(l,m) = it;
                 err_lm(l,m) = err;
             end

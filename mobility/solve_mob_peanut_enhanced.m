@@ -242,10 +242,10 @@ end
 %And evaluate residual in new points rcheck_b
 
 % Recover coarse and fine sources from data on the boundary
-[tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y, ...
-    tau_stokes_nonpy,tau_self_y,tau_beta_y,~,rimage_k] = ...
+[lam_stokes_x, lam_stokes_nonpx,lam_self_x, lam_beta_x,lam_stokes_y, ...
+    lam_stokes_nonpy,lam_self_y,lam_beta_y,~,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom_check,basis_mob);
-lambda_c = [tau_stokes_x; tau_stokes_y];
+lambda_c = [lam_stokes_x; lam_stokes_y];
 
 %%% Get rigid body motion. 
 
@@ -254,7 +254,7 @@ Kc = getKmat2D(rbase_in_c,0);
 UW= zeros(3*P,1); 
 warning('are the right sources used here?')
 for k= 1:P
-    UW((k-1)*3+1:3*k) = -Kc'*[tau_stokes_nonpx((k-1)*N_c+1:k*N_c); tau_stokes_nonpy((k-1)*N_c+1:k*N_c)];
+    UW((k-1)*3+1:3*k) = -Kc'*[lam_stokes_nonpx((k-1)*N_c+1:k*N_c); lam_stokes_nonpy((k-1)*N_c+1:k*N_c)];
 end
 
 if opt.cmap
@@ -269,8 +269,8 @@ if opt.cmap
 
         %Here the projected sources are used, as (I-L) is not yet
         %applied for Cmap_FU.
-        rhs_pair = [tau_self_x(coarse_i); tau_self_x(coarse_p2); ...
-                    tau_self_y(coarse_i); tau_self_y(coarse_p2)];
+        rhs_pair = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
+                    lam_self_y(coarse_i); lam_self_y(coarse_p2)];
 
         % Determine rigid body motion for the pair, using ansatz
         pair_vel = Cmap_FU{i,p2}*rhs_pair;
@@ -285,8 +285,8 @@ else
     for i = 1:length(has_neigh)
         k = has_neigh(i);
         rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
-        fx_k = tau_beta_x{k};
-        fy_k = tau_beta_y{k};
+        fx_k = lam_beta_x{k};
+        fy_k = lam_beta_y{k};
         rel_k = rsrc_k - q(k);
     
         rbm_k = [sum(fx_k); ...
@@ -574,19 +574,19 @@ rads = ones(size(q));
 %rads = [1; 1; 1; 1]; 
 visualise = 1; 
 delta_pair = 0.5; 
-%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
 
 %compare to a solution with image enhancement
 N_peanut = 400; 
-%[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_precond_images(q,F,T,rads,delta_pair,visualise);
+%[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
 gmres_tol = 1e-6;
 images = 1; 
 lr = 0; 
 debug = 0; 
-%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_2D_mob(q,F,T,rads,images, lr, visualise);
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 [UW2,lambdahat2,it2,gmres_tol, rel2, abs2] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug);
-% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_precond_peanut(q,F,T,rads,delta_pair,N_peanut,visualise);
-% [UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_precond_enhanced(q,F,T,delta_pair,visualise);
+% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
+% [UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise);
 alignfigs(3);
 
 end

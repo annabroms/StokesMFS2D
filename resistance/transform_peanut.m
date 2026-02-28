@@ -1,4 +1,4 @@
-function [tau_stokes_x, tau_self_x, tau_beta_x,tau_cf_x,tau_stokes_y,tau_self_y,tau_beta_y,tau_cf_y,u_corr] = transform_peanut(tau,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck_out,q,U,Y,pairs,Upf,Ypf,DC_all, YC_all,Cmap,exterior,debug)
+function [tau_stokes_x, tau_self_x, tau_beta_x,tau_stokes_y,tau_self_y,tau_beta_y,u_corr] = transform_peanut(tau,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck_out,q,U,Y,pairs,Upf,Ypf,DC_all, YC_all,Cmap,exterior,debug)
 %Transform coarse \mu -> coarse \lambda using peanut compression, to be
 %used in resistance matvec
 
@@ -20,8 +20,6 @@ tau_stokes_y = zeros(N_c*P,1);
 
 tau_beta_x = zeros(N_f*P,1);
 tau_beta_y = zeros(N_f*P,1);
-tau_cf_x = zeros(N_c*P,1);
-tau_cf_y = zeros(N_c*P,1);
 
 
 rimage_k = cell(P,1);
@@ -186,13 +184,6 @@ for i = 1:P
                 tau_beta_y((i-1)*N_f+1:N_f*i) = tau_beta_y((i-1)*N_f+1:N_f*i)+tau_mapped_tot(2*N_f+1:3*N_f);
                 tau_beta_y((p2-1)*N_f+1:N_f*p2) = tau_beta_y((p2-1)*N_f+1:N_f*p2)+tau_mapped_tot(3*N_f+1:4*N_f);
 
-                %Note! Only to be done for the postprocessing
-%                 tau_peanut_stokes = Cmap_F{i,p2}*rhs;
-%                 tau_cf_x((i-1)*N_c+1:N_c*i) = tau_cf_x((i-1)*N_c+1:N_c*i)+tau_peanut_stokes(1:N_c);
-%                 tau_cf_x((p2-1)*N_c+1:N_c*p2) = tau_cf_x((p2-1)*N_c+1:N_c*p2)+tau_peanut_stokes(N_c+1:2*N_c);
-%                 tau_cf_y((i-1)*N_c+1:N_c*i) = tau_cf_y((i-1)*N_c+1:N_c*i)+tau_peanut_stokes(2*N_c+1:3*N_c);
-%                 tau_cf_y((p2-1)*N_c+1:N_c*p2) = tau_cf_y((p2-1)*N_c+1:N_c*p2)+tau_peanut_stokes(3*N_c+1:4*N_c);
-              
             end
 
 
@@ -376,4 +367,3 @@ for i = 1:P
 end
 
 end
-
