@@ -67,7 +67,7 @@ a_c = 1.2; % ratio between number of source and collocation points for coarse pr
 a_f = 1.2; % ... for the fine proxy grid
 
 tol_c = 1e-12; %I think this works reasonably
-%tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff  
+tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff  
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
 
 sep_c = (1/N_c)*log(1/tol_c);
@@ -242,10 +242,10 @@ end
 %And evaluate residual in new points rcheck_b
 
 % Recover coarse and fine sources from data on the boundary
-[lam_stokes_x, lam_stokes_nonpx,lam_self_x, lam_beta_x,lam_stokes_y, ...
-    lam_stokes_nonpy,lam_self_y,lam_beta_y,~,rimage_k] = ...
+[lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
+    lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom_check,basis_mob);
-lambda_c = [lam_stokes_x; lam_stokes_y];
+lambda_c = [lam_c_x; lam_c_y];
 
 %%% Get rigid body motion. 
 
@@ -254,7 +254,7 @@ Kc = getKmat2D(rbase_in_c,0);
 UW= zeros(3*P,1); 
 warning('are the right sources used here?')
 for k= 1:P
-    UW((k-1)*3+1:3*k) = -Kc'*[lam_stokes_nonpx((k-1)*N_c+1:k*N_c); lam_stokes_nonpy((k-1)*N_c+1:k*N_c)];
+    UW((k-1)*3+1:3*k) = -Kc'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
 end
 
 if opt.cmap
@@ -285,8 +285,8 @@ else
     for i = 1:length(has_neigh)
         k = has_neigh(i);
         rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
-        fx_k = lam_beta_x{k};
-        fy_k = lam_beta_y{k};
+        fx_k = lam_f_x{k};
+        fy_k = lam_f_y{k};
         rel_k = rsrc_k - q(k);
     
         rbm_k = [sum(fx_k); ...
@@ -552,7 +552,7 @@ P = 4;
 q = [0; 2+delta; 7; 9+delta];
 
 
-P = 5; 
+P = 100; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));

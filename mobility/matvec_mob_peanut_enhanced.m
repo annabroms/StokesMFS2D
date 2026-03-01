@@ -38,11 +38,11 @@ N_c = opt.N_c;
 
 
 %Transform coarse \mu -> coarse \lambda
-[lam_stokes_x, lam_stokes_nonpx,lam_self_x, lam_beta_x,lam_stokes_y,...
-    lam_stokes_nonpy,lam_self_y,lam_beta_y,u_corr,rimage_k] = ...
+[lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y,...
+    lam_c_nonpy,lam_self_y,lam_f_y,u_corr,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom,basis);
 
-res = getVelocityField(rvec_in,rcheck,lam_stokes_x,lam_stokes_y);
+res = getVelocityField(rvec_in,rcheck,lam_c_x,lam_c_y);
 
 res = res+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 
 % adding the fine representation instead
@@ -54,7 +54,7 @@ if isequal(rcheck,rvec_out)
     
     %This part is already taken care of... i.e. we never add and subtract the same thing. 
     % for k= 1:P
-    %     bcvec = B*K'*[lam_stokes_nonpx((k-1)*N_c+1:k*N_c); lam_stokes_nonpy((k-1)*N_c+1:k*N_c)];
+    %     bcvec = B*K'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
     %     res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
     %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
     % end
@@ -104,10 +104,10 @@ if isequal(rcheck,rvec_out)
         for i = 1:length(has_neigh)
             k = has_neigh(i); 
 
-            % lam_beta_{x,y}{k} stores all pair-source strengths on particle k
+            % lam_f_{x,y}{k} stores all pair-source strengths on particle k
             % as [fine-body; fine-image], matching source points [rbase_in_f+q(k); rimage_k{k}].
             rsrc_k = [rbase_in_f+q(k); rimage_k{k}];
-            bcvec = applyBKt2D(rbase_out_rel,0,rsrc_k,q(k),lam_beta_x{k},lam_beta_y{k});
+            bcvec = applyBKt2D(rbase_out_rel,0,rsrc_k,q(k),lam_f_x{k},lam_f_y{k});
 
             res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
             res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);

@@ -33,12 +33,13 @@ else
     use_fmm_velocity = true;
 end
 
-% Transform coarse boundary data to compressed coarse/fine source strengths.
-[lam_stokes_x, lam_self_x, ~, lam_stokes_y, lam_self_y, ~, u_corr] = ...
+% Transform coarse boundary data to compressed coarse source strengths.
+% Also returns correcting velocity field locally on each pair.
+[lam_c_x, lam_self_x, ~, lam_c_y, lam_self_y, ~, u_corr] = ...
     transform_peanut_stokes(tau,geom,basis);
 
 % Evaluate flow induced by compressed source strengths.
-res = getVelocityField(rvec_in,rvec_out,lam_stokes_x,lam_stokes_y,use_fmm_velocity);
+res = getVelocityField(rvec_in,rvec_out,lam_c_x,lam_c_y,use_fmm_velocity);
 
 % Replace compressed pair blocks by local fine representation.
 res = res + u_corr;

@@ -88,7 +88,7 @@ a_c = 1.2; %upsampling for coarse grid
 a_f = 1.2; %upsampling factor for the fine grid
 
 tol_c = 1e-10; %I think this works reasonably
-tol_c = 1e-12;
+%tol_c = 1e-12;
 %tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
 %tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
 
@@ -260,23 +260,22 @@ end
 % Prepare for evaluating flow field in rcheck_b.
 geom_eval = geom;
 geom_eval.rcheck = rcheck_b;
-[lam_stokes_x, lam_self_x, lam_beta_x,lam_stokes_y,lam_self_y,lam_beta_y,u_corr,rimage_k] = ...
+[lam_c_x, lam_self_x, lam_f_x,lam_c_y,lam_self_y,lam_f_y,u_corr,rimage_k] = ...
     transform_peanut_stokes(tau,geom_eval,basis);
 
-
-%return compressed sources
-lambda_proxy = [lam_stokes_x; lam_stokes_y];
-
-
-%Not yet adopted to random evaluation points. 
+%return compressed coarse sources
+lambda_proxy = [lam_c_x; lam_c_y];
 
 %% Do the evaluation of the flow in check points 
-ftest_b = getVelocityField(rvec_in_c, rcheck_b, lam_stokes_x, lam_stokes_y);
-rcheck_dom = [100+100i; -50+50i];
-ftest = getVelocityField(rvec_in_c, rcheck_dom, lam_stokes_x, lam_stokes_y);
+ftest_b = getVelocityField(rvec_in_c, rcheck_b, lam_c_x, lam_c_y);
 
+%Not yet adopted to random evaluation points. 
+% Then, it depends on closeness to pairs if fine or coarse grid should be used 
+% to evaluate flow field
+%rcheck_dom = [100+100i; -50+50i];
+%ftest = getVelocityField(rvec_in_c, rcheck_dom, lam_c_x, lam_c_y);
 
-ftest_b = ftest_b+u_corr; 
+ftest_b = ftest_b+u_corr; % Apply on pair corrections
 
 %Compute error in the value at the boundary
 fbound_x = ftest_b(1:length(rcheck_b));
@@ -322,7 +321,7 @@ if opt.cmap
         rhs_pair = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
                     lam_self_y(coarse_i); lam_self_y(coarse_p2)];
 
-        % Sign matches the fine-source postprocessing path via lam_beta_{x,y}.
+        % Sign matches the fine-source postprocessing path via lam_f_{x,y}.
         FT_pair = Cmap_FU{i,p2}*rhs_pair; % [Fx_i; Fy_i; T_i; Fx_p2; Fy_p2; T_p2]
         FT((i-1)*3+1:3*i) = FT((i-1)*3+1:3*i) + FT_pair(1:3);
         FT((p2-1)*3+1:3*p2) = FT((p2-1)*3+1:3*p2) + FT_pair(4:6);
@@ -333,7 +332,7 @@ else
         k = has_neigh(i);
         src_k = [rbase_in_f+q(k); rimage_k{k}];
         Kpair = getKmat2D(src_k,q(k));
-        FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+Kpair'*[lam_beta_x{k}; lam_beta_y{k}];
+        FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+Kpair'*[lam_f_x{k}; lam_f_y{k}];
     end
 end
 
@@ -582,15 +581,14 @@ delta_pair = 0.2;
 N_peanut = 400; 
 
 if test == 1
-    delta = 0.01;
+    delta = 0.001;
     q = [0; 2+delta; (2+delta)*1i]; %center coordinates
     
     %or, instead, three circles in triangle - this DOES NOT converge to a good
     %sol! 
-    % x = 1+delta/2;
-    % y = sqrt((2+delta)^2-(1+delta/2)^2);
-    % q = [0; 2+delta; x+1i*y];
-    
+    x = 1+delta/2;
+    y = sqrt((2+delta)^2-(1+delta/2)^2);
+    q = [0; 2+delta; x+1i*y];
     
     
     U = [1 0; 0 0; 0 1]; %translational velocities for particles
@@ -601,7 +599,7 @@ if test == 1
     visualise = 1; 
 
     q = [0; 2+delta];
-   % q = q+5;
+    q = q+5;
     U = U(1:2,:);
     W = W(1:2); 
     rads = rads(1:2); 
@@ -610,6 +608,7 @@ if test == 1
     debug = 1; 
     
     [FT1,lambda,it1,gmres_res, err1] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug);
+    debug = 0; 
     [FT2,lambda2,it2,gmres_res2, err2] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
     [FT3,lambda,it3,gmres_res, err3] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,0,visualise,gmres_tol,debug);
     
