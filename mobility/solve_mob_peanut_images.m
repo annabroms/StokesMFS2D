@@ -160,9 +160,11 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [U,Y,Lc] = getSelfPseudoMobility(1,q,rbase_in_c,rbase_out_c,[],[],[0,ceil(a_c*N_c)],s,1);
 
+opt.project_pair = true;
+
 
 %Get pair basis
-[UB_all,YB_all,UC_all,YC_all,Cmap,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
+[UB_all,YB_all,UC_all,YC_all,Cmap,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);
 
 %build the mapping that maps coarse boundary data to coarse proxy data
 %A = buildCoarseMap(UB_all,YB_all,UC_all,YC_all,U,Y);

@@ -1,4 +1,4 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf,debug)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc_pair_basis,Lf_pair_basis,Kf_pair_basis)
 %getPairCorrection computes pair corrections for a 2-body preconditioned
 %Stokes MFS solver for circular particles; it solves two LSQ problems via
 %SVDs per identified close particle pair and stores the factorisations for
@@ -6,14 +6,11 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 %pair, and the equivalent coarse sources are computed via matching on a peanut 
 %boundary.
 %
-%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf,debug)
+%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt)
+%Syntax: [Ubf,Ybf,Ucf,Ycf,Cmap,Cmap_F,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc_pair_basis,Lf_pair_basis,Kf_pair_basis)
 %
 %Input: 
 % q      - Vector of complex valued center coordinates for the P particles
-% N_f    - Number of proxy sources on the fine grid
-% a_f    - Upsampling factor for the fine grid so that the number of uniform
-%         fine collocation points is M_f = N_f*a_f
-% rads   - vector of size P containing the particle radii
 % rbase_in_c - Coarse grid of proxy sources on a single particle centered at the origin.
 % rbase_in_f - Fine grid of proxy sources on a single particle centered at the origin.
 % rimage_pairs - A cell array with cell {i,j} containing the image points for
@@ -24,15 +21,14 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 % pairs     - Matrix with two columns containing a list of all pairs
 %             considered close. This can include more pairs than those in 
 %             need of image enhancement. 
-% opt       - struct containting parameters
-% project   - Boolean, true if solving mobility problem
-% Lc        - (optional) Projection matrix for single body coarse sources 
-%             onto the space of RBM, only for mobility
-% Lf        - (optional) Projection matrix for single body fine sources 
-%             onto the space of RBM, only for mobility
-% Kf        - (optional) Kf' maps fine sources to force and torque, only for mobility
-% debug     - (optional) Logical flag. If true, visualizes pair geometry
-%             (sources and collocation nodes) for each processed pair.
+% opt       - struct containing parameters. Uses fields:
+%             N_f, a_f, rads, s, N_peanut, precomp and optional fields:
+%             project_pair     (logical, default false)
+%             pair_basis_debug (logical, default false)
+%             show_counter     (logical, default false)
+% Lc_pair_basis - Optional coarse one-body projector for mobility.
+% Lf_pair_basis - Optional fine one-body projector for mobility.
+% Kf_pair_basis - Optional fine rigid-body map for mobility.
 %
 % Output:
 %
@@ -70,20 +66,45 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in
 % Anna Broms April 4, 2025
 
 
-if nargin < 11 || isempty(project)
-    project = 0;
+N_f = opt.N_f;
+a_f = opt.a_f;
+if isfield(opt,'rads')
+    rads = opt.rads;
+else
+    error('getPairBasis:MissingRads','opt.rads is required by getPairBasis.');
 end
-if nargin < 12
-    Lc = [];
+
+if isfield(opt,'project_pair') && ~isempty(opt.project_pair)
+    project = logical(opt.project_pair);
+elseif isfield(opt,'project') && ~isempty(opt.project)
+    project = logical(opt.project);
+else
+    project = false;
 end
-if nargin < 13
-    Lf = [];
+
+if nargin < 8
+    Lc_pair_basis = [];
 end
-if nargin < 14
-    Kf = [];
+if nargin < 9
+    Lf_pair_basis = [];
 end
-if nargin < 15 || isempty(debug)
+if nargin < 10
+    Kf_pair_basis = [];
+end
+Lc = Lc_pair_basis;
+Lf = Lf_pair_basis;
+Kf = Kf_pair_basis;
+
+if isfield(opt,'pair_basis_debug') && ~isempty(opt.pair_basis_debug)
+    debug = logical(opt.pair_basis_debug);
+else
     debug = false;
+end
+
+if isfield(opt,'show_counter') && ~isempty(opt.show_counter)
+    show_counter = logical(opt.show_counter);
+else
+    show_counter = false;
 end
 
 P = length(q); 
@@ -122,6 +143,9 @@ else
     Lf_pair = [];
 end
 
+
+total_pairs = size(pairs,1);
+processed_pairs = 0;
 
 for i = 1:P
 
@@ -224,6 +248,12 @@ for i = 1:P
 
 
             end
+
+            processed_pairs = processed_pairs + 1;
+            if show_counter
+                fprintf('getPairBasis: processed pair %d/%d (%d,%d)\n', ...
+                    processed_pairs,total_pairs,i,p2);
+            end
              
     
         end
@@ -235,7 +265,3 @@ for i = 1:P
 end
 
 end
-
-
-
-

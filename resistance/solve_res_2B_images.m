@@ -122,6 +122,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
+opt.rads = rads;
 opt.s = s; 
 opt.P = P; 
 opt.N_peanut = 0; 
@@ -191,7 +192,7 @@ rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
 
 
 %Get pair basis
-[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],[],[]);
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).
@@ -726,4 +727,3 @@ else
     alignfigs;
 end
 end
-

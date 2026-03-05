@@ -117,6 +117,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
+opt.rads = rads;
 opt.N_peanut = 0;
 opt.s = s; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
@@ -201,8 +202,10 @@ nimage = [];
 Kf = getKmat2D(rbase_in_f,0); % Kf' maps force density to net force and torque
 Lf = Kf*((Kf'*Kf)\Kf'); %Projects onto the range of the constraint matrix Kf'
 
+opt.project_pair = true;
+
 %Get pair basis
-[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
+[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');

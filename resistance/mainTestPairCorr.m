@@ -12,7 +12,7 @@ a_f = 1.2;
 tol_c = 1e-12; %I think this works reasonably
 tol_c = 1e-8; %Curve moves closer to the surface -> smaller coeff 
 tol_c = 1e-16; %Curve moves further from surface -> larger coeff.
-tol_c = 1e-19;% Maybe better as a lower a_c would be needed for the same
+%tol_c = 1e-19;% Maybe better as a lower a_c would be needed for the same
 %decay? 
 %tol_c = 1e-23; 
 % But smoother coarse 1-body basis to evaluate on neighbour
@@ -54,15 +54,24 @@ for i = 1:length(Rgvec)
         %Construct image grid
         basic = 1; %return only the basic outer grid, else refined outer grid 
         [rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
+
+        tin = linspace(0,2*pi,N_c+1);
+        tin = tin(1:end-1)';
+        rbase_in_c = Rg_c*cos(tin)+Rg_c*1i*sin(tin);
         
         %Get pair basis
-        [Upf,Ypf,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_f,rimage_vec,refine,pairs,s);
+        opt_pair = struct();
+        opt_pair.N_f = N_f;
+        opt_pair.a_f = a_f;
+        opt_pair.rads = rads;
+        opt_pair.s = s;
+        opt_pair.N_peanut = 0;
+        opt_pair.precomp = 1;
+        opt_pair.proj_all = 0;
+        [Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt_pair,[],[],[]);
         
         
         %Get one-body pseduo inverse blocks -- enough to do this for single body.
-        tin = linspace(0,2*pi,N_c+1);
-        tin = tin(1:end-1)';
-        rbase_in_c = Rg_c*cos(tin)+Rg_c*1i*sin(tin); 
         [U,Y] = getSelfPseudo(rbase_in_c,rbase_out_c);
         
         
@@ -131,4 +140,3 @@ colormap(parula(8))
 axis tight
 ylabel('$R_c$','interpreter','latex')
 xlabel('$M_c$','interpreter','latex')
-

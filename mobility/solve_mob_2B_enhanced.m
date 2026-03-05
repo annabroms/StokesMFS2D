@@ -194,9 +194,11 @@ rimage_in = [];
 %Lf = Kf*((Kf'*Kf)\Kf'); %Projects onto the range of the constraint matrix Kf'
 
 %Get pair basis
-%[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},Lf,Kf);
+%opt.project_pair = true;
+%[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);
 %Get pair basis
-[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1});
+opt.project_pair = true;
+[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -714,6 +716,7 @@ T = [1; 1; 1]; %torques on the particles
 rads = [1; 1; 1]; 
 
 
+
 %If only two particles
 %q = [0; 2+delta; 6];
 % F = F(1:2,:); 
@@ -727,7 +730,9 @@ lr= 0;
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
-[UW1,lambda,it1,gmres_tol,err1] = solve_mob_2B_enhanced(q,F,T,rads,delta_pair,visualise);
+gmres_tol = 1e-6;
+debug = 0; 
+[UW1,lambda,it1,gmres_tol,err1] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise,gmres_tol,debug);
 
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);

@@ -1,14 +1,12 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
 %GETPAIRBASISSTOKES Build pair-basis pseudoinverse factors for 2D Stokes
 %pair corrections.
 %
 % Syntax:
-%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes( ...
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt)
-%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
-%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc)
-%   [Uf,Yf,Up,Yp,Cmap,Cmap_F] = getPairBasisStokes( ...
-%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,debug)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
 %
 % Inputs:
 %   q            - P-by-1 complex particle centers. rbase_in_c   - Coarse
@@ -20,18 +18,18 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f
 %                  parameter values for pair (i,j).
 %   pairs        - Npair-by-2 list of close pairs [i, j]. opt          -
 %   Options struct. Uses fields such as N_f, a_f, precomp,
-%                  N_peanut.
-%   project      - Optional logical flag. If true, build additional pair
-%                  projection blocks used by mobility variants.
-%   Lc           - Optional coarse one-body projector for mobility. debug
-%   - Optional logical flag. If true, visualizes pair geometry
-%                  (sources and collocation nodes) for each processed pair.
+%                  N_peanut, and optional fields:
+%                  project_pair    (logical, default false)
+%                  pair_basis_debug (logical, default false)
+%                  show_counter    (logical, default false)
+%   Lc_pair_basis - Optional coarse one-body projector used when
+%                   project_pair = true. Default [].
 %
 % Outputs:
 %   Uf, Yf  - Cell arrays with fine pair pseudoinverse factors. For each
 %             close pair (i,j), beta_pair = Yf{i,j}*(Uf{i,j}*rhs_pair).
 %   Up, Yp  - Cell arrays with peanut-compression pseudoinverse factors
-%             (empty when opt.N_peanut == 0 or opt.cmap.
+%             (empty when opt.N_peanut == 0 or opt.cmap).
 %   Cmap    - Cell array with direct coarse-to-coarse pair maps
 %             assembled from the factors above (empty when no peanut map
 %             and if opt.cmap is false).
@@ -41,27 +39,36 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f
 %
 % Notes:
 %   - Pair source ordering follows the assembled pair vectors in this file:
-%     particle i fine sources, i->j extra sources, particle j fine
-%     sources, j->i extra sources, with x-components stacked before y.
+%     particle i fine uniform sources, i extra sources, particle j fine
+%     uniform sources, j extra sources, with x-components stacked before y.
 %   - If opt.precomp is true, Uf{i,j} includes the coarse-to-fine
 %     evaluation operator (Npair) so runtime application avoids explicitly
 %     rebuilding that dense block.
 %
 % Anna Broms, Feb 13, 2026
 
-if nargin < 8 || isempty(project)
-    project = 0;
+% Solve mobility?
+if isfield(opt,'project') && ~isempty(opt.project)
+    project = logical(opt.project);
+else
+    project = false; % solve resistance problem
 end
-if nargin < 9
-    Lc = [];
-end
-if nargin < 10 || isempty(debug)
+
+% Draw pair discretisation?
+if isfield(opt,'pair_basis_debug') && ~isempty(opt.pair_basis_debug)
+    debug = logical(opt.pair_basis_debug);
+else
     debug = false;
 end
 
+if isfield(opt,'show_counter') && ~isempty(opt.show_counter)
+    show_counter = logical(opt.show_counter);
+else
+    show_counter = false;
+end
+
 P = opt.P;  
-Uf = cell(P);
-Yf = cell(P);
+
 N_peanut = opt.N_peanut; 
 
 
@@ -72,13 +79,21 @@ if N_peanut
         Yp = [];
         Cmap = cell(P);
         Cmap_FU = cell(P);
+        if opt.bndry_vel
+            Uf = cell(P); % with cmap only needed if we do postprocessing to evaluate flow field on boundaries 
+            Yf = cell(P);
+        end
     else
+        Uf = cell(P); 
+        Yf = cell(P);
         Up = cell(P);
         Yp = cell(P);
         Cmap = [];
         Cmap_FU = [];
     end
 else
+    Uf = cell(P); 
+    Yf = cell(P);
     Up = [];
     Yp = [];
     Cmap = [];
@@ -99,6 +114,8 @@ end
 
 a_f = opt.a_f;
 N_f = opt.N_f; 
+total_pairs = size(pairs,1);
+processed_pairs = 0;
 
 for i = 1:P
 
@@ -193,18 +210,26 @@ for i = 1:P
   
                 if opt.cmap
                     % Determine coarse to coarse map for the pair
-                    Cmap{i,p2} = YC*(DC*Yf_pair*(Uf_pair'*Npair)); 
+                    Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
+                    % The minus sign is because we cancel out the one-body data
+                     
                     %Construct mapping also for the 
-                    % i) fource and torque vector (ONLY for resistance), or
+                    % i) force and torque vector (ONLY for resistance), or
                     % ii) RBM vector (ONLY for mobility)
                     Kft_pair = getKftPair(Kf1,Kf2); 
-                    Cmap_FU{i,p2} = Kft_pair*Yf_pair*(Uf_pair'*Npair);                   
+                    Cmap_FU{i,p2} = -Kft_pair*Yf_pair*(Uf_pair'*Npair);                   
                 else
                     % Store compression for the fine grid
                     Up{i,p2} = DC;
                     Yp{i,p2} = YC;
                 end
  
+            end
+
+            processed_pairs = processed_pairs + 1;
+            if show_counter
+                fprintf('getPairBasisStokes: processed pair %d/%d (%d,%d)\n', ...
+                    processed_pairs,total_pairs,i,p2);
             end
              
     
@@ -217,5 +242,3 @@ for i = 1:P
 end
 
 end
-
-

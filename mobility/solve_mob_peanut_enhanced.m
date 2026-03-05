@@ -15,7 +15,8 @@ function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced
 %   N_peanut   - Number of peanut check points used in pair compression.
 %   visualise  - Plot diagnostics if true.
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
+%   debug      - Optional logical flag: build/draw dense matrix generated 
+%                by matvec and its
 %                eigenvalues (default false)
 %   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
 %                or 'rel'
@@ -137,7 +138,10 @@ rimage_in = [];
 
 %Get pair basis
 plot_grid = 0; 
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,1,Lc{1},plot_grid);
+opt.project = true;
+opt.pair_basis_debug = plot_grid;
+opt.show_counter = true;
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
                               
 
 % TODO: update visualisation:
@@ -552,7 +556,7 @@ P = 4;
 q = [0; 2+delta; 7; 9+delta];
 
 
-P = 100; 
+P = 10; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));
@@ -579,7 +583,7 @@ delta_pair = 0.5;
 %compare to a solution with image enhancement
 N_peanut = 400; 
 %[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
-gmres_tol = 1e-6;
+gmres_tol = 1e-8;
 images = 1; 
 lr = 0; 
 debug = 0; 

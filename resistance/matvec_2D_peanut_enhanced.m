@@ -55,12 +55,14 @@ for i = 1:P
 
     % x-component block
     res((i-1)*N_large+1:i*N_large) = ...
-        res((i-1)*N_large+1:i*N_large) - uii(1:end/2) + tau((i-1)*N_large+1:i*N_large);
+        res((i-1)*N_large+1:i*N_large) - uii(1:end/2);
 
     % y-component block
     res((i-1)*N_large+PM+1:i*N_large+PM) = ...
-        res((i-1)*N_large+PM+1:i*N_large+PM) - uii(end/2+1:end) + ...
-        tau((i-1)*N_large+PM+1:i*N_large+PM);
+        res((i-1)*N_large+PM+1:i*N_large+PM) - uii(end/2+1:end);
 end
+
+res = res+tau; 
+
 
 end

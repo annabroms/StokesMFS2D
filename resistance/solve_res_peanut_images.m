@@ -157,8 +157,8 @@ end
 [rout,~,~,~,~,pair_points,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
 
-%Get pair basis                                                %q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,project,Lc,Lf,Kf)
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_F,nimage] = getPairBasis(q,N_f,a_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+%Get pair basis
+[UB_all,YB_all,UC_all,YC_all,Cmap,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],[],[]);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
