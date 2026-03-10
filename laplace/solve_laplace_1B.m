@@ -10,7 +10,7 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_1B(q,g_body,visualis
 %   visualise - Plot diagnostics.
 %   gmres_tol - GMRES tolerance.
 %   debug     - Build dense system matrix for diagnostics.
-%   use_fmm   - Use rfmm2d for Laplace evaluations when available.
+%   use_fmm   - Use fmm2d (flatiron) for Laplace evaluations when available.
 %
 % Outputs:
 %   Q          - Per-body sums of all source strengths belonging to each body.
@@ -19,7 +19,12 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_1B(q,g_body,visualis
 %   gmres_tol  - GMRES tolerance used.
 %   maxres     - Max relative residual on independent boundary points.
 %
+% Notes: what is solved is what is referred to as the modified exterior Laplace 
+% BVP in the Stein & Barnett QFS paper from 2022. 
+%
 % To test: call without inputs.
+%
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_solve_laplace_1B;

@@ -15,7 +15,7 @@ function A = lapSLPmat(rsrc,rtar)
 % Self-test:
 %   lapSLPmat()
 %
-% Anna Broms style adaptation, Mar 2026
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_lapSLPmat();

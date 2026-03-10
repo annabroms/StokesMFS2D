@@ -11,7 +11,7 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_2B_enhanced(q,g_body
 %   visualise  - Plot diagnostics.
 %   gmres_tol  - GMRES tolerance.
 %   debug      - Build dense system matrix for diagnostics.
-%   use_fmm    - Use rfmm2d for Laplace evaluations when available.
+%   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
 %
 % Outputs:
 %   Q          - Per-body unweighted sums of source strengths.
@@ -21,6 +21,8 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_2B_enhanced(q,g_body
 %   maxres     - Max relative residual on independent boundary points.
 %
 % To test: call without inputs.
+%
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_solve_laplace_2B;

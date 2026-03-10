@@ -3,6 +3,8 @@ function [lam_c,lam_self,lam_f,lam_e,u_corr] = transform_laplace_peanut(tau,geom
 %
 % Syntax:
 %   [lam_c,lam_self,lam_f,u_corr] = transform_laplace_peanut(tau,geom,basis)
+%
+% Anna Broms, Mar 2026
 
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;

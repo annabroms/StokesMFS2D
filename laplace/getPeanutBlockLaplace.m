@@ -3,6 +3,8 @@ function [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut)
 %
 % Syntax:
 %   [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut)
+%
+% Anna Broms, Mar 2026
 
 Nf = lapSLPmat(rin_pair_f,rout_peanut);
 Nc = lapSLPmat(rin_pair_c,rout_peanut);

@@ -12,6 +12,8 @@ function [Uii,Yii] = getSelfPseudoLaplace(P,rin_vec,rout_vec,pair_points)
 %
 % Outputs:
 %   Uii, Yii   - Cell arrays with pseudoinverse factors.
+%
+% Anna Broms, Mar 2026
 
 if nargin < 4 || isempty(pair_points)
     pair_points = [zeros(P,1) repmat(length(rout_vec)/P,P,1)];

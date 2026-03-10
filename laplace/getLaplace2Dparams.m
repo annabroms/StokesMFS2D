@@ -1,5 +1,7 @@
 function opt = getLaplace2Dparams()
 %GETLAPLACE2DPARAMS Default parameters for scalar Laplace MFS in 2D.
+%
+% Anna Broms, Mar 2026
 
 % Geometry scale: physical particle radius.
 opt.alpha = 2;

@@ -15,7 +15,7 @@ function u = laplaceSLPDirect(rsrc,rtar,sigma)
 % Notes:
 %   Uses kernel -(1/(2*pi))*log(|x-y|). 
 %
-% Anna Broms style adaptation, Mar 2026
+% Anna Broms, Mar 2026
 
 rsrc = rsrc(:);
 rtar = rtar(:);

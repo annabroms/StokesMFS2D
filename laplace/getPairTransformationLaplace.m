@@ -4,6 +4,8 @@ function [rvec_in,coarse_ind,lam_all,u_corr,lam_c,lam_f,lam_e] = getPairTransfor
 % Syntax:
 %   [rvec_in,coarse_ind,lam_all,u_corr,lam_c,lam_f,lam_e] = ...
 %       getPairTransformationLaplace(tau,geom,basis)
+%
+% Anna Broms, Mar 2026
 
 rvec_out = geom.rvec_out;
 q = geom.q;

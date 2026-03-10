@@ -12,7 +12,7 @@ function [Q,lambda_proxy,it,gmres_tol,maxres] = solve_laplace_peanut_enhanced(q,
 %   visualise  - Plot diagnostics.
 %   gmres_tol  - GMRES tolerance.
 %   debug      - Build dense matrix diagnostics.
-%   use_fmm    - Use rfmm2d for Laplace evaluations when available.
+%   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
 %
 % Outputs:
 %   Q           - Per-body unweighted sums of source strengths.
@@ -22,6 +22,8 @@ function [Q,lambda_proxy,it,gmres_tol,maxres] = solve_laplace_peanut_enhanced(q,
 %   maxres      - Max relative residual on independent boundary points.
 %
 % To test: call without inputs.
+%
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_solve_laplace_peanut;

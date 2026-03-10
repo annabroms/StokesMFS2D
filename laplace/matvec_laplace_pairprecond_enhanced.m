@@ -3,6 +3,8 @@ function res = matvec_laplace_pairprecond_enhanced(tau,geom,basis)
 %
 % Syntax:
 %   res = matvec_laplace_pairprecond_enhanced(tau,geom,basis)
+%
+% Anna Broms, Mar 2026
 
 rbase_in_c = geom.rbase_in_c;
 rvec_out = geom.rvec_out;

@@ -4,6 +4,8 @@ function Npair = evaluateCoarseOnPairLaplace(q,rbase_in_c,rout_f)
 % Syntax:
 %   Npair = evaluateCoarseOnPairLaplace(q,rbase_in_c,rout_f)
 %   evaluateCoarseOnPairLaplace() % self-test
+%
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_evaluateCoarseOnPairLaplace;

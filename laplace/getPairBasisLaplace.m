@@ -3,6 +3,8 @@ function [Uf,Yf,Up,Yp,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage
 %
 % Syntax:
 %   [Uf,Yf,Up,Yp,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt)
+%
+% Anna Broms, Mar 2026
 
 P = opt.P;
 N_f = opt.N_f;

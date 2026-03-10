@@ -8,16 +8,16 @@ function u = laplaceSingleLayerField(rsrc,rtar,sigma,use_fmm)
 %   rsrc    - Complex source locations.
 %   rtar    - Complex target locations.
 %   sigma   - Source strengths, size numel(rsrc) x nd.
-%   use_fmm - Logical flag. If true, use rfmm2d when available.
+%   use_fmm - Logical flag. If true, use fmm2d (of flatiron) when available.
 %
 % Output:
 %   u       - Potential values at targets, size numel(rtar) x nd.
 %
 % Self-test:
 %   laplaceSingleLayerField()
-%   Compares rfmm2d output to loop-based direct summation.
+%   Compares fmm2d output to loop-based direct summation.
 %
-% Anna Broms style adaptation, Mar 2026
+% Anna Broms, Mar 2026
 
 if nargin==0
     test_laplaceSingleLayerField;
@@ -62,7 +62,7 @@ targ = [real(rtar)'; imag(rtar)'];
 srcinfo = struct();
 srcinfo.sources = [real(rsrc)'; imag(rsrc)'];
 srcinfo.nd = nd;
-srcinfo.charges = (-sigma.')/(2*pi); % rfmm2d uses log(r)
+srcinfo.charges = (-sigma.')/(2*pi); % fmm2d (of flatiron) uses log(r)
 
 eps_fmm = 1e-10;
 U = rfmm2d(eps_fmm,srcinfo,0,targ,1);
