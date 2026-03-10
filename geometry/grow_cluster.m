@@ -1,9 +1,12 @@
-function [q,B] = grow_cluster(P,delta,dim)
-%GROW_CLUSTER(P,delta,dim) grows a cluster of P spheres with each sphere
-%delta away from at least one neighbour. dim can be set to 2 or 3 for 2D or 3D
+function [q,B] = grow_cluster(P,delta,dim,R)
+%GROW_CLUSTER(P,delta,dim,R) grows a cluster of P spheres of radius R with each sphere
+%delta*R away from at least one neighbour. dim can be set to 2 or 3 for 2D or 3D
 % Anna Broms 4/12/24
 
-if nargin<3
+if nargin<4
+    R = 1;
+elseif nargin<3
+    R = 1;
     dim = 3;
     c = 0;
 end
@@ -22,7 +25,7 @@ n = randn(1,dim);
 n = n/norm(n);
 
 
-q(2,:) = (2+delta)*n; %store positions
+q(2,:) = R*(2+delta)*n; %store positions
 maxit = 100;
 %maxit = 50; 
 tol = 1e-5;
@@ -43,15 +46,15 @@ for k = 1:P-2
         
     
         %want to solve for the distance from the origin
-        x1 = 2+delta+0.1; %initial guess 
+        x1 = 2*R+delta*R+0.1*R; %initial guess 
         %x1 = 2*delta*k*2;
-        x2 = 2+delta;
+        x2 = 2*R+delta*R;
 
         if c
-            f = @(x) minDist(q,n,x,q(cn,:))-delta;
+            f = @(x) minDist(q,n,x,q(cn,:),R)-delta*R;
         else
     
-            f = @(x) minDist(q,n,x)-delta;
+            f = @(x) minDist(q,n,x,R)-delta*R;
         end
         itr = 0;
     
@@ -98,17 +101,17 @@ end
 
 % %Debug
 % % Check shortest distances
-% for k = 1:N
+% for k = 1:P
 %     d(k,:) = vecnorm(q(k,:)-q,2,2);
 % 
 %     %Smallest dist for each particle?
-%     m = mink(d(k,:),2)-2;
+%     m = mink(d(k,:),2)-2*R;
 %     mind(k) = m(2);
 % end
 % 
 % 
 % d = d(:);
-% B = mink(d(d>0),5*N)-2; %Returns the np smallest distances
+% B = mink(d(d>0),5*P)-2*R; %Returns the np smallest distances
 % 
 % if min(B)<0
 %     error('Overlap has occured')
@@ -119,7 +122,7 @@ disp('Cluster complete...')
 end
 
 
-function res = minDist(q,n,x,c)
+function res = minDist(q,n,x,c,R)
 %return shortest distance to any other particle
 if nargin < 4
     qnew = x*n;
@@ -127,6 +130,6 @@ else
     qnew = c+x*n;
 end
 
-res = min(vecnorm(q-qnew,2,2)-2);
+res = min(vecnorm(q-qnew,2,2)-2*R);
 
 end

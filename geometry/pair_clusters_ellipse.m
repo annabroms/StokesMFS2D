@@ -19,11 +19,11 @@ v = (cj-ci)/D;
 % Ellipse segments (shifted Chebyshev)
 acc1n = abs(zacc_i - ci) / ri;
 acc2n = abs(zacc_j - cj) / rj;
-[ell1, ~] = ellipse_cheb_segment(acc1n, Nclust, r_proxy, beta);
-[ell2, ~] = ellipse_cheb_segment(acc2n, Nclust, r_proxy, beta);
+[ell1, ~] = ellipse_cheb_segment(acc1n, Nclust, r_proxy/ri, beta);
+[ell2, ~] = ellipse_cheb_segment(acc2n, Nclust, r_proxy/rj, beta);
 
-cent_i = ci + ell1 * v;
-cent_j = cj + ell2 * (-v);
+cent_i = ci + (ri*ell1) * v;
+cent_j = cj + (rj*ell2) * (-v);
 
 % Extra collocation clustered near closest approach
 Mclust = max(50, 5*Nclust);

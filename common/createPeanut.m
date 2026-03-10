@@ -1,24 +1,31 @@
-function z = createPeanut(q1,q2,Np,debug)
+function z = createPeanut(q1,q2,Np,debug,R)
 %CREATEPEANUT creates discretisation of separation surface for two circular particles
 %
 % Syntax: z = createPeanut(q1,q2,Np,debug)
+%         z = createPeanut(q1,q2,Np,debug,R)
 %
 % Input: 
 % q1    - Complex valued center coordinate of circle 1
 % q2    - Complex valued center coordinate of circle 2
 % Np    - Number of discrete points on peanut 
 % debug - Boolean to draw peanut
+% R     - Optional circle radius (default 1)
 %
 
-delta = abs(q1-q2)-2;
-theta = acos(real(q2-q1)/(2+delta));
+if nargin < 5 || isempty(R)
+    R = 1;
+end
+
+d = abs(q1-q2);
+delta = d-2*R;
+theta = acos(real(q2-q1)/d);
 if imag(q2)<imag(q1)
     theta = 2*pi-theta;
 end
-R = [cos(theta) -sin(theta); sin(theta) cos(theta)];
+Rot = [cos(theta) -sin(theta); sin(theta) cos(theta)];
 
 
-alpha = acos((2+delta)/4);
+alpha = acos((2*R+delta)/(4*R));
 
 % h1 = (2*pi-2*alpha)/Np/4;
 % %t1 = alpha:h1:2*pi-alpha;
@@ -52,17 +59,17 @@ t4 = linspace(pi+alpha,2*pi-alpha,Np/8+2);
 t4 = t4(2:end-1); 
 
 
-z1 = cos(t1)+1i*sin(t1);
-z2 = 2+delta+cos(t2)+1i*sin(t2); 
-z3 = 1+delta/2+cos(t3)+(-2*sin(alpha)+sin(t3))*1i;
-z4 = 1+delta/2+cos(t4)+(2*sin(alpha)+sin(t4))*1i;
+z1 = R*(cos(t1)+1i*sin(t1));
+z2 = (2*R+delta)+R*(cos(t2)+1i*sin(t2)); 
+z3 = (R+delta/2)+R*cos(t3)+(-2*R*sin(alpha)+R*sin(t3))*1i;
+z4 = (R+delta/2)+R*cos(t4)+(2*R*sin(alpha)+R*sin(t4))*1i;
 
 z = [z1 z2 z3 z4];
 %z = [z1 z2];
 
 %Now, rotate
 
-zmap = R*[real(z); imag(z)];
+zmap = Rot*[real(z); imag(z)];
 
 zmap = zmap(1,:)'+1i*zmap(2,:)'; 
 
@@ -89,5 +96,3 @@ end
 
 
 end
-
-

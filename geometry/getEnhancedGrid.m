@@ -10,6 +10,8 @@ function [cent_clust_cells, acc_cells, coll_clust_cells, clust_pairs, coll_pairs
 %           beta    : ellipse tip parameter (0<beta<1)
 %           r_proxy : proxy radius for filtering |z|>r_proxy
 %           delta_pair : proximity threshold for pairs
+%           visualise_grid : logical, optional plotting
+%                    flag for node visualisation
 %
 %   Outputs:
 %     cent_clust_cells : cell(P,1) of clustered centers for each particle
@@ -29,7 +31,19 @@ end
 q = q(:);
 P = numel(q);
 
-rads = ones(P,1);
+if isfield(opt,'rads') && ~isempty(opt.rads)
+    rads = opt.rads(:);
+    if isscalar(rads)
+        rads = repmat(rads,P,1);
+    end
+    if numel(rads) ~= P
+        error('getEnhancedGrid:badRadii','opt.rads must be scalar or length P.');
+    end
+else
+    rads = ones(P,1);
+end
+
+
 Nclust = opt.Nclust;
 beta = opt.beta;
 if isfield(opt,'Rp_f')
@@ -42,7 +56,15 @@ end
 if isfield(opt, 'delta_pair')
     delta_pair = opt.delta_pair;
 else
-    delta_pair = 5e-2;
+    delta_pair = 0.2;
+end
+
+if isfield(opt,'visualise_grid')
+    visualise_grid = logical(opt.visualise_grid);
+elseif isfield(opt,'visualize_grid')
+    visualise_grid = logical(opt.visualize_grid);
+else
+    visualise_grid = false;
 end
 
 cent_clust_cells = cell(P,1);
@@ -87,6 +109,11 @@ for i = 1:P-1
         end
     end
 end
+
+if visualise_grid
+    showEnhancedGridPoints(q,rads,r_proxy,cent_clust_cells,acc_cells, ...
+        coll_clust_cells,clust_pairs,coll_pairs,pairs);
+end
 end
 
 function getEnhancedGrid_selftest()
@@ -98,6 +125,7 @@ opt.Nclust = 100;
 opt.beta = 0.5;
 opt.r_proxy = 0.7;
 opt.delta_pair = 0.5;
+opt.visualise_grid = true;
 
 [cent_clust_cells, acc_cells, coll_clust_cells, clust_pairs, coll_pairs, pairs] = getEnhancedGrid(q, opt);
 cent_clust = vertcat(cent_clust_cells{:});
@@ -120,4 +148,106 @@ plot(cent_clust, 'ro');
 plot(coll_clust, 'b.');
 axis equal; grid on;
 legend('proxy boundaries','centers','accumulation points','clustered centers','clustered collocation','Location','best');
+end
+
+function showEnhancedGridPoints(q,rads,r_proxy,cent_clust_cells,acc_cells, ...
+    coll_clust_cells,clust_pairs,coll_pairs,pairs)
+%SHOWENHANCEDGRIDPOINTS Plot all node families used in getEnhancedGrid.
+
+P = numel(q);
+t = linspace(0,2*pi,240).';
+
+figure('Name','getEnhancedGrid points');
+hold on;
+
+for k = 1:P
+    body = q(k) + rads(k)*(cos(t)+1i*sin(t));
+    proxy = q(k) + r_proxy*(cos(t)+1i*sin(t));
+    if k == 1
+        plot(real(body),imag(body),'k-','LineWidth',1.0,'DisplayName','body boundary');
+        plot(real(proxy),imag(proxy),'k--','LineWidth',1.0,'DisplayName','proxy boundary');
+    else
+        plot(real(body),imag(body),'k-','LineWidth',1.0,'HandleVisibility','off');
+        plot(real(proxy),imag(proxy),'k--','LineWidth',1.0,'HandleVisibility','off');
+    end
+end
+
+plot(real(q),imag(q),'kp','MarkerSize',9,'MarkerFaceColor','k','DisplayName','particle centers');
+for k = 1:P
+    text(real(q(k)),imag(q(k)),sprintf('  q_%d',k), ...
+        'Color','k','FontSize',10,'Interpreter','none');
+end
+
+for k = 1:P
+    rk = cent_clust_cells{k};
+    if ~isempty(rk)
+        if k == 1
+            plot(real(rk),imag(rk),'ro','MarkerSize',4,'DisplayName','clustered source nodes');
+        else
+            plot(real(rk),imag(rk),'ro','MarkerSize',4,'HandleVisibility','off');
+        end
+    end
+end
+
+for k = 1:P
+    ck = coll_clust_cells{k};
+    if ~isempty(ck)
+        if k == 1
+            plot(real(ck),imag(ck),'b.','MarkerSize',10,'DisplayName','clustered collocation nodes');
+        else
+            plot(real(ck),imag(ck),'b.','MarkerSize',10,'HandleVisibility','off');
+        end
+    end
+end
+
+for k = 1:P
+    ak = acc_cells{k};
+    if ~isempty(ak)
+        if k == 1
+            plot(real(ak),imag(ak),'ms','MarkerSize',6,'MarkerFaceColor','y', ...
+                'DisplayName','accumulation points');
+        else
+            plot(real(ak),imag(ak),'ms','MarkerSize',6,'MarkerFaceColor','y', ...
+                'HandleVisibility','off');
+        end
+    end
+end
+
+for row = 1:size(pairs,1)
+    i = pairs(row,1);
+    j = pairs(row,2);
+    plot(real([q(i); q(j)]),imag([q(i); q(j)]),'Color',[0.25 0.25 0.25], ...
+        'LineStyle',':','LineWidth',1.0,'HandleVisibility','off');
+
+    src_ij = clust_pairs{i,j};
+    if ~isempty(src_ij)
+        text(real(src_ij(1)),imag(src_ij(1)),sprintf(' src(%d,%d)',i,j), ...
+            'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
+    end
+
+    src_ji = clust_pairs{j,i};
+    if ~isempty(src_ji)
+        text(real(src_ji(1)),imag(src_ji(1)),sprintf(' src(%d,%d)',j,i), ...
+            'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
+    end
+
+    coll_ij = coll_pairs{i,j};
+    if ~isempty(coll_ij)
+        text(real(coll_ij(1)),imag(coll_ij(1)),sprintf(' coll(%d,%d)',i,j), ...
+            'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
+    end
+
+    coll_ji = coll_pairs{j,i};
+    if ~isempty(coll_ji)
+        text(real(coll_ji(1)),imag(coll_ji(1)),sprintf(' coll(%d,%d)',j,i), ...
+            'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
+    end
+end
+
+axis equal;
+grid on;
+xlabel('x');
+ylabel('y');
+title('Enhanced-grid node families and pair labels','Interpreter','none');
+legend('Location','bestoutside');
 end
