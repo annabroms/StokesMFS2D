@@ -1,4 +1,4 @@
-function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_mob_1B(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode)
+function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_mob_1B(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
 %SOLVE_MOB_1B Solves a 2D Stokes mobility problem with circular particles
 % using 1-body preconditioned recompleted MFS, with a combination of source
 % types at enhancing nodes
@@ -50,6 +50,7 @@ if nargin < 7 || isempty(visualise), visualise = 0; end
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
 if nargin < 10 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+if nargin < 11 || isempty(gmres_verbose), gmres_verbose = 0; end
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -75,6 +76,7 @@ solver_name = 'solve_mob_1B';
 project_proxy = 1; %version of the algorithm project_proxy = 0 corresponds to the version where also image points are projected
 
 opt = get2Dparams(); 
+opt.gmres_verbose = gmres_verbose;
 
 %Params to set Rp and grid resolution, based on heuristic relationship from
 %QFS paper (Laplace).
@@ -200,7 +202,7 @@ if debug && lr
         x(:) = 0; 
         x(k) = 1; 
         uu = lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Nx,Ny,Mx,Zi,Yi,opt);
-        %uu = matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
+        %uu = matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
         CC(:,k) = uu;
     end
     toc
@@ -227,10 +229,10 @@ end
 if opt.lr && solve
     disp('...Solving for fine component...')
     Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Sinv,Zi,Yi,opt); 
-    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 elseif solve
-    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,1,rout);
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,opt,rout);
 end
 % Decay of residual with iteration number
 figure()
@@ -314,7 +316,7 @@ if lr
 
     u_rhs = getVelocityField(rin,rcheck_b,tau_L(1:end/2),tau_L(end/2+1:end),[],[],[],[],[],[], []);
 else
-    u_rhs = matvec_2D_mobility(mu_gmres,rin,rout,rcheck_b,rimage,nimage,q,UU,Y,L,pair_points,s,0,project_proxy);
+    u_rhs = matvec_mob_1B(mu_gmres,rin,rout,rcheck_b,rimage,nimage,q,UU,Y,L,pair_points,s,0,project_proxy);
 end
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0; 

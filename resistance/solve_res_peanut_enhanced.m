@@ -1,4 +1,4 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug)
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_PRECOND_PEANUT_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
 %fine grid enhanced with shielding Stokeslets near image points is used locally for every
@@ -41,8 +41,9 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W
 % See also:
 %   solve_res_1B              - 1-body preconditioned resistance solver
 %   solve_res_2B_enhanced     - 2-body preconditioner without peanut compression
-%   solve_mob_peanut_enhanced   - 2-body preconditioned mobility solver
-%   with peanut compression
+%   solve_mob_peanut_enhanced - 2-body preconditioned mobility solver
+%                               with peanut compression
+%   matvec_res_peanut_enhanced - matrix-vector action used by GMRES
 %
 % To test: Call without arguments.
 %
@@ -53,6 +54,7 @@ if nargin==0, test_solve_res;
 
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 P = length(q); % number of particles
 
@@ -127,6 +129,7 @@ opt.P = P;
 opt.use_fmm_velocity = true; % set false to evaluate Stokeslet part with stokesletDirect
 
 opt.bndry_vel = 0; 
+opt.gmres_verbose = gmres_verbose;
 %% CREATE GRID
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
@@ -210,7 +213,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_peanut_enhanced(x,geom,basis);
+        uu = matvec_res_peanut_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     toc
@@ -229,8 +232,8 @@ if debug
 end
 
 [tau,it,resvec,real_res] = helsing_gmres( ...
-    @(x) matvec_2D_peanut_enhanced(x,geom,basis), ...
-    fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+    @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
+    fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 figure()
 semilogy(resvec); 
@@ -238,7 +241,7 @@ title('GMRES convergence with peanut compression, resistance', 'interpreter','la
 
 if visualise
     %check residual
-    restot = matvec_2D_peanut_enhanced(tau,geom,basis)-fout;
+    restot = matvec_res_peanut_enhanced(tau,geom,basis)-fout;
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')

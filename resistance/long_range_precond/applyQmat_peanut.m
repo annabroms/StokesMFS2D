@@ -40,7 +40,7 @@ function lambda_fine = applyQmat_peanut(mu,rvec_in,rvec_out,Sinv,Zi,Yi,opt,...
 %remember that everything so far is implemented without images in mind
 
 debug = 0; 
-proj_vel = matvec_2B_peanut(mu,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
+proj_vel = matvec_res_peanut(mu,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
 %proj_vel = getVelocityField(rvec_in,rvec_out,vel(1:end/2),vel(end/2+1:end),[],[],[],[],[],[], []);
 
 

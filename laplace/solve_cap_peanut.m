@@ -1,4 +1,4 @@
-function [Q,lambda_proxy,it,gmres_tol,maxres] = solve_cap_peanut(q,v_body,delta_pair,N_peanut,visualise,gmres_tol,debug,use_fmm)
+function [Q,lambda_proxy,it,gmres_tol,maxres] = solve_cap_peanut(q,v_body,delta_pair,N_peanut,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
 %SOLVE_CAP_PEANUT Solve exterior Dirichlet Laplace (capacitance:
 %known voltages, unknown charges) with peanut-compressed 2B preconditioner.
 %
@@ -37,6 +37,7 @@ if nargin < 5 || isempty(visualise), visualise = 0; end
 if nargin < 6 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 7 || isempty(debug), debug = false; end
 if nargin < 8 || isempty(use_fmm), use_fmm = true; end
+if nargin < 9 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 q = q(:);
 v_body = v_body(:);
@@ -49,6 +50,7 @@ solver_name = 'cap_peanut';
 
 opt = getLaplace2Dparams();
 R = opt.rad;
+opt.gmres_verbose = gmres_verbose;
 
 N_c = 80;
 N_f = 150;
@@ -159,10 +161,10 @@ if debug
 end
 
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_peanut_enhanced(x,geom,basis), ...
-    fout,length(rout),maxit,gmres_tol,1,rout);
+    fout,length(rout),maxit,gmres_tol,opt,rout);
 
 figure(); semilogy(resvec)
-title('GMRES convergence Laplace peanut enhanced','interpreter','latex')
+title('GMRES convergence capacitance peanut','interpreter','latex')
 
 %% Postprocess
 n_bound = 803;

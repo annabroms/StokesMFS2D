@@ -1,170 +1,284 @@
-%test script for mobility and resistance with pair corrections 
-clear; 
+%TEST_MOB_RES Compare Stokes mobility and resistance solvers.
+%
+% Enhanced solves in this script use Stokeslet sources only:
+%   solve_mob_2B_enhanced, solve_mob_peanut_enhanced,
+%   solve_res_2B_enhanced, solve_res_peanut_enhanced.
+%
+% Optional 1-body solves (enabled below) use the image representation with
+% multiple source types:
+%   solve_mob_1B, solve_res_1B  (from mobility/dev_image_based and
+%   resistance/dev_image_based).
+%
+% If you want 2B/peanut image-based mixed-source solves instead of
+% enhanced Stokeslet-only solves, switch calls to:
+%   solve_mob_2B_images, solve_mob_peanut_images,
+%   solve_res_2B_images, solve_res_peanut_images.
+%
+% Anna Broms, Mar 2026
+
+clear;
 close all;
-rng(8); 
+clc;
+rng(8);
 
-%generate geometry
-delta = 1; %minimum particle separation
-delta = 0.01; 
-P = 2000; % number of particles
-P = 5000; 
-Pvec = [10 30 50 80 100 200 500 2000];
-reps = 10; %repeat experiment
-Pvec = Pvec(1:6);
-Pvec = 1000; %300; 
-Pvec = 2; 
-%Pvec = 101; 
-%Pvec = 2000;
-reps = 1; 
+%% Configuration
+P = 3;
+delta = 1e-2;                 % geometric spacing parameter
+geometry_mode = 'line';       % 'line' | 'dumbbells' | 'cluster'
+delta_pair = 0.2;             % near-pair threshold for 2B/peanut
+N_peanut = 400;               % points per peanut separation surface
+rads = ones(P,1);
 
-test_mob_first = 0; 
+run_image_1B = true;          % include solve_mob_1B / solve_res_1B
+image = 1;
+lr = 0;
 
-for k = 1:length(Pvec)
-    for i = 1:reps
-        %% Set geometry
-        P = Pvec(k); 
-       
-       % [q,B] = grow_cluster(P,delta,2); %harder to resolve...
-       
-        %q = createDumbells(P,delta); %P even
-        %q = (0:2+delta:(P-1)*(2+delta))';
-% 
-%         t = linspace(0,2*pi,200); 
-%         figure()
-%         for ii = 1:P
-%             plot(real(q(ii))+cos(t),imag(q(ii))+sin(t));
-%             hold on
-%         end
+visualise = 0;
+gmres_tol = 1e-8;
+debug = 0;
+gmres_verbose = 0;            % 0=silent, 1=summary, 2=per-iteration
+surface_error_mode = 'rel';
 
-         % q = 0; 
-         q = [0; (2+delta)];
-% 
-% %          % Hexagonal lattice
-         x = 1+delta/2;
-         y = sqrt((2+delta)^2-(1+delta/2)^2);
-         %q = [0; 2+delta; x+1i*y; x+2+delta+1i*y; 4+2*delta; x-1i*y; x+2+delta-1i*y]; 
-         %q = q(1:3);
+q = buildGeometry(geometry_mode,P,delta);
+P = numel(q);
+rads = ones(P,1);
 
-        % q = [q; 30+q1; -30+q1];
-        % q = [q; 10+q; -10+q];
+fprintf('=== test_mob_res ===\n');
+fprintf('geometry=%s, P=%d, delta=%.2e, delta_pair=%.2e, N_peanut=%d\n', ...
+    geometry_mode,P,delta,delta_pair,N_peanut);
+fprintf('enhanced family: Stokeslet sources only\n');
+if run_image_1B
+    fprintf('1B family      : image representation with mixed source types\n');
+end
+fprintf('\n');
 
-        % q = [0; 2+delta; -2-delta];
-        % q = [0; 2+delta];
-         %q = [0; 2+delta; (2+delta)*1i; 2+delta+(2+delta)*1i];
-         %q = q(1:3); 
-        % q = [0; 2+delta; (2+delta)*1i];
-        %q = [q; 10; 12+delta; -10; -12-delta];
+%% Geometry preview
+printDivider('Geometry preview');
+plotGeometryPreview(q,rads,sprintf('test_mob_res geometry (%s, P=%d)',geometry_mode,P));
+
+printPauseDivider();
+disp('Press key to continue...')
+pause();
+
+%% Mobility comparison (input F,T, compare UW)
+printDivider('Mobility comparison (input F,T -> output U,W)');
+F_ref = randn(P,2);
+T_ref = randn(P,1);
+
+[UW_2B,~,gmres_iter_mob_2B,~,boundary_rel_mob_2B,boundary_abs_mob_2B] = ...
+    solve_mob_2B_enhanced(q,F_ref,T_ref,delta_pair,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+
+[UW_peanut,~,gmres_iter_mob_peanut,~,boundary_rel_mob_peanut,boundary_abs_mob_peanut] = ...
+    solve_mob_peanut_enhanced(q,F_ref,T_ref,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+
+if run_image_1B
+    [UW_1B,~,gmres_iter_mob_1B,~,boundary_rel_mob_1B,boundary_abs_mob_1B] = ...
+        solve_mob_1B(q,F_ref,T_ref,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+end
+
+printSummaryHeader('Mobility comparison');
+fprintf('Mobility solves (input F,T)\n');
+fprintf('  %-10s %12s %14s %14s\n','solver','gmres_iter','rel_res','abs_res');
+if run_image_1B
+    fprintf('  %-10s %12d %14.3e %14.3e\n','1B-image',gmres_iter_mob_1B,boundary_rel_mob_1B,boundary_abs_mob_1B);
+end
+fprintf('  %-10s %12d %14.3e %14.3e\n','2B-enh',gmres_iter_mob_2B,boundary_rel_mob_2B,boundary_abs_mob_2B);
+fprintf('  %-10s %12d %14.3e %14.3e\n','peanut',gmres_iter_mob_peanut,boundary_rel_mob_peanut,boundary_abs_mob_peanut);
+
+if run_image_1B
+    mobility_diff_2B_vs_1B = relerr(UW_2B,UW_1B);
+    mobility_diff_peanut_vs_1B = relerr(UW_peanut,UW_1B);
+    fprintf('  diff vs 1B-image : ||UW_2B-UW_1B||/||UW_1B|| = %.3e\n',mobility_diff_2B_vs_1B);
+    fprintf('                    ||UW_peanut-UW_1B||/||UW_1B|| = %.3e\n',mobility_diff_peanut_vs_1B);
+end
+mobility_diff_peanut_vs_2B = relerr(UW_peanut,UW_2B);
+fprintf('  diff vs 2B-enh   : ||UW_peanut-UW_2B||/||UW_2B|| = %.3e\n\n',mobility_diff_peanut_vs_2B);
+
+printPauseDivider();
+disp('Press key to continue...')
+pause();
+
+%% Resistance comparison (input U,W, compare FT)
+printDivider('Resistance comparison (input U,W -> output F,T)');
+U_ref = randn(P,2);
+W_ref = randn(P,1);
+
+[FT_2B,~,gmres_iter_res_2B,~,boundary_rel_res_2B] = ...
+    solve_res_2B_enhanced(q,U_ref,W_ref,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose);
+
+[FT_peanut,~,gmres_iter_res_peanut,~,boundary_rel_res_peanut] = ...
+    solve_res_peanut_enhanced(q,U_ref,W_ref,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose);
+
+if run_image_1B
+    [FT_1B,~,gmres_iter_res_1B,~,boundary_rel_res_1B] = ...
+        solve_res_1B(q,U_ref,W_ref,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose);
+end
+
+printSummaryHeader('Resistance comparison');
+fprintf('Resistance solves (input U,W)\n');
+fprintf('  %-10s %12s %14s\n','solver','gmres_iter','rel_res');
+if run_image_1B
+    fprintf('  %-10s %12d %14.3e\n','1B-image',gmres_iter_res_1B,boundary_rel_res_1B);
+end
+fprintf('  %-10s %12d %14.3e\n','2B-enh',gmres_iter_res_2B,boundary_rel_res_2B);
+fprintf('  %-10s %12d %14.3e\n','peanut',gmres_iter_res_peanut,boundary_rel_res_peanut);
+
+if run_image_1B
+    resistance_diff_2B_vs_1B = relerr(FT_2B,FT_1B);
+    resistance_diff_peanut_vs_1B = relerr(FT_peanut,FT_1B);
+    fprintf('  diff vs 1B-image : ||FT_2B-FT_1B||/||FT_1B|| = %.3e\n',resistance_diff_2B_vs_1B);
+    fprintf('                    ||FT_peanut-FT_1B||/||FT_1B|| = %.3e\n',resistance_diff_peanut_vs_1B);
+end
+resistance_diff_peanut_vs_2B = relerr(FT_peanut,FT_2B);
+fprintf('  diff vs 2B-enh   : ||FT_peanut-FT_2B||/||FT_2B|| = %.3e\n\n',resistance_diff_peanut_vs_2B);
+
+printPauseDivider();
+disp('Press key to continue...')
+pause();
+
+%% Two-way checks
+printDivider('Two-way checks');
+FT_ref = packFT(F_ref,T_ref);
+UW_ref = packUW(U_ref,W_ref);
+
+% Mobility -> Resistance
+[U_m2,W_m2] = unpackUW(UW_2B);
+[FT_back_m2,~,~,~,~] = solve_res_2B_enhanced(q,U_m2,W_m2,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose);
+
+[U_mp,W_mp] = unpackUW(UW_peanut);
+[FT_back_mp,~,~,~,~] = solve_res_peanut_enhanced(q,U_mp,W_mp,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose);
+
+two_way_mob_res_2B = relerr(FT_back_m2,FT_ref);
+two_way_mob_res_peanut = relerr(FT_back_mp,FT_ref);
+
+% Resistance -> Mobility
+[F_r2,T_r2] = unpackFT(FT_2B);
+[UW_back_r2,~,~,~,~,~] = solve_mob_2B_enhanced(q,F_r2,T_r2,delta_pair,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+
+[F_rp,T_rp] = unpackFT(FT_peanut);
+[UW_back_rp,~,~,~,~,~] = solve_mob_peanut_enhanced(q,F_rp,T_rp,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+
+two_way_res_mob_2B = relerr(UW_back_r2,UW_ref);
+two_way_res_mob_peanut = relerr(UW_back_rp,UW_ref);
+
+if run_image_1B
+    [U_m1,W_m1] = unpackUW(UW_1B);
+    [FT_back_m1,~,~,~,~] = solve_res_1B(q,U_m1,W_m1,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose);
+    [F_r1,T_r1] = unpackFT(FT_1B');
+    [UW_back_r1,~,~,~,~,~] = solve_mob_1B(q,F_r1,T_r1,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+
+    two_way_mob_res_1B = relerr(FT_back_m1,FT_ref);
+    two_way_res_mob_1B = relerr(UW_back_r1,UW_ref);
+end
+
+printSummaryHeader('Two-way checks');
+fprintf('  %-10s %16s %16s\n','solver','mob->res','res->mob');
+if run_image_1B
+    fprintf('  %-10s %16.3e %16.3e\n','1B-image',two_way_mob_res_1B,two_way_res_mob_1B);
+end
+fprintf('  %-10s %16.3e %16.3e\n','2B-enh',two_way_mob_res_2B,two_way_res_mob_2B);
+fprintf('  %-10s %16.3e %16.3e\n','peanut',two_way_mob_res_peanut,two_way_res_mob_peanut);
 
 
-
-         
-%         
-        rads = ones(P,1);
-        delta_pair = 3; %largest distance to be counted as a close pair
-
-        if test_mob_first
-            %% Set mobility data
-            Fref = randn(P,2);
-            Tref = randn(P,1);
-            %Tref = zeros(size(Tref));
-    
-    
-            %% Solve mobility with 1-body precond
-            images = 1; 
-            visualise = 1; 
-            [UW,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,Fref,Tref,rads,images, visualise);
-    
-            %% Solve mobility with pair corrections
-          
-            [UW2,lambda,it2,gmres_tol,err2] = solve_mob_2B_images(q,Fref,Tref,rads,delta_pair,visualise);
-    
-            %% Solve with peanut compression
-            N_peanut = 400; %number of collocation points on peanut. 
-            %tic
-            [UW3,lambda,it3,err3] = solve_mob_peanut_images(q,Fref,Tref,rads,N_peanut,delta_pair,visualise);
-           % toc
-        else
-            %% Set resistance data instead
-            Uref = randn(P,2);
-            Wref = randn(P,1);
-            images = 1; 
-            visualise = 0;
-            [FT,lambda,it, gmres_tol, maxres] = solve_res_1B(q,Uref,Wref,rads,images,visualise);
-            %% Solve resistance with pair-corrections
-            [FT,lambda,it_im,tol_im,err_im] = solve_res_2B_images(q,Uref,Wref,rads,delta_pair,visualise);
-            %larger residual than with peanut compression  
-            %% Solve resistance with peanut compression
-            [FT,lambda,it_p,tol_p,err_p] = solve_res_peanut_images(q,Uref,Wref,rads,400,delta_pair,visualise);
+function q = buildGeometry(mode,P,delta)
+switch lower(mode)
+    case 'line'
+        spacing = 2 + delta;
+        q = (0:P-1)'*spacing;
+        q = complex(q,zeros(size(q)));
+    case 'dumbbells'
+        if mod(P,2)~=0
+            error('For geometry_mode=''dumbbells'', P must be even.');
         end
-            
-        
-       %% Store stuff... 
-       % iters(k,i) = it;
-        %errvec(k,i) = err;
+        q = createDumbells(P,delta);
+        q = q(:);
+    case 'cluster'
+        q = grow_cluster(P,delta,2);
+        q = q(:);
+    otherwise
+        error('Unknown geometry_mode: %s',mode);
+end
+end
+
+function UW = packUW(U,W)
+P = size(U,1);
+UW = zeros(3*P,1);
+UW(1:3:end) = U(:,1);
+UW(2:3:end) = U(:,2);
+UW(3:3:end) = W;
+end
+
+function [U,W] = unpackUW(UW)
+P = numel(UW)/3;
+U = [UW(1:3:end), UW(2:3:end)];
+W = UW(3:3:end);
+assert(size(U,1)==P,'Unexpected size in unpackUW.')
+end
+
+function FT = packFT(F,T)
+P = size(F,1);
+FT = zeros(3*P,1);
+FT(1:3:end) = F(:,1);
+FT(2:3:end) = F(:,2);
+FT(3:3:end) = T;
+end
+
+function [F,T] = unpackFT(FT)
+P = numel(FT)/3;
+F = [FT(1:3:end), FT(2:3:end)];
+T = FT(3:3:end);
+assert(size(F,1)==P,'Unexpected size in unpackFT.')
+end
+
+function e = relerr(a,b)
+e = norm(a-b,inf)/max(1,norm(b,inf));
+end
+
+function printDivider(title_str)
+bar = repmat('=',1,78);
+fprintf('%s\n',bar);
+fprintf('%s\n',bar);
+fprintf('%s\n\n',title_str);
+end
+
+function printPauseDivider()
+bar = repmat('-',1,78);
+fprintf('\n%s\n',bar);
+fprintf('%s\n',bar);
+end
+
+function printSummaryHeader(test_name)
+bar = repmat('-',1,78);
+fprintf('\n%s\n',bar);
+fprintf('Summary of test: %s\n',test_name);
+fprintf('%s\n',bar);
+end
+
+function plotGeometryPreview(q,rads,title_str)
+t = linspace(0,2*pi,240);
+figure('Name','test_mob_res geometry','Color','w');
+clf;
+hold on;
+
+P = numel(q);
+show_labels = P <= 40;
+for i = 1:P
+    x = real(q(i)) + rads(i)*cos(t);
+    y = imag(q(i)) + rads(i)*sin(t);
+    plot(x,y,'k-','LineWidth',1.3);
+    plot(real(q(i)),imag(q(i)),'k.','MarkerSize',12);
+    if show_labels
+        text(real(q(i)),imag(q(i)),sprintf(' %d',i), ...
+            'FontSize',10,'Color',[0.10 0.10 0.10], ...
+            'VerticalAlignment','bottom','HorizontalAlignment','left');
     end
 end
 
-if test_mob_first
-
-    %% If we want to determine 2-way error
-    
-    U = [UW3(1:3:end) UW3(2:3:end)]; 
-    W = UW3(3:3:end); 
-    
-    
-    %U = rand(P,2);
-    %W = rand(P,1); 
-    %% Solve resistance only with 1-body precond
-    %Converges very slowly
-    %images = 1; 
-    [F,T,err_res,it_res,ftest,lambda,rcheck_dom] = solve_res_1B(q,U,W,rads,images,visualise);
-    
-    %% Solve resistance with pair-corrections
-   % [F,T,err_im,it_im,ftest2] = solve_res_2B_images(q,U,W,rads,delta_pair);
-    %larger residual than with peanut compression  
-    %% Solve resistance with peanut compression
-    [F2,T2,err_p,it_p,ftest_peanut,precond] = solve_precond_peanut(q,U,W,rads,400,visualise);
-    
-    disp('Torque error')
-    max(abs(T-Tref'))/max(abs(Tref))
-    
-    disp('Force error')
-    max(abs(Fref(:,1)+1i*Fref(:,2)-transpose(F)))/max(abs(Fref(:,1)+1i*Fref(:,2)))
-    
-    disp('Torque error')
-    max(abs(T2-Tref'))/max(abs(Tref))
-    
-    disp('Force error')
-    max(abs(Fref(:,1)+1i*Fref(:,2)-transpose(F2)))/max(abs(Fref(:,1)+1i*Fref(:,2)))
-else
-    F = [FT(1:3:end),FT(2:3:end)];
-    T = FT(3:3:end);
-    [UW2,lambda,it2,gmres_mob,err2] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
-    U2 = [UW2(1:3:end) UW2(2:3:end)];
-    W2 = [UW2(3:3:end)];
-    
-    %% Solve with peanut compression
-    N_peanut = 400; %number of collocation points on peanut. 
-    %tic
-    [UW3,lambda,it3,gmres_p,err3] = solve_mob_peanut_images(q,F,T,rads,N_peanut,delta_pair,visualise);
-    U3 = [UW3(1:3:end) UW3(2:3:end)];
-    W3 = [UW3(3:3:end)];
-
-    
-    
-
-%     disp('Ang error')
-%     max(abs(T-T'))/max(abs(Tref))
-%     
-%     disp('Trans error')
-%     max(abs(Fref(:,1)+1i*Fref(:,2)-transpose(F)))/max(abs(Fref(:,1)+1i*Fref(:,2)))
-%     
-%     disp('Ang error')
-%     max(abs(T2-Tref'))/max(abs(Tref))
-%     
-%     disp('Trans error')
-%     max(abs(Fref(:,1)+1i*Fref(:,2)-transpose(F2)))/max(abs(Fref(:,1)+1i*Fref(:,2)))
+axis equal;
+grid on;
+xlabel('x');
+ylabel('y');
+title(title_str,'Interpreter','none');
+hold off;
+drawnow;
 end
-
-
-

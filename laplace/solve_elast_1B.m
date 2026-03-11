@@ -1,4 +1,4 @@
-function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(q,Q_body,visualise,gmres_tol,debug,use_fmm)
+function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(q,Q_body,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
 %SOLVE_ELAST_1B Solve exterior Laplace elastance problem (known charges, unknown voltages) with 1-body preconditioning.
 %
 % Syntax:
@@ -35,6 +35,7 @@ if nargin < 3 || isempty(visualise), visualise = 0; end
 if nargin < 4 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 5 || isempty(debug), debug = false; end
 if nargin < 6 || isempty(use_fmm), use_fmm = true; end
+if nargin < 7 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 q = q(:);
 Q_body = Q_body(:);
@@ -46,6 +47,8 @@ solver_name = 'solve_elast_1B';
 
 %% Build geometry and basis functions
 [geom,basis,~,rad] = prepareLaplace1B(q,use_fmm,visualise,true);
+opt = struct();
+opt.gmres_verbose = gmres_verbose;
 
 %% Build rhs
 [lambda0,u_rhs] = getChargeCompletionFlowLaplace(geom.rvec_in,geom.rout,geom.source_ind,Q_body,use_fmm);
@@ -65,10 +68,10 @@ if debug
 end
 
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_elast_1B(x,geom,basis), ...
-    u_rhs,length(geom.rout),maxit,gmres_tol,1,geom.rout);
+    u_rhs,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
 
 figure(); semilogy(resvec)
-title('GMRES convergence Laplace elastance 1B','interpreter','latex')
+title('GMRES convergence elastance 1B','interpreter','latex')
 
 %% Postprocess
 

@@ -1,5 +1,5 @@
-function res = matvec_2D_mobility(tau,rvec_in,rvec_out,rvec_check,rimage,nimage,q,Uii,Yii,L,pairs,s,solve,ver1)
-%MATVEC_2D_STOKES applies the matrix corresponding to one body
+function res = matvec_mob_1B(tau,rvec_in,rvec_out,rvec_check,rimage,nimage,q,Uii,Yii,L,pairs,s,solve,ver1)
+%MATVEC_MOB_1B applies the matrix corresponding to one-body
 %preconditioning for the 2D Stokes mobility problem using a grid of
 %coarse sources in rvec_in enhanced with images stored in rimage.
 

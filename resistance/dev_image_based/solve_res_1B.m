@@ -1,4 +1,4 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_res_1B(q,U,W,rads,image,lr,visualise,gmres_tol,debug)
+function [FT,lambda, it, gmres_tol, maxres] = solve_res_1B(q,U,W,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_RES_1B Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS.
 %
@@ -41,6 +41,7 @@ if nargin==0, test_solve_res2;
 
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 P = length(q);
 
@@ -62,6 +63,7 @@ maxit = 1600;
 solver_name = 'solve_res_1B';
 % Params to determine grid
 opt = get2Dparams(); 
+opt.gmres_verbose = gmres_verbose;
 a = opt.a_c;
 opt.a_c = a; 
 opt.P = P; 
@@ -283,7 +285,7 @@ end
 %precond = KrylovPrecond();
 %now, try to limit the number of iters for the preconditioner. Does
 %that help?
-% [x_gmres, e2, precond] = precond_gmres(@(x) matvec_2D_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,1);
+% [x_gmres, e2, precond] = precond_gmres(@(x) matvec_res_Stokes(x,rvec_in,rvec_out,rimage,nimage,q,UU,Y,pairs,s,wobbly), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,1);
 %it = length(e2);
 %fprintf("iterations = %d\n", length(e2))
 %delete precond
@@ -296,7 +298,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+        uu = matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
         CC(:,k) = uu;
     end
     toc
@@ -491,14 +493,14 @@ end
 
 % GMRES with low stagnation control (J.Helsing). 
 %
-%[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+%[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 if lr
     if solve
   %  maxit = 1; %debug
-   % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+   % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
         Pf = applyPmat(fout,rin,rout,Sinv,q,Ny,Mx,Z,Y,opt); 
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
@@ -506,10 +508,10 @@ if lr
         it = 0;
     end
 else
-    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 end
 % Determine residual
-%VL = matvec_2D_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+%VL = matvec_res_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
 %res = VL-fout; %this is large. 
 % Decay of residual with iteration number
 if debug
@@ -586,8 +588,8 @@ end %[tau_stokes_x,tau_stokes_y,rot,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_
     
     %other preconditioning strategy!
     % project = 0;
-    % if project [x_gmres1,it1,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
-    %     Az_fine = matvec_2D_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+    % if project [x_gmres1,it1,resvec,real_res] = helsing_gmres(@(x) matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+    %     Az_fine = matvec_res_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
     %     fout_c = fout-Az_fine;
     %     %Find coarse solution to correct!
     % end

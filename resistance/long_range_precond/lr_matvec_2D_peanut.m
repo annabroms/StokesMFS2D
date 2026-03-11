@@ -3,7 +3,7 @@ function res = lr_matvec_2D_peanut(tau,rvec_in,rbase_in_c,rbase_in_f,rbase_out_f
 % corresponding to 2-body preconditioning with peanut compression for the 2D Stokes resistance problem using a grid of
 %coarse sources in rvec_in enhanced with images stored in rimage.
 debug = 0; 
-vel = matvec_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
+vel = matvec_res_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
 
 %vel = matvec_2D_peanut(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
 

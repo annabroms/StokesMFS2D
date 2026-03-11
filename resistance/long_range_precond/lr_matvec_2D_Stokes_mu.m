@@ -4,7 +4,7 @@ function res = lr_matvec_2D_Stokes_mu(tau,rvec_in,rvec_out,q,Uii,Yii,pairs,s,Sin
 
 %Apply the preconditioner P, see applyPmat_mu.m
 
-vel = matvec_2D_Stokes(tau,rvec_in,rvec_out,[],[],q,Uii,Yii,pairs,s);
+vel = matvec_res_Stokes(tau,rvec_in,rvec_out,[],[],q,Uii,Yii,pairs,s);
 
 res = applyPmat_mu(vel,rvec_in,rvec_out,Sinv,q,Zi,Yi,Uii,Yii,pairs,opt);
 

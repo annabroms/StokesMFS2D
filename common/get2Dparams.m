@@ -30,5 +30,6 @@ opt.a_f = 1.2; % upsampling factor for collocation points so that M_f = a_f*N_f;
  
 opt.beta = 0.3; %determines distance between focus and tip of ellipse for enhancing nodes
 opt.cmap = 0; %use coarse-to-coarse mapping. Only applicable with peanut compression. 
+opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 
 end

@@ -4,7 +4,7 @@ function res = lr_matvec_2D_mobility(tau,rvec_in,rvec_out,rimage,nimage,q,Uii,Yi
 
 %Apply the preconditioner P, see applyPmat.m
 project_proxy = 1; 
-vel = matvec_2D_mobility(tau,rvec_in,rvec_out,rvec_out,rimage,nimage,q,Uii,Yii,L,pairs,s,1,project_proxy);
+vel = matvec_mob_1B(tau,rvec_in,rvec_out,rvec_out,rimage,nimage,q,Uii,Yii,L,pairs,s,1,project_proxy);
 
 
 res = applyPmat_mob(vel,rvec_in,rvec_out,L{1},Lr,Sinv,Zi,Yi,opt);

@@ -1,4 +1,4 @@
-function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_2B(q,Q_body,delta_pair,visualise,gmres_tol,debug,use_fmm)
+function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_2B(q,Q_body,delta_pair,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
 %SOLVE_ELAST_2B Solve exterior Laplace elastance problem (known charges, unknown voltages) with 2-body preconditioning.
 %
 % Syntax:
@@ -36,6 +36,7 @@ if nargin < 4 || isempty(visualise), visualise = 0; end
 if nargin < 5 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 6 || isempty(debug), debug = false; end
 if nargin < 7 || isempty(use_fmm), use_fmm = true; end
+if nargin < 8 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 q = q(:);
 Q_body = Q_body(:);
@@ -47,6 +48,7 @@ solver_name = 'solve_elast_2B';
 
 opt = getLaplace2Dparams();
 rad = opt.rad;
+opt.gmres_verbose = gmres_verbose;
 
 N_c = 80;
 N_f = 150;
@@ -146,10 +148,10 @@ if debug
 end
 
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
-    u_rhs,length(rout),maxit,gmres_tol,1,rout);
+    u_rhs,length(rout),maxit,gmres_tol,opt,rout);
 
 figure(); semilogy(resvec)
-title('GMRES convergence Laplace elastance 2B','interpreter','latex')
+title('GMRES convergence elastance 2B','interpreter','latex')
 
 %% Postprocess
 [rvec_in,coarse_ind,lambda_corr,~,~,~,~,lam_c_nonp,lam_f_nonp,lam_e_nonp] = ...

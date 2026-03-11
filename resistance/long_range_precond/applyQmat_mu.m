@@ -41,7 +41,7 @@ function mu_fine = applyQmat_mu(vel,rvec_in,rvec_out,Sinv,q,Zi,Yi,rimage,nimage,
 
 
 %proj_vel = getVelocityField(rvec_in,rvec_out,vel(1:end/2),vel(end/2+1:end),[],[],[],[],[],[], []);
-proj_vel = matvec_2D_Stokes(vel,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,pair_points,opt.s);
+proj_vel = matvec_res_Stokes(vel,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,pair_points,opt.s);
 
 
 mu = getCoarseMu(proj_vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);

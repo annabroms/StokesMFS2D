@@ -1,4 +1,4 @@
-function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
+function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
 %SOLVE_MOB_PRECOND_PEANUT Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -39,13 +39,13 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F
 %   needed thanks to compression of the local fine grid.
 %
 % Notes:
-%   - Intended to match solve_precond_peanut, but applied to a mobility problem rather than resistance.
+%   - Intended to match solve_res_peanut_images, but applied to a mobility problem rather than resistance.
 %   - Aims to test an MFS generalisation of the idea presented by Cheng-Greengard (1998)
 %
 % See also:
 %   solve_mob_1B              - 1-body preconditioned mobility solver
 %   solve_mob_2B_images - 2-body preconditioner without peanut compression
-%   solve_precond_peanut   - 2-body preconditioned resistance solver
+%   solve_res_peanut_images   - 2-body preconditioned resistance solver
 %   with peanut compression
 %
 % To test: Call without arguments.
@@ -59,6 +59,7 @@ if nargin < 7 || isempty(visualise), visualise = 0; end
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
 if nargin < 10 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+if nargin < 11 || isempty(gmres_verbose), gmres_verbose = 0; end
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -112,6 +113,7 @@ if nargin < 5 || isempty(delta_pair)
 end
 
 opt = get2Dparams(); 
+opt.gmres_verbose = gmres_verbose;
 opt.s = s;
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
@@ -281,7 +283,7 @@ if debug
     title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 figure()
 semilogy(resvec); 

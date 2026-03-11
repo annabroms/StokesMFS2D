@@ -1,5 +1,5 @@
-function res = matvec_2D_Stokes(tau,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,pairs,s)
-%MATVEC_2D_STOKES applies the matrix corresponding to one body
+function res = matvec_res_Stokes(tau,rvec_in,rvec_out,rimage,nimage,q,Uii,Yii,pairs,s)
+%MATVEC_RES_STOKES applies the matrix corresponding to one-body
 %preconditioning for the 2D Stokes resistance problem using a grid of
 %coarse sources in rvec_in enhance with images stored in rimage.
 

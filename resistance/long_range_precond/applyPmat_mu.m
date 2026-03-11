@@ -55,7 +55,7 @@ mu = getCoarseMu(vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
 
 %remember that everything so far is implemented without images in mind
 
-proj_vel = matvec_2D_Stokes(mu,rvec_in,rvec_out,[],[],q,Uii,Yii,pair_points,opt.s);
+proj_vel = matvec_res_Stokes(mu,rvec_in,rvec_out,[],[],q,Uii,Yii,pair_points,opt.s);
 
 res = vel-proj_vel;
 

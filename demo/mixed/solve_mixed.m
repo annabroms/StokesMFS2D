@@ -85,7 +85,7 @@ sep = (1/Nc)*log(1/tol);
 Rp = max([1-sep,0.01]); %radius of proxy surface
 
 %solve with Stresslets +Doublets at image points
-s = [0 0 1 1]; % Source types at image points hardcoded
+s = [0 0 1 1 0 0 0]; % Source types at image points hardcoded
 opt.N_c = Nc; 
 opt.Rp_c = Rp;
 opt.s = s;
@@ -93,7 +93,7 @@ opt.pc = 0;
 %% Get and visualise grid of sources and collocation points
 
 %create grids
-[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,ones(size(q)),opt);
+[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,ones(size(q)),opt);
 
 if visualise
     figure(4)

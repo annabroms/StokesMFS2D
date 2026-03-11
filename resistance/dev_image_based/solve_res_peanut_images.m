@@ -1,4 +1,4 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,lr,gmres_tol,debug)
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,lr,gmres_tol,debug,gmres_verbose)
 %SOLVE_RES_PEANUT_IMAGES Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -54,6 +54,7 @@ if nargin==0, test_solve_res;
 
 if nargin < 9 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 10 || isempty(debug), debug = false; end
+if nargin < 11 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 P = length(q); % number of particles
 
@@ -115,6 +116,7 @@ if nargin < 6
 end
 
 opt = get2Dparams(); 
+opt.gmres_verbose = gmres_verbose;
 opt.s = s;
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
@@ -209,10 +211,10 @@ if lr
     mu_coarse = getCoarseMu(fout,Sinv,Zi,Yi,db,P,opt.N_c,opt.a_c);
 
     %Try to evaluate: 
-    res1 = matvec_2B_peanut(mu_coarse,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0);
+    res1 = matvec_res_peanut(mu_coarse,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0);
     
     %pair_points = [zeros(P,1) opt.a_c*opt.N_c*ones(P,1)];
-    %res2 = matvec_2D_Stokes(mu_coarse,rvec_in_c,rout,[],[],q,UU,YY,pair_points,s);
+    %res2 = matvec_res_Stokes(mu_coarse,rvec_in_c,rout,[],[],q,UU,YY,pair_points,s);
 end
 
 %% Solve system
@@ -226,7 +228,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
+        uu = matvec_res_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
             refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug);
         CC(:,k) = uu;
     end
@@ -246,7 +248,7 @@ if debug
 end
 
 % To test with Krylov precond, do something like
-%[tau1, e1, precond] = precond_gmres(@(x) matvec_2B_peanut(x,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,DC_all, YC_all,debug), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond);
+%[tau1, e1, precond] = precond_gmres(@(x) matvec_res_peanut(x,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,DC_all, YC_all,debug), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond);
 %fprintf("iterations = %d\n", length(e1))
 
 
@@ -254,10 +256,10 @@ if lr
    Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,q,Zi,Yi,rbase_in_c,...
         rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap);
    %Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Zi,Yi,opt);    
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_peanut(x,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);   
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_peanut(x,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);   
 else                                                                                 
    matvec_debug = 0;
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 end
 
 %[tau,flag,relres,iter,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
@@ -268,7 +270,7 @@ title('GMRES convergence with peanut compression, resistance', 'interpreter','la
 if visualise
     %check residual
     matvec_debug = 0;
-    restot = (matvec_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug)-fout);
+    restot = (matvec_res_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug)-fout);
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')

@@ -92,7 +92,7 @@ for k = 1:P
         mu((k-1)*Nc*a+1:k*Nc*a) = Zi(1:end/2,i);
         mu((k-1)*Nc*a+1+Nc*P*a:k*Nc*a+Nc*P*a) = Zi(end/2+1:end,i);
 
-        res = matvec_2B_peanut(mu,rbase_in_c,rbase_in_f,rin,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0);
+        res = matvec_res_peanut(mu,rbase_in_c,rbase_in_f,rin,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0);
         Vmat(:,db*(k-1)+i) = res;
     end
 

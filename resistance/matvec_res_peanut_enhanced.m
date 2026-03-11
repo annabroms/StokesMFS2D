@@ -1,8 +1,8 @@
-function res = matvec_2D_peanut_enhanced(tau,geom,basis)
-%MATVEC_2D_PEANUT_ENHANCED Matrix-vector action for resistance peanut preconditioner based on Stokeslet souces only.
+function res = matvec_res_peanut_enhanced(tau,geom,basis)
+%MATVEC_RES_PEANUT_ENHANCED Matrix-vector action for resistance peanut preconditioner based on Stokeslet sources only.
 %
 % Syntax:
-%   res = matvec_2D_peanut_enhanced(tau,geom,basis)
+%   res = matvec_res_peanut_enhanced(tau,geom,basis)
 %
 % Inputs:
 %   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.
@@ -14,6 +14,8 @@ function res = matvec_2D_peanut_enhanced(tau,geom,basis)
 %
 % Output:
 %   res   - Matvec result at collocation/check points [u_x; u_y].
+
+% See also: solve_res_peanut_enhanced, transform_peanut_stokes.
 
 rbase_in_c = geom.rbase_in_c;
 rvec_in = geom.rvec_in;

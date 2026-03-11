@@ -1,4 +1,4 @@
-function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gmres_tol,debug,use_fmm)
+function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
 %SOLVE_CAP_1B Solve exterior Dirichlet Laplace problem (capacitance: known
 %voltages, unknown charges) with 1-body preconditioning.
 %
@@ -38,6 +38,7 @@ if nargin < 3 || isempty(visualise), visualise = 0; end
 if nargin < 4 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 5 || isempty(debug), debug = false; end
 if nargin < 6 || isempty(use_fmm), use_fmm = true; end
+if nargin < 7 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 q = q(:);
 v_body = v_body(:);
@@ -48,6 +49,8 @@ maxit = 800;
 solver_name = 'cap_1B';
 
 [geom,basis,~,R] = prepareLaplace1B(q,use_fmm);
+opt = struct();
+opt.gmres_verbose = gmres_verbose;
 
 %% RHS
 fout = zeros(length(geom.rout),1);
@@ -69,10 +72,10 @@ if debug
 end
 
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_1B(x,geom,basis), ...
-    fout,length(geom.rout),maxit,gmres_tol,1,geom.rout);
+    fout,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
 
 figure(); semilogy(resvec)
-title('GMRES convergence Laplace 1B','interpreter','latex')
+title('GMRES convergence capacitance 1B','interpreter','latex')
 
 [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis);
 

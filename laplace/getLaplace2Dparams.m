@@ -35,5 +35,6 @@ opt.cmap = 0;
 opt.P = [];
 opt.use_fmm = true;
 opt.project_charge = false;
+opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 
 end

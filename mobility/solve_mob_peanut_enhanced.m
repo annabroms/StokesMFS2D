@@ -1,4 +1,4 @@
-function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode)
+function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
 %SOLVE_MOB_PEANUT_ENHANCED Solve a 2D Stokes mobility problem with
 %peanut-compressed pair corrections. The enhanced discretisation for each
 %pair consists of Stokeslets only. 
@@ -44,6 +44,7 @@ if nargin < 6 || isempty(visualise), visualise = 0; end
 if nargin < 7 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 8 || isempty(debug), debug = false; end
 if nargin < 9 || isempty(surface_error_mode), surface_error_mode = 'rel'; end
+if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -106,6 +107,7 @@ opt.Nclust = 100; %points on ellipse segments, for now (not the actual number as
 
 P = length(q);
 opt.P = P; 
+opt.gmres_verbose = gmres_verbose;
 %% Discretize
 %Outer basic grid
 tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
@@ -226,7 +228,7 @@ end
 
 % Solve
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob),...
-    urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+    urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 figure()
 semilogy(resvec); 

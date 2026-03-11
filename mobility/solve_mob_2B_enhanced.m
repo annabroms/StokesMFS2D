@@ -1,4 +1,4 @@
-function [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q, F, T, delta_pair, visualise, gmres_tol, debug, surface_error_mode)
+function [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q, F, T, delta_pair, visualise, gmres_tol, debug, surface_error_mode, gmres_verbose)
 %SOLVE_MOB_PRECOND_ENHANCED Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -54,6 +54,7 @@ if nargin < 5 || isempty(visualise), visualise = 0; end
 if nargin < 6 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 7 || isempty(debug), debug = false; end
 if nargin < 8 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
+if nargin < 9 || isempty(gmres_verbose), gmres_verbose = 0; end
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -69,6 +70,7 @@ P = length(q);
 
 opt = get2Dparams();
 opt.P = P; 
+opt.gmres_verbose = gmres_verbose;
 
 %Set coarse and fine grid. 
 %Play with N_c, N_f, a (a_f). 
@@ -382,7 +384,7 @@ if debug
 
 end
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt,rout);
 plot_gmres = true; 
 
 %Modify to build with krylov preconditioning

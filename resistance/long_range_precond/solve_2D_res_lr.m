@@ -1,4 +1,4 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,lr,visualise,gmres_tol,debug)
+function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_2D_RES_LR Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS COMBINED WITH LONG RANGE PRECONDITIONING
 %
@@ -26,9 +26,9 @@ function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,l
 %   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
 %
 % See also:
-%   solve_precond_images - 2-body preconditioning enhanced with images for
+%   solve_res_2B_images - 2-body preconditioning enhanced with images for
 %                          resistance
-%   solve_precond_peanut - 2-body preconditioning with peanut compression
+%   solve_res_peanut_images - 2-body preconditioning with peanut compression
 %                          for resistance
 %   solve_res_1B         - 1-body preconditioned resistance formulation
 %   (can also be called with lr, but then acting on the sources instead of
@@ -43,6 +43,7 @@ if nargin==0, test_solve_res2;
 
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 P = length(q);
 
@@ -64,6 +65,7 @@ maxit = 1600;
 solver_name = 'solve_2D_res_lr';
 % Params to determine grid
 opt = get2Dparams(); 
+opt.gmres_verbose = gmres_verbose;
 a = opt.a_c;
 opt.a_c = a; 
 opt.P = P; 
@@ -235,7 +237,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+        uu = matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
         CC(:,k) = uu;
     end
     toc
@@ -332,7 +334,7 @@ if lr
 
     % Check if this is enough for a solution to the system, by evaluating
     % and comparing to rhs
-    lhs = matvec_2D_Stokes(mu_coarse,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+    lhs = matvec_res_Stokes(mu_coarse,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
     if norm(lhs-fout)<gmres_tol
         solve = 0; 
     end
@@ -429,14 +431,14 @@ end
 
 % GMRES with low stagnation control (J.Helsing). 
 %
-%[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_mobility(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+%[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 if lr
     if solve
   %  maxit = 1; %debug
-   % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+   % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
         Pf = applyPmat_mu(fout,rin,rout,Sinv,q,Zi,Yi,Uii,Yii,pair_points,opt);
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,1,rout);
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
@@ -444,10 +446,10 @@ if lr
         it = 0;
     end
 else
-    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 end
 % Determine residual
-%VL = matvec_2D_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
+%VL = matvec_res_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
 %res = VL-fout; %this is large. 
 % Decay of residual with iteration number
 if debug

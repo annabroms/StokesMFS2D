@@ -1,4 +1,4 @@
-function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug)
+function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_RES_PRECOND_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using MFS with 2-body preconditioning. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -39,10 +39,11 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delt
 %
 % See also:
 %   solve_res_1B              - 1-body preconditioned resistance solver
-%   solve_res_peanut_images - 2-body preconditioner with peanut
-%                              compression (in this version of the algorithm, only coarse sources
-%                              are needed at the solve stage).
-%   solve_mob_2B_images   - 2-body preconditioned mobility solver
+%   solve_res_peanut_enhanced - 2-body preconditioner with peanut
+%                               compression (in this version of the algorithm, only coarse sources
+%                               are needed at the solve stage).
+%   solve_mob_2B_enhanced      - 2-body preconditioned mobility solver
+%   matvec_res_2B_enhanced     - matrix-vector action used by GMRES
 %
 % To test: Call without arguments.
 %
@@ -53,6 +54,7 @@ if nargin==0, test_solve_res;
 
 if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
 if nargin < 9 || isempty(debug), debug = false; end
+if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
 
 P = length(q);
 
@@ -72,6 +74,7 @@ solver_name = 'solve_res_2B_enhanced';
 P = length(q); 
 
 opt = get2Dparams();
+opt.gmres_verbose = gmres_verbose;
 
 
 %Play with N_c, N_f, a (a_f). 
@@ -213,7 +216,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2B_enhanced(x,geom,basis);
+        uu = matvec_res_2B_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     toc
@@ -305,12 +308,12 @@ if lr
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 plot_gmres = true; 
 
 %With Krylov precond, do something like
-%[tau, e2, precond] = precond_gmres(@(x) matvec_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
+%[tau, e2, precond] = precond_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
 %it = length(e2); 
 
 if plot_gmres
@@ -320,8 +323,8 @@ if plot_gmres
       title('Convergence resistance with pair corr','interpreter','latex')
 
       %what's the resiudal?
-    %  u = matvec_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
-      u = matvec_2B_enhanced(tau,geom,basis);
+    %  u = matvec_res_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
+      u = matvec_res_2B_enhanced(tau,geom,basis);
 %       figure()
 %       semilogy(abs(u-fout))
 %       title('Residual in solution')
