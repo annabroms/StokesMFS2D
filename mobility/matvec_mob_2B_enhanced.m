@@ -1,8 +1,8 @@
-function res = matvec_mob_pairprecond_enhanced(tau,geom,basis)
-%MATVEC_MOB_PAIRPRECOND_ENHANCED Matrix-vector action for mobility pair preconditioner.
+function res = matvec_mob_2B_enhanced(tau,geom,basis)
+%MATVEC_MOB_2B_ENHANCED Matrix-vector action for mobility 2-body preconditioner.
 %
 % Syntax:
-%   res = matvec_mob_pairprecond_enhanced(tau,geom,basis)
+%   res = matvec_mob_2B_enhanced(tau,geom,basis)
 %
 % Inputs:
 %   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.
@@ -30,11 +30,11 @@ end
 
 if use_cached_pair_transform
     [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
         getMobPairTransformationStokesCached(tau,geom,basis);
 else
     [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k,u_corr] = ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
         getMobPairTransformationStokes(tau,geom,basis);
 end
  
@@ -46,12 +46,10 @@ N_c = opt.N_c;
 N_f = opt.N_f;
 
 
+
 %% Get flow field from all source types
 
 res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y);
-
-
-two_corr = 0;
 
 if isequal(rcheck,rvec_out)
 
@@ -65,33 +63,31 @@ if isequal(rcheck,rvec_out)
     %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
     % end
     
-    %Have not taken care of this part. 
+    % Add action of Lr = BK' for fine sources 
 
-    if ~two_corr
+    has_neigh = sort(unique(pairs(:)));
+    for i = 1:length(has_neigh)
+        k = has_neigh(i); 
 
-        has_neigh = sort(unique(pairs(:)));
-        for i = 1:length(has_neigh)
-            k = has_neigh(i); 
-
-            % Add BK' part for the coarse sources...
-            fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-            fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-            
-            bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+        % Add BK' part for the uniformly sampled sources...
+        fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+        fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
         
-            %and for the fine sources
-            if isempty(rimage_k{k})
-                bcvec_f = zeros(2*N_large,1);
-            else    
-                bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
-                    tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
-            end
-        
-            res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
-            res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
-
+        bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+    
+        %and for the enhancing extra sources
+        if isempty(rimage_k{k})
+            bcvec_f = zeros(2*N_large,1);
+        else    
+            bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
+                tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
         end
+    
+        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
+        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
+
     end
+
 
     %% Correct idenity blocks 
     rout = rvec_out(1:N_large)-q(1);
@@ -119,9 +115,6 @@ if isequal(rcheck,rvec_out)
   
     end
 
-    if two_corr
-        res = res-u_corr;
-    end 
 
 end
 

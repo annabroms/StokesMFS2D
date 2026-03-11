@@ -1,8 +1,11 @@
 function [Uf,Yf,Up,Yp,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt)
-%GETPAIRBASISLAPLACE Build pair-basis pseudoinverse factors for scalar Laplace.
+%GETPAIRBASISLAPLACE Build pair-basis pseudoinverse factors for Laplace.
 %
 % Syntax:
 %   [Uf,Yf,Up,Yp,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt)
+%
+% See also: getPairBlockLaplace, getPeanutBlockLaplace, ...
+%   evaluateCoarseOnPairLaplace, getPairTransformationLaplace.
 %
 % Anna Broms, Mar 2026
 
@@ -10,10 +13,12 @@ P = opt.P;
 N_f = opt.N_f;
 a_f = opt.a_f;
 N_peanut = opt.N_peanut;
-if ~isfield(opt,'alpha') || isempty(opt.alpha)
-    error('getPairBasisLaplace:MissingAlpha','opt.alpha is required.');
+R = opt.rad;
+if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
+    project_charge = logical(opt.project_charge);
+else
+    project_charge = false;
 end
-R = opt.alpha;
 
 if isfield(opt,'show_counter') && ~isempty(opt.show_counter)
     show_counter = logical(opt.show_counter);
@@ -53,8 +58,15 @@ for ii = 1:total_pairs
     rimage_i = rimage_vec{i,p2};
     rimage_p2 = rimage_vec{p2,i};
     rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
+    nsrc_f_i = N_f + numel(rimage_i);
+    nsrc_f_p2 = N_f + numel(rimage_p2);
+    ntar_i = nout + numel(fine_1);
+    ntar_p2 = nout + numel(fine_2);
+    proj_pair = struct('project_charge',project_charge, ...
+        'nsrc',[nsrc_f_i nsrc_f_p2], ...
+        'ntar',[ntar_i ntar_p2]);
 
-    [Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f);
+    [Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f,proj_pair);
 
     Npair = evaluateCoarseOnPairLaplace([q(i);q(p2)],rbase_in_c,rout_f);
     Uf{i,p2} = -Uf_pair'*Npair;
@@ -63,7 +75,10 @@ for ii = 1:total_pairs
     if N_peanut
         rout_peanut = createPeanut(q(i),q(p2),N_peanut,0,R);
         rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
-        [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut);
+        proj_peanut = struct('project_charge',project_charge, ...
+            'nsrc_c',[numel(rbase_in_c) numel(rbase_in_c)], ...
+            'nsrc_f',[nsrc_f_i nsrc_f_p2]);
+        [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj_peanut);
 
         if isfield(opt,'cmap') && opt.cmap
             Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair));

@@ -213,7 +213,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_2D_pairprecond_enhanced(x,geom,basis);
+        uu = matvec_2B_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     toc
@@ -305,12 +305,12 @@ if lr
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2D_pairprecond_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 plot_gmres = true; 
 
 %With Krylov precond, do something like
-%[tau, e2, precond] = precond_gmres(@(x) matvec_2D_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
+%[tau, e2, precond] = precond_gmres(@(x) matvec_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
 %it = length(e2); 
 
 if plot_gmres
@@ -320,8 +320,8 @@ if plot_gmres
       title('Convergence resistance with pair corr','interpreter','latex')
 
       %what's the resiudal?
-    %  u = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
-      u = matvec_2D_pairprecond_enhanced(tau,geom,basis);
+    %  u = matvec_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
+      u = matvec_2B_enhanced(tau,geom,basis);
 %       figure()
 %       semilogy(abs(u-fout))
 %       title('Residual in solution')

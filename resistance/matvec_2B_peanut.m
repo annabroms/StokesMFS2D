@@ -1,4 +1,4 @@
-function res = matvec_2D_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up, Yp,Cmap,debug)
+function res = matvec_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,Us,Ys,pairs,Ucf,Ycf,Up, Yp,Cmap,debug)
 %Resistance matvec with peanut compressions for the pair corrections
 
 % Us, Ys SVD factors for self-interaction block

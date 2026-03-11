@@ -1,4 +1,4 @@
-function res = matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up, Yp,Cmap,Lc_pair,Lf_pair)
+function res = matvec_mob_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up, Yp,Cmap,Lc_pair,Lf_pair)
 %Mobility matvec with peanut compressions for the 2-body corrections
 
 % Us, Ys SVD factors for self-interaction block

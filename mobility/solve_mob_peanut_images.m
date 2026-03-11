@@ -259,9 +259,9 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
+        uu = matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
             refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair);
-            % matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
+            % matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
         CC(:,k) = uu;
     end
     toc
@@ -281,7 +281,7 @@ if debug
     title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,1,rout);
 
 figure()
 semilogy(resvec); 
@@ -290,7 +290,7 @@ title('GMRES convergence with peanut compression, mobility', 'interpreter','late
 
 if debug
     %check residual
-    restot = (matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
+    restot = (matvec_mob_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)-urhs)./urhs;
     figure()
     semilogy(abs(restot))
     title('Rel res at colloc points for mob peanut')
@@ -335,7 +335,7 @@ for k = 1:P
 end
 
 %Using representation
-u_rhs = matvec_mob_pairprecond_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
+u_rhs = matvec_mob_2B_peanut(tau,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
 S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
                     %This is accordinng to the representation of the flow

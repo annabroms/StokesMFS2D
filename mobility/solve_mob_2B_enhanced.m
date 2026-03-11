@@ -243,7 +243,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_mob_pairprecond_enhanced(x,geom,basis);
+        uu = matvec_mob_2B_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
     figure()
@@ -382,7 +382,7 @@ if debug
 
 end
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,1,rout);
 plot_gmres = true; 
 
 %Modify to build with krylov preconditioning
@@ -394,7 +394,7 @@ if plot_gmres
 %     semilogy(e2);
       semilogy(resvec);
       title('GMRES convergence mobility, pair corrections', 'Interpreter','latex')
-      u2 = matvec_mob_pairprecond_enhanced(tau,geom,basis);
+      u2 = matvec_mob_2B_enhanced(tau,geom,basis);
 end 
 
 %% POSTPROCESS
@@ -457,7 +457,7 @@ end
 
 %Using representation
 geom.rcheck = rcheck_b;
-u_rhs = matvec_mob_pairprecond_enhanced(tau,geom,basis);
+u_rhs = matvec_mob_2B_enhanced(tau,geom,basis);
 
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 

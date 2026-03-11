@@ -1,16 +1,16 @@
-function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_1B(q,g_body,visualise,gmres_tol,debug,use_fmm)
-%SOLVE_LAPLACE_1B Solve exterior Dirichlet Laplace problem (capacitance) with 1-body preconditioning.
+function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gmres_tol,debug,use_fmm)
+%SOLVE_CAP_1B Solve exterior Dirichlet Laplace problem (capacitance: known
+%voltages, unknown charges) with 1-body preconditioning.
 %
 % Syntax:
-%   [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_1B(...)
-%
+%   [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(...)
 % Inputs:
 %   q         - Complex particle centers (P x 1).
-%   g_body    - Constant boundary values per body (P x 1).
+%   v_body    - Constant boundary values per body (P x 1).
 %   visualise - Plot diagnostics.
 %   gmres_tol - GMRES tolerance.
 %   debug     - Build dense system matrix for diagnostics.
-%   use_fmm   - Use fmm2d (flatiron) for Laplace evaluations when available.
+%   use_fmm   - Use fmm2d (of flatiron) for Laplace evaluations when available.
 %
 % Outputs:
 %   Q          - Per-body sums of all source strengths belonging to each body.
@@ -24,10 +24,13 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_laplace_1B(q,g_body,visualis
 %
 % To test: call without inputs.
 %
+% See also: solve_cap_2B, solve_cap_peanut, ...
+%   solve_elast_1B, laplaceSingleLayerField.
+%
 % Anna Broms, Mar 2026
 
 if nargin==0
-    test_solve_laplace_1B;
+    test_solve_cap_1B;
     return
 end
 
@@ -37,19 +40,19 @@ if nargin < 5 || isempty(debug), debug = false; end
 if nargin < 6 || isempty(use_fmm), use_fmm = true; end
 
 q = q(:);
-g_body = g_body(:);
-P = length(q);
-assert(length(g_body)==P,'g_body must have one entry per particle.');
+v_body = v_body(:);
+P = numel(q);
+assert(numel(v_body)==P,'v_body must have one entry per particle.');
 
 maxit = 800;
-solver_name = 'solve_laplace_1B';
+solver_name = 'cap_1B';
 
 [geom,basis,~,R] = prepareLaplace1B(q,use_fmm);
 
 %% RHS
 fout = zeros(length(geom.rout),1);
 for k = 1:P
-    fout(geom.target_ind{k}) = g_body(k);
+    fout(geom.target_ind{k}) = v_body(k);
 end
 
 %% Solve
@@ -83,11 +86,11 @@ for k = 1:P
 end
 
 u_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
-g_true = zeros(P*n_bound,1);
+b_true = zeros(P*n_bound,1);
 for k = 1:P
-    g_true((k-1)*n_bound+1:k*n_bound) = g_body(k);
+    b_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
 end
-maxres = max(abs(u_b-g_true))/max(1,max(abs(g_true)));
+maxres = max(abs(u_b-b_true))/max(1,max(abs(b_true)));
 fprintf('Max surface relative residual at new nodes %.3e\n',maxres);
 
 Q = zeros(P,1);
@@ -97,7 +100,7 @@ end
 
 if visualise
     figure();
-    plot(u_b); hold on; plot(g_true)
+    plot(u_b); hold on; plot(b_true)
     title('Boundary values: lhs vs rhs (Laplace 1B)')
 
     figure();
@@ -105,109 +108,6 @@ if visualise
     title('Source strengths (Laplace 1B)')
 end
 
-end
-
-function [geom,basis,opt,R] = prepareLaplace1B(q,use_fmm)
-P = length(q);
-
-opt = getLaplace2Dparams();
-R = opt.alpha;
-
-N_c = 80;
-N_f = 150;
-a_c = 1.2;
-a_f = 1.2;
-
-% Keep same proxy-separation rule, but with scaled radii.
-tol_c = 1e-10;
-sep_c = (1/N_c)*log(1/tol_c);
-sep_f = (1/N_f)*log(1/tol_c);
-Rp_c = R*max([1-sep_c,0.01]);
-Rp_f = R*max([1-sep_f,0.01]);
-
-accstop = (R-Rp_c)^2/Rp_c;
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c;
-opt.a_f = a_f;
-opt.N_c = N_c;
-opt.N_f = N_f;
-opt.N_peanut = 0;
-opt.precomp = 1;
-opt.pc = 0;
-opt.delta_pair = accstop;
-opt.P = P;
-opt.Nclust = 100;
-opt.cmap = 0;
-opt.use_fmm = use_fmm;
-opt.show_counter = false;
-opt.visualise_grid = false;
-opt.rads = R*ones(P,1);
-
-nout = ceil(a_c*N_c);
-tout = linspace(0,2*pi,nout+1)';
-tout = tout(1:end-1);
-rbase_out_c = R*(cos(tout)+1i*sin(tout));
-
-tin = linspace(0,2*pi,N_c+1)';
-tin = tin(1:end-1);
-rbase_in_c = Rp_c*(cos(tin)+1i*sin(tin));
-
-[cent_clust_cells,~,coll_clust_cells,~,~,pairs] = getEnhancedGrid(q,opt);
-
-rin_body = cell(P,1);
-rout_body = cell(P,1);
-source_ind = cell(P,1);
-target_ind = cell(P,1);
-Aii = cell(P,1);
-U = cell(P,1);
-Y = cell(P,1);
-
-r_chunks = cell(P,1);
-t_chunks = cell(P,1);
-source_start = 1;
-target_start = 1;
-
-for k = 1:P
-    rin_k = [q(k)+rbase_in_c; cent_clust_cells{k}];
-    rout_k = [q(k)+rbase_out_c; coll_clust_cells{k}];
-
-    rin_body{k} = rin_k;
-    rout_body{k} = rout_k;
-
-    ns = length(rin_k);
-    nt = length(rout_k);
-
-    source_ind{k} = source_start:source_start+ns-1;
-    target_ind{k} = target_start:target_start+nt-1;
-    source_start = source_start+ns;
-    target_start = target_start+nt;
-
-    Aii{k} = lapSLPmat(rin_k,rout_k);
-    [Yk,Uk] = getPseudoFactors(Aii{k},1e-14,0);
-    U{k} = Uk';
-    Y{k} = Yk;
-
-    r_chunks{k} = rin_k;
-    t_chunks{k} = rout_k;
-end
-
-geom = struct();
-geom.q = q;
-geom.rvec_in = vertcat(r_chunks{:});
-geom.rout = vertcat(t_chunks{:});
-geom.rin_body = rin_body;
-geom.rout_body = rout_body;
-geom.source_ind = source_ind;
-geom.target_ind = target_ind;
-geom.pairs = pairs;
-
-basis = struct();
-basis.U = U;
-basis.Y = Y;
-basis.Aii = Aii;
-basis.use_fmm = use_fmm;
 end
 
 function [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis)
@@ -259,36 +159,37 @@ while numel(rcheck) < npts
 end
 end
 
-function test_solve_laplace_1B
-fprintf('--- solve_laplace_1B self-test ---\n');
-
+function test_solve_cap_1B
+fprintf('--- solve_cap_1B self-test ---\n');
+close all; 
 opt = getLaplace2Dparams();
-R = opt.alpha;
+R = opt.rad;
 q = [0; 2*R+0.08*R; 6*R+1.5i*R];
-g_body = [1; -0.7; 0.25];
+P = numel(q);
+v_body = [1; -0.7; 0.25];
 
-[Q_it,lam_it,it_it,~,res_it] = solve_laplace_1B(q,g_body,0,1e-10,0,true);
+[Q_it,lam_it,it_it,~,res_it] = solve_cap_1B(q,v_body,0,1e-10,0,true);
 [geom,~,~,~] = prepareLaplace1B(q,false);
 
 rhs = zeros(length(geom.rout),1);
-for k = 1:length(q)
-    rhs(geom.target_ind{k}) = g_body(k);
+for k = 1:P
+    rhs(geom.target_ind{k}) = v_body(k);
 end
 
 A = lapSLPmat(geom.rvec_in,geom.rout);
 [Yd,Ud] = getPseudoFactors(A,1e-14,0);
 lam_dense = Yd*(Ud'*rhs);
 
-Q_dense = zeros(length(q),1);
-for k = 1:length(q)
+Q_dense = zeros(P,1);
+for k = 1:P
     Q_dense(k) = sum(lam_dense(geom.source_ind{k}));
 end
 
 n_bound = 803;
 tb = linspace(0,2*pi,n_bound+1)';
 tb = tb(1:end-1);
-rcheck_b = zeros(length(q)*n_bound,1);
-for k = 1:length(q)
+rcheck_b = zeros(P*n_bound,1);
+for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
 rcheck_ext = buildExteriorPoints(q,R,600);

@@ -1,12 +1,12 @@
 function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
-    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = getMobPairTransformationStokesCached(tau,geom,basis)
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = getMobPairTransformationStokesCached(tau,geom,basis)
 %GETMOBPAIRTRANSFORMATIONSTOKESCACHED Map coarse boundary data to coarse and fine Stokes source strengths.
 % This variant caches coarse lambda for all particles first, then loops over pairs.
 %
 % Syntax:
 %   [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,...
 %    tau_stokes_nonpx,tau_stokes_nonpy,tau_stokes_e_nonpx,tau_stokes_e_nonpy,...
-%    rimage_k,u_corr] = getMobPairTransformationStokesCached(tau,geom,basis)
+%    rimage_k] = getMobPairTransformationStokesCached(tau,geom,basis)
 %
 % Inputs:
 %   tau   - Coarse data at collocation points [tau_x; tau_y].
@@ -70,8 +70,6 @@ tau_stokes_e_y_chunks = repmat({cell(0,1)},P,1);
 tau_stokes_e_nonpx_chunks = repmat({cell(0,1)},P,1);
 tau_stokes_e_nonpy_chunks = repmat({cell(0,1)},P,1);
 
-u_corr = zeros(2*PM,1); 
-%Store local fine grid correction
 
 %% Phase 1: map all bodies once on the coarse grid to recover proxy source 
 % strengths from data at the boundary
@@ -175,43 +173,6 @@ for pair_row = 1:size(pairs,1)
         tau_mapped_proj_i = tau_fine_i-Lf1*tau_fine_i;
         tau_mapped_proj_p2 = tau_fine_p2-Lf2*tau_fine_p2;
     end
-
-    %% Evaluate flow field on the pair itself to be able to construct 
-    % identity blocks in the system matrix.
-    rout_pair = [rvec_out((i-1)*N_large+1:i*N_large,:); rvec_out((p2-1)*N_large+1:p2*N_large,:)];
-    st_all = length(rin_pair);
-    if use_singlelayer_pair_eval
-        % New path: evaluate pair flow via dense single-layer matrix.
-        N_pair = singleLayer(rin_pair,rout_pair,1);
-        u_pair = N_pair*[beta_tot(1:st_all); beta_tot(st_all+1:2*st_all)];
-    else
-        % Old path: direct kernel evaluation (kept for comparison).
-        [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
-            real(rout_pair),imag(rout_pair),...
-            beta_tot(1:st_all),beta_tot(st_all+1:2*st_all),st_all);
-        u_pair = [u1; v1];
-    end
-
-    % flow field is stored as x x y y
-    ind1x = (i-1)*N_large+1:i*N_large;
-    ind2x =  (p2-1)*N_large+1:p2*N_large;
-    ind1y = (i-1)*N_large+PM+1:i*N_large+PM;
-    ind2y = (p2-1)*N_large+PM+1:p2*N_large+PM;
-    pair_ind = [ind1x ind2x ind1y ind2y]'; 
-
-    u_corr(pair_ind) = u_corr(pair_ind)+u_pair; 
-   
-    % also subtract self-interaction on the other body.
-    N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
-    u2 = N2*lambda_coarse_i;
-
-    N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
-    u1 = N1*lambda_coarse_p2; 
-
-    u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);
-    u_corr(ind2x) = u_corr(ind2x)+u2(1:end/2);
-    u_corr(ind1y) = u_corr(ind1y)+u1(end/2+1:end);
-    u_corr(ind2y) = u_corr(ind2y)+u2(end/2+1:end);
 
     %% Store fine source strengths for later evaluation.
     pair_idx = [i; p2];          

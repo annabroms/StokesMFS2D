@@ -231,7 +231,7 @@ if debug
         k
         x(:) = 0; 
         x(k) = 1; 
-        uu = matvec_mob_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+        uu = matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
         CC(:,k) = uu;
     end
     figure()
@@ -371,7 +371,7 @@ if debug
 end
 
 
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_pairprecond_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,1,rout);
 plot_gmres = true; 
 
 %Modify to build with krylov preconditioning
@@ -383,7 +383,7 @@ if plot_gmres
 %     semilogy(e2);
       semilogy(resvec);
       title('GMRES convergence mobility, pair corrections', 'Interpreter','latex')
-      u2 = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+      u2 = matvec_mob_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
 end 
 
 %% POSTPROCESS
@@ -432,7 +432,7 @@ for k = 1:P
 end
 
 %Using representation
-u_rhs = matvec_mob_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
+u_rhs = matvec_mob_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rcheck_b,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
 
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 

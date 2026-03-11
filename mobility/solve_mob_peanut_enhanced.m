@@ -99,6 +99,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 % %Less storage required.
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
+opt.bndry_vel = 1; 
 
 opt.cmap = 1; % Use coarse to coarse mapping by multiplying together all factors needed for the fine grid mapping 
 opt.Nclust = 100; %points on ellipse segments, for now (not the actual number as some will fall inside the proxy curve)
@@ -556,7 +557,7 @@ P = 4;
 q = [0; 2+delta; 7; 9+delta];
 
 
-P = 10; 
+P = 20; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));

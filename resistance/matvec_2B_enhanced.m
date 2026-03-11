@@ -1,8 +1,8 @@
-function res = matvec_2D_pairprecond_enhanced(tau,geom,basis)
-%MATVEC_2D_PAIRPRECOND_ENHANCED Matrix-vector action for resistance pair preconditioner.
+function res = matvec_2B_enhanced(tau,geom,basis)
+%MATVEC_2B_ENHANCED Matrix-vector action for resistance 2-body preconditioner.
 %
 % Syntax:
-%   res = matvec_2D_pairprecond_enhanced(tau,geom,basis)
+%   res = matvec_2B_enhanced(tau,geom,basis)
 %
 % Inputs:
 %   tau   - Stacked boundary data [tau_x; tau_y] on outer collocation points.

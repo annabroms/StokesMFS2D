@@ -5,10 +5,10 @@ function u = laplaceSingleLayerField(rsrc,rtar,sigma,use_fmm)
 %   u = laplaceSingleLayerField(rsrc,rtar,sigma,use_fmm)
 %
 % Inputs:
-%   rsrc    - Complex source locations.
-%   rtar    - Complex target locations.
+%   rsrc    - Complex valued array of source locations.
+%   rtar    - Complex valued array of target locations.
 %   sigma   - Source strengths, size numel(rsrc) x nd.
-%   use_fmm - Logical flag. If true, use fmm2d (of flatiron) when available.
+%   use_fmm - Logical flag. If true, use fmm2d (of flatiron) when available, otherwise fall back to direct summation.
 %
 % Output:
 %   u       - Potential values at targets, size numel(rtar) x nd.
@@ -16,6 +16,8 @@ function u = laplaceSingleLayerField(rsrc,rtar,sigma,use_fmm)
 % Self-test:
 %   laplaceSingleLayerField()
 %   Compares fmm2d output to loop-based direct summation.
+%
+% See also: laplaceSLPDirect, lapSLPmat.
 %
 % Anna Broms, Mar 2026
 
@@ -40,17 +42,6 @@ end
 assert(size(sigma,1)==ns,'sigma must have one row per source location.');
 
 if ~use_fmm
-    u = laplaceSLPDirect(rsrc,rtar,sigma);
-    return
-end
-
-if exist('rfmm2d','file')~=2
-    persistent warned_missing_rfmm2d
-    if isempty(warned_missing_rfmm2d) || ~warned_missing_rfmm2d
-        warning('laplaceSingleLayerField:MissingRfmm2d', ...
-            'rfmm2d not found. Falling back to direct Laplace SLP evaluation.');
-        warned_missing_rfmm2d = true;
-    end
     u = laplaceSLPDirect(rsrc,rtar,sigma);
     return
 end

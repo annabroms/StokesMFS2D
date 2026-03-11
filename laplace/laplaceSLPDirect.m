@@ -15,6 +15,8 @@ function u = laplaceSLPDirect(rsrc,rtar,sigma)
 % Notes:
 %   Uses kernel -(1/(2*pi))*log(|x-y|). 
 %
+% See also: laplaceSingleLayerField, lapSLPmat.
+%
 % Anna Broms, Mar 2026
 
 rsrc = rsrc(:);

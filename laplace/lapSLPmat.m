@@ -15,6 +15,8 @@ function A = lapSLPmat(rsrc,rtar)
 % Self-test:
 %   lapSLPmat()
 %
+% See also: laplaceSingleLayerField, laplaceSLPDirect.
+%
 % Anna Broms, Mar 2026
 
 if nargin==0

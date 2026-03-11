@@ -1,4 +1,4 @@
-function res = matvec_2D_pairprecond_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf,s)
+function res = matvec_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf,s)
 
 
 %Transform data at collocation points to data at source points. 

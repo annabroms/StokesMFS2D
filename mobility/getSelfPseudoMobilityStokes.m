@@ -93,7 +93,6 @@ for i = 1:P
     %Get image data
     if isempty(rimage)
         rim = [];
-        nim = [];
     else
         rim = rimage(start_im+1:start_im+pair_points(i,1));
        

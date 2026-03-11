@@ -46,7 +46,7 @@ mu = getCoarseMu(vel,Sinv,Zi,Yi,opt.db,opt.P,opt.N_c,opt.a_c);
 %remember that everything so far is implemented without images in mind
 debug = 0; 
 
-proj_vel = matvec_2D_pairprecond_peanut(mu,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,...
+proj_vel = matvec_2B_peanut(mu,rbase_in_c,rbase_in_f,rvec_in,rbase_out_f,...
     refine,rimage,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,debug);
 %UU{1} = UU{1}'; %stupid
 %pair_points = [zeros(opt.P,1) opt.N_c*opt.a_c*ones(opt.P,1)];
