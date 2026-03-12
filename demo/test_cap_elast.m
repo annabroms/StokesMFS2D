@@ -18,11 +18,14 @@ clc;
 rng(9);
 
 %% Configuration
-R = 2;
-P = 20;
+R = 2; %particle radius
 delta = 1e-3;
-geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
-q = buildGeometry(geometry_mode,P,delta,R);
+%P = 20;
+%geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
+%q = buildGeometry(geometry_mode,P,delta,R);
+geometry_mode = 'close packing';
+mode = 4;
+q = hexagonal_lattice(delta,mode,R);
 P = numel(q);
 rad = R*ones(P,1);
 

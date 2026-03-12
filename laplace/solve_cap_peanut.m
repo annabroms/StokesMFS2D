@@ -241,10 +241,15 @@ close all;
 
 % Set geometry and data
 R = 2;
-P = 40;
-delta = 1e-2;
-q = grow_cluster(P,delta,2,R);
-v_body = rand(P,1);
+P = 2;
+delta = 1e-3;
+%q = grow_cluster(P,delta,2,R);
+
+% Solve capacitance for hexagonal lattice
+q = hexagonal_lattice(delta,2,R);
+%q = q(1:3); %triangle
+P = length(q); 
+v_body = -1+2*rand(P,1);
 
 % Set parameters and settings
 opt = getLaplace2Dparams(P,R);
@@ -253,7 +258,7 @@ N_peanut = 400;
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
 opt.visualise = 1;
-opt.gmres_tol = 1e-10;
+opt.gmres_tol = 1e-7;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;

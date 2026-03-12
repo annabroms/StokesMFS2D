@@ -1,10 +1,10 @@
-function q = hexagonal_lattice(delta, R)
+function q = hexagonal_lattice(delta, R,rad)
     % Construct positions for a hexagonal lattice with R rings around the center.
     % Total number of particles: 1 + 3*R*(R+1)
     %
     % q : complex-valued positions of particles in the plane.
 
-    d = 2 + delta;   % nearest neighbor distance
+    d = 2*rad + delta*rad;   % nearest neighbor distance
     a1 = d*[1; 0];
     a2 = d*[0.5; sqrt(3)/2];
 
