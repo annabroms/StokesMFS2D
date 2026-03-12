@@ -1,4 +1,4 @@
-function [rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
 %GET2DIMAGEGRID Distributes source, collocation, and image points for circular particles in 2D
 %
 % Syntax:
@@ -111,7 +111,7 @@ if image
     rimage_pairs = cell(P,P);
     refine = cell(P,P);
     
-    %accstop_fine = 1; %debug; 
+    accstop_fine = 1; %debug; 
   
     for i = 1:P
         ind = setdiff(1:P,i); %check neighbours with everyone else
@@ -125,19 +125,15 @@ if image
                 if i<k
                     pairs = [pairs; i k]; 
                 end
-                %% Assign image points    
-                if isfield(opt, 'n_clusters')
-                    sample_nbr = opt.n_clusters; 
-                else
-                    %get number of image locations to be generated, from empiric
-                    %relationship
-                    sample_nbr = max(ceil(slope*log10(d)+m),0); 
-                    
-                end
-
-                if ~sample_nbr
-                    continue;
-                end
+                %% Assign image points
+                %get number of image locations to be generated, from empiric
+                %relationship
+                sample_nbr = ceil(slope*log10(d)+m); 
+                sample_nbr = opt.n_clusters; 
+                %sample_nbr = 1; 
+                %sample_nbr = 120;
+               % sample_nbr = 80; 
+                
         
                 %generate points from Rp out to the accumulation point.
                 %first determine accumulation point            
@@ -151,6 +147,9 @@ if image
 
                 %Compute half a Chebyshev grid clustered towards the
                 %accumlation point
+                
+
+
                 n = 2*sample_nbr;  
                 xx = cos(pi*(2*(0:n)'+1)./(2*n+2)); 
                 xx = -xx(sample_nbr+1:end);
@@ -165,7 +164,8 @@ if image
                 
                 
                 aa = rads(i)*Rp_f*1.01; %start just exterior to the proxy grid     
-                aa = rads(i)*Rp_f*1.05;
+                %aa = rads(i)*Rp_f*1.05;
+               % aa = rads(i)*Rp_f*1.1;
                 %aa = 0.6; %test
                 
                 %Rescale image line to be exactly between the end points
@@ -175,18 +175,25 @@ if image
                % acc = 0.99;
 
                 %different sampling
-                xx = logspace(2*log10(sqrt(delta)),0,sample_nbr)';
-
-                %different sampling
+               % xx = logspace(2*log10(sqrt(delta)),0,sample_nbr)';
+                %xx = logspace(log10(sqrt(delta)),0,sample_nbr)'; %this is sensitive!
+                %xx = logspace(2*log10(delta),0,sample_nbr)';
+                %different samplingopt.s
                 % s = sqrt(1:sample_nbr) - sqrt(sample_nbr);
                 % A_clust = 0.6;
                 % sigma = 4;
                 % xx = A_clust * exp(sigma*s)';
 
                 xx = xx.*(acc-aa);
-                %t = ((xx - 0) * (acc-aa) / (max(xx) - 0)) + aa;
-                t = acc-xx+xx(1);
-
+                t = ((xx - 0) * (acc-aa) / (max(xx) - 0)) + aa;
+                %t = acc-xx+xx(1);
+               
+                %alternative
+                j = (0:n-1).';
+                t = cos(pi * j / (n-1));
+                b = aa-(acc-aa); a = acc;
+                t = (a + b)/2 + (b - a)/2 * t;
+                t = t(end/2+1:end);
 
                 %t = ((xx - 0) * (acc - aa) / (max(xx) - 0)) + aa;
 
@@ -194,14 +201,14 @@ if image
                 %xx = aa*logspace(2*log10(sqrt(delta)),0,sample_nbr)';
                 %t = [acc; acc-xx]; %large resiudal
 
-                mid = (acc+aa)/2;
-                
-             
-                % If assigning two lines of image points, meeting at an
-                % angle alphas
-                alpha = opt.alpha; %pi-alpha;
-                t_new = t*cos(alpha)+1i*sin(alpha)*t+mid;
-                t_new = t_new-t_new(1)+t(1);
+                % mid = (acc+aa)/2;
+                % 
+                % 
+                % % If assigning two lines of image points, meeting at an
+                % % angle alphas
+                % alpha = opt.alpha; %pi-alpha;
+                % t_new = t*cos(alpha)+1i*sin(alpha)*t+mid;
+                % t_new = t_new-t_new(1)+t(1);
                 %figure()
                 %plot(real(t_new),imag(t_new),'+')
 
@@ -211,10 +218,8 @@ if image
                 % Assign image poins on particle i, close to touching
                 % particle k
                 line = q(i)+t*(q(k)-q(i))./abs(q(k)-q(i));
-                %line1 = q(i)+t_new*(q(k)-q(i))./abs(q(k)-q(i));
-                %line2 = q(i)+conj(t_new)*(q(k)-q(i))./abs(q(k)-q(i));
-
-
+               % line1 = q(i)+t_new*(q(k)-q(i))./abs(q(k)-q(i));
+               % line2 = q(i)+conj(t_new)*(q(k)-q(i))./abs(q(k)-q(i));
                % line2 = []; 
                % hold on
                % plot(real(line1),imag(line1),'*')
@@ -272,16 +277,18 @@ if image
 %                 t = sort(t);
 
                 %% Instead, use a graded PTR (see Alex's BIE book, Chapter 4)
-               % beta = log(3/sqrt(delta));
-                %beta = log(3/delta);
-                beta = log(5/sqrt(delta));
+                beta = log(3/sqrt(delta));
+               % beta = log(3/delta);
+                %beta = log(5/sqrt(delta));
                 N = M_image*round(beta);
                 N = max([N,ceil(1.2*im_types*sample_nbr)]);
                 [t, ~] = gradedptr(N, beta);
+                t = real(t); 
 
                 %test alternative
-                %M_clust = sample_nbr*4*sum(opt.s);
-                %t = 0.5*[logspace(-6,0,M_clust) -logspace(-6,0,M_clust)];
+              %  M_clust = sample_nbr*4*sum(opt.s);
+               % t = 0.5*[logspace(-6,0,M_clust) -logspace(-6,0,M_clust)];
+              %  t = 0.5*[logspace(-8,0,M_clust) -logspace(-8,0,M_clust)];
                 %must be rotated
                 t = t+tstar;
 
@@ -330,11 +337,22 @@ for k = 1:P
         t = t(1:end-1)';
 
         %store global list of all image locations
-        % -- only needed with one body precond! 
+        % -- only needed with one body precond!
         rtemp = [];
+        ntemp = [];
         for i = 1:P
             rki = rimage_pairs{k,i};
-            rtemp = [rtemp; rki];           
+            if ~isempty(rki)
+                v = q(i) - q(k);
+                if abs(v) == 0
+                    n_dir = 1;
+                else
+                    % unit vector perpendicular to neighbor direction
+                    n_dir = 1i * v / abs(v);
+                end
+                rtemp = [rtemp; rki];
+                ntemp = [ntemp; n_dir * ones(size(rki))];
+            end
         end
         
         %also, construct "normals", used for stresslets 
@@ -342,7 +360,6 @@ for k = 1:P
         pair_points(k,1) = num_im;
 
         if ~pc
-            ntemp = randn(num_im,1)+1i*randn(num_im,1);
             rimage = [rimage; rtemp];
             nimage = [nimage; ntemp./abs(ntemp)];
         end
@@ -358,8 +375,10 @@ for k = 1:P
         end
         
         if ~pc %if no pair corrections (fine grid to be returned)
-            t = [t; t_extra];    
+            t = [t; t_extra];  
+            
             t = mod(t,2*pi);
+    
             t = sort(t);
             w_k = [diff(t); abs(t(end)-(t(1)+2*pi))]; %weights to be used in left preconditioning
         else 
@@ -382,7 +401,7 @@ for k = 1:P
     
     rout_part = q(k)+rads(k)*(cos(t)+1i*sin(t));
     rout = [rout; rout_part]; %add to global list
-   % weights = [weights; w_k];
+    %weights = [weights; w_k];
 
 end
 

@@ -22,7 +22,7 @@ N_large = length(rvec_out)/P;
 [rvec_in,coarse_ind,lam_all,lam_c,~,~,~,~,lam_f_nonp,lam_e_nonp] = ...
     getPairTransformationLaplace(tau,geom,basis);
 
-res = laplaceSingleLayerField(rvec_in,rcheck,lam_all,opt.use_fmm);
+res = lapSLPField(rvec_in,rcheck,lam_all,opt.use_fmm);
 
 if isequal(rcheck,rvec_out)
     if isfield(opt,'project_charge') && logical(opt.project_charge)

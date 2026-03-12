@@ -19,10 +19,14 @@ function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(q,Q_body,visua
 %   gmres_tol - GMRES tolerance used.
 %   maxres    - Max relative equipotential residual on independent boundary points.
 %
+% Notes:
+%   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
+%   capacity in 2D.
+%
 % To test: call without inputs.
 %
 % See also: solve_elast_2B, solve_elast_peanut, solve_cap_1B, ...
-%   getChargeCompletionFlowLaplace, laplaceSingleLayerField.
+%   getChargeCompletionFlowLaplace, lapSLPField.
 %
 % Anna Broms, Mar 2026
 
@@ -43,7 +47,11 @@ P = numel(q);
 assert(numel(Q_body)==P,'Q_body must have one entry per particle.');
 
 maxit = 800;
-solver_name = 'solve_elast_1B';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 %% Build geometry and basis functions
 [geom,basis,~,rad] = prepareLaplace1B(q,use_fmm,visualise,true);
@@ -58,7 +66,10 @@ opt.gmres_verbose = gmres_verbose;
 if debug
     x = zeros(length(geom.rout),1);
     CC = zeros(length(geom.rout));
-    for k = 1:length(geom.rout)
+    ncols = length(geom.rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
         CC(:,k) = matvec_elast_1B(x,geom,basis);
@@ -67,12 +78,14 @@ if debug
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_elast_1B(x,geom,basis), ...
     u_rhs,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence elastance 1B','interpreter','latex')
 
+disp(' == Postprocessing == ');
 %% Postprocess
 
 [lambda_compute,lambda_body] = mapBoundaryToSourcesElast1B(tau,geom,basis);
@@ -89,7 +102,7 @@ for k = 1:P
 end
 
 %Evaluate lhs, based on the representation 
-u_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
 
 % Use unprojected sources to determine net voltages
 v_body = zeros(P,1);
@@ -133,7 +146,7 @@ end
 function res = matvec_elast_1B(tau,geom,basis)
 [lambda_all,lambda_body] = mapBoundaryToSourcesElast1B(tau,geom,basis);
 
-res = laplaceSingleLayerField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
+res = lapSLPField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
 
 P = length(geom.target_ind);
 for k = 1:P
@@ -200,10 +213,10 @@ for k = 1:P
 end
 rcheck_ext = buildExteriorPoints(q,rad,600);
 
-u_it_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lam_it,false);
-u_dense_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lam_dense,false);
-u_it_ext = laplaceSingleLayerField(geom.rvec_in,rcheck_ext,lam_it,false);
-u_dense_ext = laplaceSingleLayerField(geom.rvec_in,rcheck_ext,lam_dense,false);
+u_it_b = lapSLPField(geom.rvec_in,rcheck_b,lam_it,false);
+u_dense_b = lapSLPField(geom.rvec_in,rcheck_b,lam_dense,false);
+u_it_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_it,false);
+u_dense_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_dense,false);
 
 v_dense = zeros(P,1);
 for k = 1:P
@@ -266,4 +279,5 @@ for k = 1:P
     lambda_proj(idx) = lambda_proj(idx)-mean(lambda_proj(idx));
 end
 end
+
 end

@@ -71,7 +71,11 @@ end
 %% PARAMS
 %GMRES
 maxit = 1600; 
-solver_name = 'solve_mob_1B';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 project_proxy = 1; %version of the algorithm project_proxy = 0 corresponds to the version where also image points are projected
 
@@ -113,7 +117,7 @@ Rp = max([1-sep,0.01]); %radius of proxy surface
 opt.Rp_c = Rp;
 opt.N_c = Nc;
 opt.pc = 0; %no pair correction
-
+opt.n_clusters = 30; 
 
 %solve with Stresslets + potential dipoles at image points
 s = [0 0 1 1 0 0 0]; % s = [S R T D]
@@ -122,7 +126,7 @@ opt.s = s;
 %% GET GRIDS AND VISUALISE
 
 %create grids
-[rout,weights,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
+[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
 
  
 if visualise
@@ -197,10 +201,12 @@ end
 if debug && lr
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Nx,Ny,Mx,Zi,Yi,opt);
         %uu = matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy);
         CC(:,k) = uu;
@@ -211,8 +217,8 @@ if debug && lr
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     %Check eigvals of system matrix
     figure()
     [~,D] = eig(CC);
@@ -226,6 +232,7 @@ end
 
 
 %% SOLVE
+disp(' == Solving... == ');
 if opt.lr && solve
     disp('...Solving for fine component...')
     Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Sinv,Zi,Yi,opt); 
@@ -240,6 +247,7 @@ semilogy(resvec)
 title('GMRES convergence mobility, 1-body precond', 'Interpreter','latex')
 xlabel('Iteration number','interpreter','latex')
 
+disp(' == Postprocessing == ');
 %% GET LAMBDA
 % We have now solved for unknows at the boundary. Want to go back to
 % unknowns at the sources! 

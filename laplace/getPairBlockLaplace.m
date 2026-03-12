@@ -1,5 +1,5 @@
 function [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj)
-%GETPAIRBLOCKLAPLACE Build pseudoinverse factors for Laplace pair block in 2D.
+%GETPAIRBLOCKLAPLACE Build pseudoinverse factors for fine Laplace pair block in 2D.
 %
 % Syntax:
 %   [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f)
@@ -28,6 +28,7 @@ if nargin < 3 || isempty(proj)
     proj = struct();
 end
 
+%project_charge is true for elastance, false for capacitance
 if isfield(proj,'project_charge') && ~isempty(proj.project_charge)
     project_charge = logical(proj.project_charge);
 else

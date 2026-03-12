@@ -14,6 +14,8 @@ Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary
     prescribe per-body voltages `v_body`, solve for per-body net charges `Q_body`.
   - Elastance (`solve_elast_1B`, `solve_elast_2B`, `solve_elast_peanut`):
     prescribe per-body net charges `Q_body`, solve for per-body voltages `v_body`.
+  - In the Laplace solvers, `opt.rad ~= 1` is used to avoid the unit
+    logarithmic-capacity case in 2D.
 - `geometry/`
   Grid generation and close-pair enhancement tools.
 - `common/`
@@ -47,6 +49,10 @@ Run the function with no input arguments, for example:
   - Capacitance: prescribed `v_body`, solve for net charge `Q_body`.
   - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
   - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
+
+## Source-type note
+- The `dev_image_based/` folders under `mobility/`, `resistance/`, and `common/` contain older and not as polished helper functions for Stokes close interaction resolution based on multiple source types.
+- Outside these `dev_image_based/` paths, the Stokes solver paths used in the main comparisons are Stokeslet-only.
 
 
 ## Dependencies

@@ -21,11 +21,13 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gm
 %
 % Notes: what is solved is what is referred to as the modified exterior Laplace 
 % BVP in the Stein & Barnett QFS paper from 2022. 
+% The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
+% capacity in 2D.
 %
 % To test: call without inputs.
 %
 % See also: solve_cap_2B, solve_cap_peanut, ...
-%   solve_elast_1B, laplaceSingleLayerField.
+%   solve_elast_1B, lapSLPField.
 %
 % Anna Broms, Mar 2026
 
@@ -46,7 +48,11 @@ P = numel(q);
 assert(numel(v_body)==P,'v_body must have one entry per particle.');
 
 maxit = 800;
-solver_name = 'cap_1B';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 [geom,basis,~,R] = prepareLaplace1B(q,use_fmm);
 opt = struct();
@@ -62,7 +68,10 @@ end
 if debug
     x = zeros(length(geom.rout),1);
     CC = zeros(length(geom.rout));
-    for k = 1:length(geom.rout)
+    ncols = length(geom.rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
         CC(:,k) = matvec_laplace_1B(x,geom,basis);
@@ -71,12 +80,14 @@ if debug
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_1B(x,geom,basis), ...
     fout,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence capacitance 1B','interpreter','latex')
 
+disp(' == Postprocessing == ');
 [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis);
 
 %% Boundary check and extract net charges
@@ -88,7 +99,7 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
 
-u_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
 b_true = zeros(P*n_bound,1);
 for k = 1:P
     b_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
@@ -108,7 +119,8 @@ if visualise
 
     figure();
     semilogy(abs(lambda_all))
-    title('Source strengths (Laplace 1B)')
+    title('Source strengths (proxy+enhancement) capacitance 1B')
+    axis tight
 end
 
 end
@@ -129,7 +141,7 @@ end
 function res = matvec_laplace_1B(tau,geom,basis)
 [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis);
 
-res = laplaceSingleLayerField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
+res = lapSLPField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
 
 P = length(geom.target_ind);
 for k = 1:P
@@ -197,11 +209,11 @@ for k = 1:P
 end
 rcheck_ext = buildExteriorPoints(q,R,600);
 
-u_it_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lam_it,false);
-u_dense_b = laplaceSingleLayerField(geom.rvec_in,rcheck_b,lam_dense,false);
+u_it_b = lapSLPField(geom.rvec_in,rcheck_b,lam_it,false);
+u_dense_b = lapSLPField(geom.rvec_in,rcheck_b,lam_dense,false);
 
-u_it_ext = laplaceSingleLayerField(geom.rvec_in,rcheck_ext,lam_it,false);
-u_dense_ext = laplaceSingleLayerField(geom.rvec_in,rcheck_ext,lam_dense,false);
+u_it_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_it,false);
+u_dense_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_dense,false);
 
 rel_Q = norm(Q_it-Q_dense,inf)/max(1,norm(Q_dense,inf));
 rel_b = norm(u_it_b-u_dense_b,inf)/max(1,norm(u_dense_b,inf));

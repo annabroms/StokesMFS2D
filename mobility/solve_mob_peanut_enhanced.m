@@ -9,10 +9,10 @@ function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced
 %
 % Inputs:
 %   q          - Complex particle centers (P x 1).
-%   F          - Net forces per particle (P x 2), columns are x/y.
+%   F          - Net forces per particle (P x 2), columns are x y.
 %   T          - Net torques per particle (P x 1).
-%   delta_pair - Near-pair threshold; pairs closer than this use local fine correction.
-%   N_peanut   - Number of peanut check points used in pair compression.
+%   delta_pair - Near-pair threshold; pairs closer than this use pair correction.
+%   N_peanut   - Number of peanut check points used in pairwise compression.
 %   visualise  - Plot diagnostics if true.
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
 %   debug      - Optional logical flag: build/draw dense matrix generated 
@@ -53,7 +53,11 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; % max GMRES iterations
-solver_name = 'mob_peanut_enhanced';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 %Set coarse and fine grid. 
 %Play with N_c, N_f, a (a_f). 
@@ -202,10 +206,12 @@ geom_check.rcheck = rcheck_b;
 if debug
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_mob_peanut_enhanced(x,geom_solve,basis_mob);
         CC(:,k) = uu;
     end
@@ -215,18 +221,18 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     [V,D] = eig(CC);
     D = diag(D); 
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','latex')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
-% Solve
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob),...
     urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
@@ -240,11 +246,11 @@ if visualise
     restot = (matvec_mob_peanut_enhanced(tau,geom_solve,basis_mob)-urhs)./urhs;
     figure()
     semilogy(abs(restot))
-    title([solver_name ': Rel res at colloc points'],'interpreter','latex')
+    title([solver_name ': Rel res at colloc points'],'interpreter','none')
+    axis tight
 end
-% hold on
-% semilogy(resvec2); 
 
+disp(' == Postprocessing == ');
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 
@@ -259,7 +265,6 @@ lambda_c = [lam_c_x; lam_c_y];
 %First due to all coarse sources
 Kc = getKmat2D(rbase_in_c,0);
 UW= zeros(3*P,1); 
-warning('are the right sources used here?')
 for k= 1:P
     UW((k-1)*3+1:3*k) = -Kc'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
 end
@@ -271,8 +276,6 @@ if opt.cmap
 
         coarse_i = (i-1)*N_c+1:i*N_c;
         coarse_p2 = (p2-1)*N_c+1:p2*N_c;
-
-        warning('check sign in formulae')
 
         %Here the projected sources are used, as (I-L) is not yet
         %applied for Cmap_FU.
@@ -332,59 +335,14 @@ else
     rel_vec = res;
 end
 rel_res = max(rel_vec);
-fprintf('Relative boundary error: %.3e\n', rel_res);
-fprintf('Absolute boundary error: %.3e\n', abs_res);
+fprintf('Relative boundary error: %1.3e \n', rel_res);
+fprintf('Absolute boundary error: %1.3e \n', abs_res);
 
  
 if visualise
-%     % Plot residual in x, y components separately
-%     figure(9)
-%     subplot(2,2,1)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(1:end/2))),30,log10(abs(diff_vec(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in x velocit´y')
-% 
-% 
-%     subplot(2,2,2)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(end/2+1:end))),30,log10(abs(diff_vec(end/2+1:end))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in y velocity')
-% 
-%     % Visualise the actual velocity in the rhs and lhs
-%     subplot(2,2,3)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_rhs(1:end/2))),30,log10(abs(u_rhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity rhs')
-% 
-%     subplot(2,2,4)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_lhs(1:end/2))),30,log10(abs(u_lhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity lhs')
-% 
-% 
-%     sgtitle('Error on boundary mob peanut compression','interpreter','latex')
-
-
+    
+    % visualise boundary velocities with some offset from boundary so that particles
+    % visually don't overlap
     rvis = [];
     aa = 0.9;
     for k = 1:P
@@ -419,7 +377,7 @@ if visualise
     %% Visualise source strengths
     figure()
     semilogy(abs(lambda_c))
-    title('Source strengths mobility, peanut compression')
+    title('Coarse source strengths mobility, peanut compression')
     
 end
 

@@ -21,6 +21,10 @@ function [Q,lambda_proxy,it,gmres_tol,maxres] = solve_cap_peanut(q,v_body,delta_
 %   gmres_tol   - GMRES tolerance used.
 %   maxres      - Max relative residual on independent boundary points.
 %
+% Notes:
+%   The radius parameter should be chosen with rad ~= 1 to avoid unit logarithmic
+%   capacity in 2D.
+%
 % To test: call without inputs.
 %
 % See also: solve_cap_1B, solve_cap_2B, solve_elast_peanut, ...
@@ -46,7 +50,11 @@ assert(numel(v_body)==P,'v_body must have one entry per particle.');
 
 %% Parameters
 maxit = 800;
-solver_name = 'cap_peanut';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 opt = getLaplace2Dparams();
 R = opt.rad;
@@ -151,7 +159,10 @@ end
 if debug
     x = zeros(length(rout),1);
     CC = zeros(length(rout));
-    for k = 1:length(rout)
+    ncols = length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
         CC(:,k) = matvec_laplace_peanut_enhanced(x,geom,basis);
@@ -160,12 +171,14 @@ if debug
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
 end
 
-[tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_peanut_enhanced(x,geom,basis), ...
+disp(' == Solving... == ');
+[tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     fout,length(rout),maxit,gmres_tol,opt,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence capacitance peanut','interpreter','latex')
 
+disp(' == Postprocessing == ');
 %% Postprocess
 n_bound = 803;
 tb = linspace(0,2*pi,n_bound+1)';
@@ -178,9 +191,9 @@ end
 geom_eval = geom;
 geom_eval.rcheck = rcheck_b;
 [lam_c,~,~,~,u_corr,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
-    transform_laplace_peanut(tau,geom_eval,basis);
+    transform_lap_peanut(tau,geom_eval,basis);
 
-u_b = laplaceSingleLayerField(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
+u_b = lapSLPField(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
 
 g_true = zeros(P*n_bound,1);
 for k = 1:P
@@ -201,11 +214,12 @@ end
 if visualise
     figure();
     plot(u_b); hold on; plot(g_true)
-    title('Boundary values: lhs vs rhs (Laplace peanut)')
+    title('Boundary values: lhs vs rhs (capacitance peanut)')
 
     figure();
     semilogy(abs(lambda_proxy))
-    title('Compressed source strengths (Laplace peanut)')
+    title('Compressed source strengths (capacitance peanut)')
+    axis tight
 end
 
 end
@@ -213,10 +227,10 @@ end
 function test_solve_cap_peanut
 fprintf('--- solve_cap_peanut self-test ---\n');
 
+close all; 
+
 opt = getLaplace2Dparams();
 R = opt.rad;
-% q = [0; 2*R+0.08*R; 6*R+1.5i*R];
-% v_body = [1; -0.7; 0.25];
 
 P = 40;
 delta = 1e-2;

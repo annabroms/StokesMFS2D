@@ -68,7 +68,11 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_res_2B_enhanced';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 P = length(q); 
@@ -211,21 +215,22 @@ end
 % Build the matrix to inspect conditioning/eigenvalues if requested.
 if debug
     x = zeros(2*length(rout),1);
-    tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_res_2B_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
-    toc
     figure(13);
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
 
     figure(5)
     [V,D] = eig(CC);
@@ -307,7 +312,7 @@ if lr
     tau_coarse = getCoarseSource(fout,Sinv,Nx,Ny,Mx,Z,Y,db,P,opt.N_c,opt.a_c);
 end
 
-
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 plot_gmres = true; 
@@ -331,6 +336,7 @@ if plot_gmres
 end 
 
 
+disp(' == Postprocessing == ');
 %% POSTPROCESS
 [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y] = getPairTransformationStokes(tau,geom,basis);
 
@@ -672,7 +678,7 @@ W = [1; 1; 1]; %angular velocities
 
 rads = [1; 1; 1]; 
 visualise = 1; 
-images = 1; 
+images = 1; %only relevant for 1-body precond
 delta_pair = 0.2; 
 test = 1; % 1 or 2
 %% compare to a solution with 1 body precond only
@@ -695,15 +701,23 @@ if test == 1
     lr = 0; 
     images = 1; 
 
-    %[FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, lr,visualise);
+    [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, lr,visualise);
     gmres_tol = 1e-7;
     debug = 1; 
     [FT2,lambda,it2,gmres_tol,err2] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug);
     [FT3,lambda,it3,gmres_tol,err3] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
 
+    rel_FT2_vs_FT1 = norm(FT2-FT1,inf)/max(1,norm(FT1,inf));
+    rel_FT3_vs_FT1 = norm(FT3-FT1,inf)/max(1,norm(FT1,inf));
+    rel_FT3_vs_FT2 = norm(FT3-FT2,inf)/max(1,norm(FT2,inf));
 
-    str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
-    disp(str)
+    fprintf('Relative residuals: 1B=%1.2e, 2B-enhanced=%1.2e, 2B-images=%1.2e\n',err1,err2,err3);
+    fprintf('GMRES iterations  : 1B=%u, 2B-enhanced=%u, 2B-images=%u\n',it1,it2,it3);
+    fprintf('Relative force / torque errors: ||FT2-FT1||/||FT1|| = %1.2e\n',rel_FT2_vs_FT1);
+    fprintf('                    ||FT3-FT1||/||FT1|| = %1.2e\n',rel_FT3_vs_FT1);
+    fprintf('                    ||FT3-FT2||/||FT2|| = %1.2e\n',rel_FT3_vs_FT2);
+
+
     
     alignfigs;
 else

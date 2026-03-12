@@ -66,7 +66,11 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_mob_2B_images';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 %Grid params
 P = length(q); 
@@ -127,6 +131,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 opt.proj_all = 0; % flag for projecting also the image sources. Not fully implemented
+opt.n_clusters = 30; % sets number of image points. Hard-coded for now.
 
 %% CREATE GRID
 %Outer basic grid
@@ -137,7 +142,7 @@ rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
 
 %Construct image grid
 %will return only the basic outer grid.                               
-[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 
 
 tin = linspace(0,2*pi,N_c+1);
@@ -229,10 +234,12 @@ end
 
 if debug
     x = zeros(size(urhs));
-    for k = 1:size(urhs,1)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = size(urhs,1);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
         CC(:,k) = uu;
     end
@@ -240,8 +247,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     get_nullspace = 0;
     get_eigs = 1; 
 
@@ -372,7 +379,7 @@ if debug
 
 end
 
-
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,opt,rout);
 plot_gmres = true; 
 
@@ -388,6 +395,7 @@ if plot_gmres
       u2 = matvec_mob_2B_images(tau,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf);
 end 
 
+disp(' == Postprocessing == ');
 %% POSTPROCESS
 %[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
  %   tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
@@ -546,7 +554,7 @@ if visualise
     %% Visualise source strengths
     figure()
     semilogy(abs(lambdahat))
-    title('Source strengths mobility with pair corr')
+    title('All fine non-projected source strengths mobility with pair corr')
     axis tight
     
 end
@@ -707,7 +715,7 @@ visualise = 1;
 images = 1; 
 delta_pair = 0.2; 
 lr= 0; 
-%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
 

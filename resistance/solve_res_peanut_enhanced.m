@@ -68,7 +68,11 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_res_peanut_enhanced';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 %Set coarse and fine grid. 
@@ -126,9 +130,9 @@ opt.delta_pair = delta_pair;
 
 opt.cmap = 1;
 opt.P = P; 
-opt.use_fmm_velocity = true; % set false to evaluate Stokeslet part with stokesletDirect
+opt.use_fmm = true; % set false to evaluate Stokeslet part with stokesletDirect
 
-opt.bndry_vel = 0; 
+opt.bndry_vel = 1; 
 opt.gmres_verbose = gmres_verbose;
 %% CREATE GRID
 %Outer basic grid
@@ -185,9 +189,6 @@ basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 basis.Cmap_FU = Cmap_FU; 
 
-%Visualise 1-body and pair-basis
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,[],refine,UB_all,YB_all,UU,YY,[],[],N_c,N_f,a_c,a_f,rads)
-
 %% Construct rhs
 
 %Set boundary condition for MFS. Evaluate known velocities on the coarse
@@ -209,10 +210,12 @@ fout = [foutx; fouty];
 if debug
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_res_peanut_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
@@ -222,8 +225,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure();
     [~,D] = eig(CC);
     D = diag(D); 
@@ -231,6 +234,7 @@ if debug
     title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
     fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
@@ -247,6 +251,7 @@ if visualise
     title('Res at colloc points, peanut resistance')
 end
 
+disp(' == Postprocessing == ');
 %% Reconstruct sources. If the boundary velocities on each disc is sought, the fine sources are needed
 
 if opt.bndry_vel
@@ -267,7 +272,7 @@ if opt.bndry_vel
 
     %% Do the evaluation of the flow in check points 
     ftest_b = getVelocityField(rvec_in_c, rcheck_b, lam_c_x, lam_c_y);
-    ftest_b = ftest_b+u_corr; % Apply on pair corrections
+    ftest_b = ftest_b+u_corr; % Apply corrections on pairs
     
     %% Compute error at these boundary nodes 
     fbound_x = ftest_b(1:length(rcheck_b));
@@ -449,9 +454,9 @@ else
     gmres_tol = 1e-7; 
     debug = 0; 
     [FT1,lambda1,it1,gmres_tol,err1] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug);
-    [FT2,lambda2,it2,gmres_tol,err2] = solve_res_2B_images(q,U,W,rads,delta_pair,0,visualise);
+    [FT2,lambda2,it2,gmres_tol,err2] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,0,visualise,gmres_tol);
     
-    str = sprintf('Relative residual with peanut compression: %1.2e vs pair preconditioner: %1.2e\\n Converging in %u resp %u iterations',err1,err2,it1,it2);
+    str = sprintf('Relative residual with peanut compression: %1.2e vs 2B preconditioner without compression: %1.2e\n Converging in %u resp %u iterations',err1,err2,it1,it2);
     disp(str)
     
     alignfigs;

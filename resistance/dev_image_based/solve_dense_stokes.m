@@ -37,6 +37,9 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
         w = ones(size(rout));
     end
 
+    solver_name = 'solve_dense_stokes';
+    fprintf('==== START: %s ====\n', solver_name);
+
     if length(s)<6
         s(6) = 0; s(7) = 0; %no Stokes doulets, no Potential doublets
     elseif length(s)<7
@@ -92,8 +95,11 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
     b = [b; 0; 0]; % add force constraint
 
     %Possibly, do also preconditioning from the left
+    disp(' == Solving... == ');
     [Y, U] = getPseudoFactors(NtotD, regtol, 0);
     x = Y*(U'*b);
+
+    disp(' == Postprocessing == ');
     solres = NtotD*x-b;
     reserr = norm(solres,inf);
     coefnorm = norm(x,inf); %more reasonable to look at largest coeff 

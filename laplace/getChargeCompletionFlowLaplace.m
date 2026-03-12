@@ -9,7 +9,7 @@ function [lambda0,u_rhs] = getChargeCompletionFlowLaplace(rsrc,rtar,source_ind,Q
 %   rtar       - Complex target locations where the completion field is evaluated.
 %   source_ind - Cell array with source indices for each body.
 %   Q_body     - Prescribed net charge per body.
-%   use_fmm    - Logical flag for laplaceSingleLayerField.
+%   use_fmm    - Logical flag for lapSLPField.
 %
 % Outputs:
 %   lambda0    - Source strengths with per-body sums equal to Q_body.
@@ -35,6 +35,6 @@ for k = 1:P
     lambda0(idx) = Q_body(k)/numel(idx);
 end
 
-u_rhs = -laplaceSingleLayerField(rsrc,rtar,lambda0,use_fmm);
+u_rhs = -lapSLPField(rsrc,rtar,lambda0,use_fmm);
 
 end

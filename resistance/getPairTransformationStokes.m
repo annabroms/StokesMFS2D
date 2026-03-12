@@ -1,5 +1,5 @@
 function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = getPairTransformationStokes(tau,geom,basis)
-%GETPAIRTRANSFORMATIONSTOKES Map coarse boundary data to coarse and fine Stokes source strengths.
+%GETPAIRTRANSFORMATIONSTOKES Map coarse boundary data to interior coarse and fine Stokes source strengths.
 %
 % Syntax:
 %   [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = ...

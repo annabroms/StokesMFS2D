@@ -21,6 +21,10 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_2B(q,v_body,delta_pair,v
 %   gmres_tol  - GMRES tolerance used.
 %   maxres     - Max relative residual on independent boundary points.
 %
+% Notes:
+%   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
+%   capacity in 2D.
+%
 % To test: call without inputs.
 %
 % See also: solve_cap_1B, solve_cap_peanut, solve_elast_2B, ...
@@ -47,7 +51,11 @@ assert(numel(v_body)==P,'v_body must have one entry per particle.');
 
 %% Parameters
 maxit = 800;
-solver_name = 'cap_2B';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 opt = getLaplace2Dparams();
 R = opt.rad;
@@ -141,7 +149,10 @@ end
 if debug
     x = zeros(length(rout),1);
     CC = zeros(length(rout));
-    for k = 1:length(rout)
+    ncols = length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
         CC(:,k) = matvec_lap_2B_enhanced(x,geom,basis,rout);
@@ -150,12 +161,14 @@ if debug
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
     fout,length(rout),maxit,gmres_tol,opt,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence capacitance 2B','interpreter','latex')
 
+disp(' == Postprocessing == ');
 %% Postprocess
 [rvec_in,coarse_ind,lambda_all,lam_c,lam_f,lam_e] = getPairTransformationLaplace(tau,geom,basis);
 
@@ -167,7 +180,7 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
 
-u_b = laplaceSingleLayerField(rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPField(rvec_in,rcheck_b,lambda_all,use_fmm);
 g_true = zeros(P*n_bound,1);
 for k = 1:P
     g_true((k-1)*n_bound+1:k*n_bound) = v_body(k);

@@ -68,7 +68,11 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_res_peanut_images';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 %Set coarse and fine grid. 
@@ -224,10 +228,12 @@ if debug
     matvec_debug = 0;
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_res_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,...
             refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug);
         CC(:,k) = uu;
@@ -238,8 +244,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure();
     [~,D] = eig(CC);
     D = diag(D); 
@@ -251,7 +257,7 @@ end
 %[tau1, e1, precond] = precond_gmres(@(x) matvec_res_peanut(x,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,UB_all,YB_all,DC_all, YC_all,debug), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond);
 %fprintf("iterations = %d\n", length(e1))
 
-
+disp(' == Solving... == ');
 if lr
    Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,q,Zi,Yi,rbase_in_c,...
         rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap);
@@ -280,7 +286,7 @@ end
 
 
 
-
+disp(' == Postprocessing == ');
 if lr
 
     mu_mapped = applyQmat_peanut(tau,rvec_in_c,rout,Sinv,Zi,Yi,opt,...

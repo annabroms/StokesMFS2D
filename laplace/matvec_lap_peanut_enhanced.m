@@ -1,10 +1,10 @@
-function res = matvec_laplace_peanut_enhanced(tau,geom,basis)
-%MATVEC_LAPLACE_PEANUT_ENHANCED Matrix-vector action for Laplace peanut preconditioner.
+function res = matvec_lap_peanut_enhanced(tau,geom,basis)
+%MATVEC_LAP_PEANUT_ENHANCED Matrix-vector action for Laplace peanut preconditioner.
 %
 % Syntax:
-%   res = matvec_laplace_peanut_enhanced(tau,geom,basis)
+%   res = matvec_lap_peanut_enhanced(tau,geom,basis)
 %
-% See also: solve_cap_peanut, transform_laplace_peanut.
+% See also: solve_cap_peanut, transform_lap_peanut.
 %
 % Anna Broms, Mar 2026
 
@@ -24,13 +24,18 @@ end
 P = numel(q);
 N_large = length(rvec_out)/P;
 
+%%  Get source strengths from data on boundary
 [lam_c,lam_self,~,~,u_corr,~,~,lam_f_nonp,lam_e_nonp] = ...
-    transform_laplace_peanut(tau,geom,basis);
+    transform_lap_peanut(tau,geom,basis);
 
-res = laplaceSingleLayerField(rvec_in,rcheck,lam_c,opt.use_fmm);
+%% Evaluate field
+res = lapSLPField(rvec_in,rcheck,lam_c,opt.use_fmm);
 res = res + u_corr;
 
+
 if isequal(rcheck,rvec_out)
+
+    %% For elastance: add Lr blocks on diagonal from fine sources
     if isfield(opt,'project_charge') && logical(opt.project_charge)
         has_neigh = sort(unique(pairs(:)));
         for ii = 1:numel(has_neigh)
@@ -40,7 +45,8 @@ if isequal(rcheck,rvec_out)
             res(block) = res(block) + lr_pair;
         end
     end
-
+    
+    %% Correct identity diagonal blocks
     rout = rvec_out(1:N_large)-q(1);
     Nii = lapSLPmat(rbase_in_c,rout);
 

@@ -67,7 +67,11 @@ assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordina
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_res_2B_images';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 P = length(q); 
@@ -133,6 +137,7 @@ opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 opt.lr = lr; %using long range preconditioning? 
+opt.n_clusters = 30; 
 
 
 %% CREATE GRID
@@ -148,7 +153,7 @@ rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
 %Construct image grid
 %will return only the basic outer grid, else refined outer grid 
  
-[rout,~,rin,rimage,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,rin,rimage,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
 % pairs = [2,3];
 % figure()
 % for k = 1:P
@@ -240,10 +245,12 @@ end
 if debug
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s);
         CC(:,k) = uu;
     end
@@ -253,8 +260,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
@@ -339,6 +346,7 @@ end
 %res = matvec_res_2B_images(x,rbase_in_c,refine,rimage_vec,nimage,opt,rvec_out,q,U,Y,pairs,Upf,Ypf)
 %res = matvec_2D_pairprecond(x,rvec_in,rvec_out,q,UU,Y,B);
 %[tau,flag,relres,it,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
+disp(' == Solving... == ');
 if lr
    Pf = applyPmat(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Z,Y,opt);    
    [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_pairprecond(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s,Sinv,Z,Y),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);   
@@ -365,18 +373,19 @@ if plot_gmres
 end 
 
 
+disp(' == Postprocessing == ');
 %% POSTPROCESS
 [rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y,tau_stress_x,tau_stress_y,tau_pot_x,tau_pot_y] = getPairTransformation(tau,rbase_in_c,rbase_in_f,refine,...
     rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf);
 
-warning('Think about postprocessing here')
-   % if lr
-   %      %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
-   %      tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM);
-   % 
-   %      tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2);
-   %      tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end);
-   %  end
+% if lr
+%warning('Think about postprocessing here')
+%      %tau_stokes = Qmat*[tau_stokes_x; tau_stokes_y];
+%      tau_stokes = applyQmat([tau_stokes_x; tau_stokes_y],rin,rout,Rinv,AN,AM);
+% 
+%      tau_stokes_x = tau_stokes(1:end/2)+tau_coarse(1:end/2);
+%      tau_stokes_y = tau_stokes(end/2+1:end)+tau_coarse(end/2+1:end);
+%  end
 
 rot = [];
 lambda_image = [tau_stress_x; tau_stress_y; tau_pot_x; tau_pot_y; rot];
@@ -399,12 +408,6 @@ for i = 1:length(has_neigh)
     FT((k-1)*3+1:3*k) = FT((k-1)*3+1:3*k)+ K'*[tau_stokes_x((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
         tau_stokes_y((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
 end
-
-%extract force and torque separately
-% for k = 1:P
-%     F(k) = FT((k-1)*3+1) + 1i*FT((k-1)*3+2);
-%     T(k) = FT(3*k); 
-% end
 
 
 %% Do the evaluation of the flow in check points , FMM is applied.

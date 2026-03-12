@@ -22,12 +22,12 @@ clc;
 rng(8);
 
 %% Configuration
-P = 3;
-delta = 1e-2;                 % geometric spacing parameter
-geometry_mode = 'line';       % 'line' | 'dumbbells' | 'cluster'
+P = 20;
+delta = 1e-3;                 % geometric spacing parameter
+geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
 delta_pair = 0.2;             % near-pair threshold for 2B/peanut
 N_peanut = 400;               % points per peanut separation surface
-rads = ones(P,1);
+
 
 run_image_1B = true;          % include solve_mob_1B / solve_res_1B
 image = 1;
@@ -164,7 +164,7 @@ two_way_res_mob_peanut = relerr(UW_back_rp,UW_ref);
 if run_image_1B
     [U_m1,W_m1] = unpackUW(UW_1B);
     [FT_back_m1,~,~,~,~] = solve_res_1B(q,U_m1,W_m1,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose);
-    [F_r1,T_r1] = unpackFT(FT_1B');
+    [F_r1,T_r1] = unpackFT(FT_1B);
     [UW_back_r1,~,~,~,~,~] = solve_mob_1B(q,F_r1,T_r1,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
 
     two_way_mob_res_1B = relerr(FT_back_m1,FT_ref);
@@ -190,7 +190,7 @@ switch lower(mode)
         if mod(P,2)~=0
             error('For geometry_mode=''dumbbells'', P must be even.');
         end
-        q = createDumbells(P,delta);
+        q = createDumbbells(P,delta);
         q = q(:);
     case 'cluster'
         q = grow_cluster(P,delta,2);

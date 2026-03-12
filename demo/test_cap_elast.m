@@ -21,9 +21,9 @@ rng(9);
 opt = getLaplace2Dparams();
 R = opt.rad;
 
-P = 3;
-delta = 1e-2;
-geometry_mode = 'line';       % 'line' | 'dumbbells' | 'cluster'
+P = 20;
+delta = 1e-3;
+geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
 q = buildGeometry(geometry_mode,P,delta,R);
 P = numel(q);
 rads = R*ones(P,1);
@@ -39,7 +39,6 @@ use_fmm = true;
 fprintf('=== test_cap_elast ===\n');
 fprintf('geometry=%s, P=%d, R=%.3f, delta=%.2e, delta_pair=%.2e, N_peanut=%d\n\n', ...
     geometry_mode,P,R,delta,delta_pair,N_peanut);
-fprintf('Capacitance solve follows Stein & Barnett (ACOM, 2022), Modified exterior BVP in d = 2.\n\n');
 
 %% Geometry preview
 printDivider('Geometry preview');
@@ -124,9 +123,6 @@ fprintf('  %-8s %16.3e %16.3e\n','1B',two_way_cap_elast_1B,two_way_elast_cap_1B)
 fprintf('  %-8s %16.3e %16.3e\n','2B',two_way_cap_elast_2B,two_way_elast_cap_2B);
 fprintf('  %-8s %16.3e %16.3e\n','peanut',two_way_cap_elast_peanut,two_way_elast_cap_peanut);
 
-printPauseDivider();
-disp('Press key to continue...')
-pause();
 
 
 function q = buildGeometry(mode,P,delta,R)
@@ -139,10 +135,10 @@ switch lower(mode)
         if mod(P,2)~=0
             error('For geometry_mode=''dumbbells'', P must be even.');
         end
-        q = R*createDumbells(P,delta);
+        q = createDumbbells(P,delta,R);
         q = q(:);
     case 'cluster'
-        q = R*grow_cluster(P,delta,2);
+        q = grow_cluster(P,delta,2,R);
         q = q(:);
     otherwise
         error('Unknown geometry_mode: %s',mode);

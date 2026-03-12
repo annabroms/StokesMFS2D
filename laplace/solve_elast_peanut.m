@@ -15,11 +15,15 @@ function [v_body,lambda_proxy,it,gmres_tol,maxres] = solve_elast_peanut(q,Q_body
 %   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
 %
 % Outputs:
-%   v_body      - Recovered constant boundary values per body (P x 1).
+%   v_body      - Recovered constant voltage values per body (P x 1).
 %   lambda_proxy- Coarse proxy strengths after completion/correction merge.
 %   it          - GMRES iteration count.
 %   gmres_tol   - GMRES tolerance used.
 %   maxres      - Max relative equipotential residual on independent boundary points.
+%
+% Notes:
+%   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
+%   capacity in 2D.
 %
 % To test: call without inputs.
 %
@@ -45,24 +49,30 @@ P = numel(q);
 assert(numel(Q_body)==P,'Q_body must have one entry per particle.');
 
 maxit = 800;
-solver_name = 'solve_elast_peanut';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 opt = getLaplace2Dparams();
 rad = opt.rad;
 opt.gmres_verbose = gmres_verbose;
 
-N_c = 80;
-N_f = 150;
-a_c = 1.2;
+N_c = 80; %coarse proxy sources per body
+N_f = 150; %fine proxy sources per body (used to construct pair corrections only)
+a_c = 1.2; %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
 a_f = 1.2;
 
+% Set radii for proxy points (see Stein & Barnett 2022 for discussion on how to choose these)
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
 Rp_c = rad*max([1-sep_c,0.01]);
 Rp_f = rad*max([1-sep_f,0.01]);
 
-accstop = (rad-Rp_c)^2/Rp_c;
+% Set distance for which to apply pair compression, with accstop the largest separation where enhancing nodes are needed 
+% (based on image accumulation points)
 if nargin < 3 || isempty(delta_pair)
     delta_pair = accstop;
 end
@@ -81,12 +91,13 @@ opt.precomp = 1;
 opt.pc = 1;
 opt.delta_pair = delta_pair;
 opt.P = P;
-opt.Nclust = 100;
-opt.cmap = 0;
+opt.Nclust = 100; %determines number of enhancing nodes on 
+% ellipse segments, but the ones within the proxy radius will be discarded. 
+opt.cmap = 0; % use coarse-to-coarse compressed map?
 opt.use_fmm = use_fmm;
-opt.show_counter = true;
-opt.project_charge = true;
-if visualise
+opt.show_counter = true; % show progress for compressed pairs?
+opt.project_charge = true; % always true for elastance, false for capacitance
+if visualise %of discretisation and computed sources
     opt.visualise_grid = true;
 else
     opt.visualise_grid = false;
@@ -145,14 +156,19 @@ basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 
-%% Get rhs
+%% Get rhs based on "completion flow"
 [lambda0_c,u_rhs] = getChargeCompletionFlowLaplace(rvec_in_c,rout,coarse_source_ind,Q_body,use_fmm);
 
 %% Solve
+
+% Build system matrix via matvec with columns of the identity matrix as input, for debugging
 if debug
     x = zeros(length(rout),1);
     CC = zeros(length(rout));
-    for k = 1:length(rout)
+    ncols = length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
         CC(:,k) = matvec_laplace_peanut_enhanced(x,geom,basis);
@@ -161,13 +177,15 @@ if debug
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
 end
 
-[tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_peanut_enhanced(x,geom,basis), ...
+disp(' == Solving... == ');
+[tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     u_rhs,length(rout),maxit,gmres_tol,opt,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence elastance peanut','interpreter','latex')
 
-%% Postprocess
+disp(' == Postprocessing == ');
+%% Postprocess 
 n_bound = 803;
 tb = linspace(0,2*pi,n_bound+1)';
 tb = tb(1:end-1);
@@ -176,12 +194,13 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
 end
 
+%get source strenghts, given data on boundary
 geom_eval = geom;
 geom_eval.rcheck = rcheck_b;
 [lam_c,~,~,~,u_corr,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
-    transform_laplace_peanut(tau,geom_eval,basis);
+    transform_lap_peanut(tau,geom_eval,basis);
 
-u_b = laplaceSingleLayerField(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
+u_b = lapSLPField(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
 u_b = u_b+u_corr;
 
 v_body = zeros(P,1);

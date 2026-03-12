@@ -31,8 +31,10 @@ maxit = 100;
 tol = 1e-5;
 visualise = 1; 
 
+fprintf('== Generate particle cluster == \n')
+
 for k = 1:P-2
-    k
+    fprintf('Generate body %u/%u\n',k+2,P)
     
     while true
 

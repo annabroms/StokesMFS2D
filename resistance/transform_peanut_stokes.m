@@ -1,6 +1,6 @@
 function [lam_c_x, lam_self_x, lam_f_x, ...
     lam_c_y, lam_self_y, lam_f_y, u_corr, rimage_k] = transform_peanut_stokes(tau,geom,basis)
-%TRANSFORM_PEANUT_STOKES Map coarse boundary data to coarse and fine Stokes source strengths.
+%TRANSFORM_PEANUT_STOKES Map coarse boundary data to interior coarse and fine Stokes source strengths.
 %
 % Syntax:
 %   [lam_c_x,lam_self_x,lam_f_x,...

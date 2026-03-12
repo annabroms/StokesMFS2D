@@ -29,10 +29,10 @@ PM = length(rvec_out);
 N_c = opt.N_c;
 mu = 1;
 
-if isfield(opt,'use_fmm_velocity')
-    use_fmm_velocity = opt.use_fmm_velocity;
+if isfield(opt,'use_fmm')
+    use_fmm = opt.use_fmm;
 else
-    use_fmm_velocity = true;
+    use_fmm = true;
 end
 
 % Transform coarse boundary data to compressed coarse source strengths.
@@ -41,7 +41,7 @@ end
     transform_peanut_stokes(tau,geom,basis);
 
 % Evaluate flow induced by compressed source strengths.
-res = getVelocityField(rvec_in,rvec_out,lam_c_x,lam_c_y,use_fmm_velocity);
+res = getVelocityField(rvec_in,rvec_out,lam_c_x,lam_c_y,use_fmm);
 
 % Replace compressed pair blocks by local fine representation.
 res = res + u_corr;

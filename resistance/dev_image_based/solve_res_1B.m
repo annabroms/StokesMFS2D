@@ -60,7 +60,11 @@ end
 % GMRES PARAMS
 maxit = 1600;
 %maxit = 500;
-solver_name = 'solve_res_1B';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 % Params to determine grid
 opt = get2Dparams(); 
 opt.gmres_verbose = gmres_verbose;
@@ -113,7 +117,8 @@ mu = 1; %viscosity
 
 %% GET GRIDS AND VISUALISE
 %get grids
-[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
+opt.n_clusters = 30; 
+[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
 
 %get also a coarse representation, to be used for long range
 %preconditioning with deflation. 
@@ -294,10 +299,12 @@ end
 if debug
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
         CC(:,k) = uu;
     end
@@ -307,8 +314,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
@@ -406,10 +413,12 @@ end
 if debug && lr
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Sinv,Nx,Ny,Mx,Z,Y,opt);
         CC(:,k) = uu;
     end
@@ -419,8 +428,8 @@ if debug && lr
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC| (LR)'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
@@ -494,6 +503,7 @@ end
 % GMRES with low stagnation control (J.Helsing). 
 %
 %[x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),fout,2*size(rout,1),maxit,gmres_tol,1,rout);
+disp(' == Solving... == ');
 if lr
     if solve
   %  maxit = 1; %debug
@@ -521,6 +531,7 @@ if debug
     xlabel('Iteration number','interpreter','latex')
 end
 
+disp(' == Postprocessing == ');
 PM = length(rout);
 
 if solve
@@ -656,7 +667,7 @@ fprintf('Max surf rel res at new nodes %.3e\n', maxres);
 
 %% Get force and torque
 Kin = getKmat2D(rin(1:Nc),q(1));
-
+FT = zeros(P*3,1); 
 for k = 1:P
     lambda_x = tau_stokes_x((k-1)*Nc+1:k*Nc);
     lambda_y = tau_stokes_y((k-1)*Nc+1:k*Nc);

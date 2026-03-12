@@ -1,5 +1,5 @@
 function [rvec_in,coarse_ind,lam_all,lam_c,lam_f,lam_e,lam_all_nonp,lam_c_nonp,lam_f_nonp,lam_e_nonp] = getPairTransformationLaplace(tau,geom,basis)
-%GETPAIRTRANSFORMATIONLAPLACE Map coarse boundary data to coarse/fine Laplace sources.
+%GETPAIRTRANSFORMATIONLAPLACE Map coarse boundary data to interior coarse/fine Laplace sources.
 %
 % Syntax:
 %   [rvec_in,coarse_ind,lam_all,lam_c,lam_f,lam_e,...
@@ -63,8 +63,6 @@ for k = 1:P
     lam_f_nonp{k} = zeros(N_f,1);
     lam_e_nonp{k} = zeros(0,1);
 end
-
-u_corr = zeros(P*N_large,1);
 
 % Phase 1: one-body mapping from boundary data to coarse source strengths.
 for i = 1:P

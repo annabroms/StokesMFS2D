@@ -68,7 +68,11 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_mob_peanut_images';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 P = length(q); 
@@ -257,10 +261,12 @@ end
 if debug
     x = zeros(2*length(rout),1);
     tic
-    for k = 1:2*length(rout)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = 2*length(rout);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,...
             refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all,YC_all,Cmap,Lc_pair,Lf_pair);
             % matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
@@ -272,8 +278,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     [V,D] = eig(CC);
     D = diag(D); 
     figure()
@@ -283,6 +289,7 @@ if debug
     title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
 
 figure()
@@ -300,6 +307,7 @@ end
 % hold on
 % semilogy(resvec2); 
 
+disp(' == Postprocessing == ');
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 

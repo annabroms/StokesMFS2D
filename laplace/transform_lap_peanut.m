@@ -1,17 +1,18 @@
-function [lam_c,lam_self,lam_f,lam_e,u_corr,lam_c_nonp,lam_self_nonp,lam_f_nonp,lam_e_nonp] = transform_laplace_peanut(tau,geom,basis)
-%TRANSFORM_LAPLACE_PEANUT Map coarse boundary data to compressed/fine Laplace sources.
+function [lam_c,lam_self,lam_f,lam_e,u_corr,lam_c_nonp,lam_self_nonp,lam_f_nonp,lam_e_nonp] = transform_lap_peanut(tau,geom,basis)
+%TRANSFORM_LAP_PEANUT Map coarse boundary data to interior compressed/fine
+%Laplace sources. Helper function to matvec_lap_peanut_enhanced
 %
 % Syntax:
-%   [lam_c,lam_self,lam_f,lam_e,u_corr] = transform_laplace_peanut(tau,geom,basis)
+%   [lam_c,lam_self,lam_f,lam_e,u_corr] = transform_lap_peanut(tau,geom,basis)
 %   [lam_c,lam_self,lam_f,lam_e,u_corr,lam_c_nonp,lam_self_nonp, ...
-%       lam_f_nonp,lam_e_nonp] = transform_laplace_peanut(tau,geom,basis)
+%       lam_f_nonp,lam_e_nonp] = transform_lap_peanut(tau,geom,basis)
 %
 % Outputs:
 %   lam_*      - Projected source strengths.
 %   lam_*_nonp - Non-projected source strengths (used for Lr/voltage terms).
 %
 % See also: getPairBasisLaplace, getPeanutBlockLaplace, ...
-%   matvec_laplace_peanut_enhanced.
+%   matvec_lap_peanut_enhanced.
 %
 % Anna Broms, Mar 2026
 
@@ -154,8 +155,8 @@ for row = 1:size(pairs,1)
     rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
     rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
 
-    u_fine = laplaceSingleLayerField(rin_pair_f,rout_pair,beta_tot,false);
-    u_peanut = laplaceSingleLayerField(rin_pair_c,rout_pair,tau_peanut,false);
+    u_fine = lapSLPField(rin_pair_f,rout_pair,beta_tot,false);
+    u_peanut = lapSLPField(rin_pair_c,rout_pair,tau_peanut,false);
 
     pair_idx = [block_i block_p2]';
     u_corr(pair_idx) = u_corr(pair_idx) + u_fine - u_peanut;
@@ -173,7 +174,8 @@ end
 end
 
 function lam_out = projectChargeMode(lam_in,project_charge)
-%PROJECTCHARGEMODE Apply scalar charge projection with Kq = ones.
+%PROJECTCHARGEMODE Apply scalar charge projection with Kq = ones. Only
+%needed for the elastance problem.
 
 if ~project_charge || isempty(lam_in)
     lam_out = lam_in;

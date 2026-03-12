@@ -63,7 +63,11 @@ end
 %% SET PARAMS
 %GMRES params
 maxit = 800; 
-solver_name = 'solve_mob_2B_enhanced';
+
+if ~exist('solver_name','var') || isempty(solver_name)
+    solver_name = mfilename;
+end
+fprintf('==== START: %s ====\n', solver_name);
 
 %Grid params
 P = length(q); 
@@ -241,10 +245,12 @@ end
 
 if debug
     x = zeros(size(urhs));
-    for k = 1:size(urhs,1)
-        k
-        x(:) = 0; 
-        x(k) = 1; 
+    ncols = size(urhs,1);
+    fprintf('== Debug mode: building system matrix ==\n');
+    for k = 1:ncols
+        fprintf('build col nbr: %u/%u\n', k,ncols);
+        x(:) = 0;
+        x(k) = 1;
         uu = matvec_mob_2B_enhanced(x,geom,basis);
         CC(:,k) = uu;
     end
@@ -252,8 +258,8 @@ if debug
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |CC|'],'interpreter','none')
-    skeel(CC)
-
+    cc = skeel(CC);
+    fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     get_nullspace = 0;
     get_eigs = 1; 
 
@@ -384,6 +390,7 @@ if debug
 
 end
 
+disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt,rout);
 plot_gmres = true; 
 
@@ -399,6 +406,7 @@ if plot_gmres
       u2 = matvec_mob_2B_enhanced(tau,geom,basis);
 end 
 
+disp(' == Postprocessing == ');
 %% POSTPROCESS
 %[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
  %   tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
@@ -729,16 +737,18 @@ visualise = 1;
 images = 1; 
 delta_pair = 0.5; 
 lr= 0; 
-%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW1,lambda_1,it1,~,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
 
 %compare to a solution with image enhancement
-gmres_tol = 1e-6;
+gmres_tol = 1e-8;
 debug = 0; 
-[UW1,lambda,it1,gmres_tol,err1] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise,gmres_tol,debug);
+[UW2,lambda_2,it2,~,err2] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise,gmres_tol,debug);
 
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)
+rel_diff_UW = norm(UW1(:)-UW2(:))/max(norm(UW1(:)),eps);
+fprintf('Relative difference between UW1 and UW2: %1.2e\n', rel_diff_UW);
 
 alignfigs;
 
