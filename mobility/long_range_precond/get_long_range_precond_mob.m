@@ -219,7 +219,7 @@ targ = [real(rout)';imag(rout)'];
 % Vmat2 = [reshape(Ufmm.pottarg(:,1,:),srcinfo.nd,Nc*P*a) reshape(Ufmm.pottarg(:,2,:),srcinfo.nd,Nc*P*a)]'./2/pi;
 %R = AM'*Vmat; %This can certainly be computed faster! 
 
-%% Build matrix Vmat using its block structure instea. 
+%% Build matrix Vmat using its block structure instead. 
 % Enough to use sources on one body at the time due to the sparsity structure
 S = zeros(db*P);
 Vmat = zeros(Nc*P*2*a,P*db);

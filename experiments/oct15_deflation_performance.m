@@ -5,7 +5,7 @@ images = 0; %images not needed for well separated particles
 delta = 0.1; 
 rng(8); %reproducable
 
-P = 20;
+P = 6;
 [q,B] = grow_cluster(P,delta,2);
 % q = [0; (2+delta)];
 % % 
@@ -13,10 +13,10 @@ P = 20;
 %  x = 1+delta/2;
 %  y = sqrt((2+delta)^2-(1+delta/2)^2);
 %  q = [0; 2+delta; x+1i*y; x+2+delta+1i*y; 4+2*delta; x-1i*y; x+2+delta-1i*y]; 
-%  q = hexagonal_lattice(delta, 4);
+q = hexagonal_lattice(delta, 2);
 %q = [0:(2+delta):(P-1)*(2+delta)]';
  %q = q(1:3);
- %P = length(q); 
+P = length(q); 
  
 %q = 0; 
 %q = [0; 2+delta]; %center coordinates

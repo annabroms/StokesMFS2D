@@ -1,11 +1,10 @@
-function [Sinv,Zi,Yi,db] = get_long_range_precond_peanut(q,rin,rout,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,opt)
+function [Sinv,Zi,Yi,db] = get_long_range_precond_peanut_mob(q,rin,rout,L,Lr,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair,opt,Vk)
 %%GET_LONG_RANGE_PRECOND_MU  Construct coarse-space projection matrices for long-range preconditioning.
 % The same thing as before, but for mu instead of lambda.
 %
-%   [Sinv, Zi, Yi,db] = GET_LONG_RANGE_PRECOND_PEANUT(q, rin, rout, opt)
+%   [Sinv, Zi, Yi,db] = GET_LONG_RANGE_PRECOND_PEANUT_MOB(q, rin, rout, opt)
 %
 %   Constructs the matrices used in the long-range preconditioner:
-%   the coarse-to-fine mappings AN and AM, and the inverse coarse interaction matrix Rinv.
 %   These are used to define the projectors:
 %
 %       P = I - G * Z * Sinv * Y'     (left-side projection, see applyPmat)
@@ -46,59 +45,89 @@ a = opt.a_c;
 Nc = opt.N_c; 
 P = length(q);  
 
+if nargin < 22
+    run_Z = 1; 
+    smax = lr-2;
+    db = smax;
+else
+    run_Z = 0; 
+    db = size(Vk,2); 
+end
+
 
 %% Is it a good choice to take singular vectors of G for a single body to be the coarse basis functions in Z, Y? Yes!
 
 %svd_type
-
-G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
-[Uii,Yii] = getSelfPseudo(1,rin(1:Nc),rout(1:Nc*a),[],[],[1,opt.N_c*opt.a_c],opt.s);
-%[V,D] = eig(G);
-[U,S,V] = svd(G); 
-smax = lr-2;
-%s = diag(S);
-%Zi = V(:,1:smax);%*diag(1./s(1:smax));
-%Zi = Yii{1}*(Uii{1}*U(:,1:smax));
-Zi = U(:,1:smax);
-
-%V = [ones(Nc,1) zeros(Nc,1); zeros(Nc,1) ones(Nc,1)];
-%smax = 2;
-Zi = G*V(:,1:smax);
-%Zi = [ones(Nc*a,1) zeros(Nc*a,1); zeros(Nc*a,1) ones(Nc*a,1)];
-Yi = U(:,1:smax);
-%Yi = Zi; %testing
-db = smax;
-
-
-
-%% call fmm here instead with 2PK sources per body, all to all
-%put this in an eval multiD function instead!
-
-targ = [real(rout)';imag(rout)'];
-
+if run_Z
+    G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
+    %[Uii,Yii] = getSelfPseudo(1,rin(1:Nc),rout(1:Nc*a),[],[],[1,opt.N_c*opt.a_c],opt.s);
+    %pair_points = [0, Nc*a]; 
+   % [Uii,Yii,Lii] = getSelfPseudoMobility(1,0,rin(1:Nc),rout(1:Nc*a),[],[],pair_points);
+    %[V,D] = eig(G);
+   % [U,S,V] = svd(G); 
+    [U,S,V] = svd(G*(eye(2*Nc)-L)); 
+    
+    %s = diag(S);
+    %Zi = V(:,1:smax);%*diag(1./s(1:smax));
+    %Zi = Yii{1}*(Uii{1}*U(:,1:smax));
+    %Zi = U(:,1:smax);
+    
+    %V = [ones(Nc,1) zeros(Nc,1); zeros(Nc,1) ones(Nc,1)];
+    %smax = 2;
+    Zi = G*(eye(size(L))-L)*V(:,1:smax);
+    Zi = G*V(:,1:smax);
+    %Zi = [ones(Nc*a,1) zeros(Nc*a,1); zeros(Nc*a,1) ones(Nc*a,1)];
+    Yi = U(:,1:smax);
+    Yi = Zi; 
+else
+    Zi = [];
+    Yi = []; 
+end
 
 
 %% Build matrix Vmat using its block structure instead. 
 
 % Exteremely slow implementation: 
 S = zeros(db*P);
-Vmat = zeros(Nc*P*2*a,P*db);
+
 mu = zeros(Nc*P*2*a,1);
-for k = 1:P
-    k
-    mu(:) = 0;
-    
-    
-    for i = 1:db
-        mu((k-1)*Nc*a+1:k*Nc*a) = Zi(1:end/2,i);
-        mu((k-1)*Nc*a+1+Nc*P*a:k*Nc*a+Nc*P*a) = Zi(end/2+1:end,i);
 
-        res = matvec_res_peanut(mu,rbase_in_c,rbase_in_f,rin,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,0);
-        Vmat(:,db*(k-1)+i) = res;
+if run_Z
+    Vmat = zeros(Nc*P*2*a,P*db);
+    for k = 1:P
+        k
+        mu(:) = 0;
+        
+        
+        for i = 1:db
+            %if run_Z
+                mu((k-1)*Nc*a+1:k*Nc*a) = Zi(1:end/2,i);
+                mu((k-1)*Nc*a+1+Nc*P*a:k*Nc*a+Nc*P*a) = Zi(end/2+1:end,i);
+           % else
+            %    mu = Vk(:,i);
+            %end
+                %  matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
+            res = matvec_mob_pairprecond_peanut(mu,rbase_in_c,rbase_in_f,rin,refine,rimage_vec,nimage,opt,rout,rout,q,UU,YY,L,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
+            Vmat(:,db*(k-1)+i) = res;
+        end
+    
+        
     end
-
-    
+else
+    Vmat = zeros(Nc*P*2*a,db);
+    for i = 1:db
+            %if run_Z
+             %   mu((k-1)*Nc*a+1:k*Nc*a) = Zi(1:end/2,i);
+              %  mu((k-1)*Nc*a+1+Nc*P*a:k*Nc*a+Nc*P*a) = Zi(end/2+1:end,i);
+           % else
+                mu = Vk(:,i);
+            %end
+                %  matvec_mob_pairprecond_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair)
+            res = matvec_mob_pairprecond_peanut(mu,rbase_in_c,rbase_in_f,rin,refine,rimage_vec,nimage,opt,rout,rout,q,UU,YY,L,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair);
+            Vmat(:,i) = res;
+    end
 end
+
 
 % Check "loss of information" in Vmat
 % [U,S,V] = svd(Vmat);
@@ -107,13 +136,20 @@ end
 % semilogy(ss)
 % hold on
 
-for k = 1:P
-    S((k-1)*db+1:k*db,:) = Yi'*[Vmat((k-1)*Nc*a+1:k*Nc*a,:); Vmat(P*Nc*a+(k-1)*Nc*a+1:P*Nc*a+k*Nc*a,:)]; 
+if run_Z
+    for k = 1:P
+        S((k-1)*db+1:k*db,:) = Yi'*[Vmat((k-1)*Nc*a+1:k*Nc*a,:); Vmat(P*Nc*a+(k-1)*Nc*a+1:P*Nc*a+k*Nc*a,:)]; 
+    end
+    disp('... Matrix S is built')
+
+    Sinv = (S\eye(db*P));
+else
+    S = Vk'*Vmat;
+    Sinv = (S\eye(db));
 end
 
-disp('... Matrix S is built')
 
-Sinv = (S\eye(db*P));
+
 
 
 %Make a coarse version of the same thing
