@@ -27,7 +27,7 @@ function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gm
 % To test: call without inputs.
 %
 % See also: solve_cap_2B, solve_cap_peanut, ...
-%   solve_elast_1B, lapSLPField.
+%   solve_elast_1B, lapSLPfield.
 %
 % Anna Broms, Mar 2026
 
@@ -99,7 +99,7 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
 
-u_b = lapSLPField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPfield(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
 b_true = zeros(P*n_bound,1);
 for k = 1:P
     b_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
@@ -141,7 +141,7 @@ end
 function res = matvec_laplace_1B(tau,geom,basis)
 [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis);
 
-res = lapSLPField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
+res = lapSLPfield(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
 
 P = length(geom.target_ind);
 for k = 1:P
@@ -209,11 +209,11 @@ for k = 1:P
 end
 rcheck_ext = buildExteriorPoints(q,R,600);
 
-u_it_b = lapSLPField(geom.rvec_in,rcheck_b,lam_it,false);
-u_dense_b = lapSLPField(geom.rvec_in,rcheck_b,lam_dense,false);
+u_it_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_it,false);
+u_dense_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_dense,false);
 
-u_it_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_it,false);
-u_dense_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_dense,false);
+u_it_ext = lapSLPfield(geom.rvec_in,rcheck_ext,lam_it,false);
+u_dense_ext = lapSLPfield(geom.rvec_in,rcheck_ext,lam_dense,false);
 
 rel_Q = norm(Q_it-Q_dense,inf)/max(1,norm(Q_dense,inf));
 rel_b = norm(u_it_b-u_dense_b,inf)/max(1,norm(u_dense_b,inf));

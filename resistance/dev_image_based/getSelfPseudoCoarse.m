@@ -99,7 +99,7 @@ for i = 1:P
 
     %Get single layer
     if solve_xy
-        Nio = singleLayer(rin,rout,mu); 
+        Nio = stokSLPmat(rin,rout,mu); 
     else
         Nio = singleLayerXY(rin,rout,mu); %Different ordering of unknowns. Not in use. 
     end

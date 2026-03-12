@@ -118,21 +118,21 @@ for i = 1:P
             if ~precomp                
                 
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
-                %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
+                %Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,mu);
                 %R2 = -Nother*tau_mapped; %read off on particle 2
     
-                [u2,v2] = stokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+                [u2,v2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
                     real(rout_fine_other),imag(rout_fine_other),...
                     tau_mapped(1:N_c),tau_mapped(N_c+1:2*N_c),N_c);
                 R2  = -[u2; v2];
     
                 %% Do a similar thing for the other order of the particles in the pair
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
-                %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
+                %Nother2 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other,mu);
                 %R1 = -Nother2*mapped; %read off on particle 1
     
                 %To be replaced with C implementation?
-                [u1,v1] = stokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+                [u1,v1] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
                     real(rout_fine_other),imag(rout_fine_other),...
                     mapped(1:N_c),mapped(N_c+1:2*N_c),N_c);
                 R1 = -[u1; v1];
@@ -199,7 +199,7 @@ for i = 1:P
             tau_mapped_proj = Lf_pair*tau_mapped_tot(1:4*N_f); 
 
 
-            [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+            [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                 real(rout_pair),imag(rout_pair),...
                 tau_mapped_proj(1:2*N_f),tau_mapped_proj(2*N_f+1:4*N_f),2*N_f);
             u_stok = [u1; v1];
@@ -209,7 +209,7 @@ for i = 1:P
 
             rin_pair = [rbase_in_c+q(i); rbase_in_c+q(p2)];               
 
-            [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+            [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                 real(rout_pair),imag(rout_pair),...
                 tau_peanut_tot(1:2*N_c),tau_peanut_tot(2*N_c+1:4*N_c),2*N_c);
             u_peanut_corr = [u1; v1];

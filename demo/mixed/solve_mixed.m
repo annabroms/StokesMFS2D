@@ -212,7 +212,7 @@ end
 
 %In the system matrix, get Stokeslets without projection for every particle
 %where a velocity is prescribed (all walls)
-Nio = singleLayer(rin(1:Pw*Nc),rout,1);
+Nio = stokSLPmat(rin(1:Pw*Nc),rout,1);
 %The first objects are fixed walls and the last objects are assumed to be moving particles
 
 %Create projection for the particle(s) for which a force is provided (the
@@ -251,7 +251,7 @@ for k = 1:P % Loop over targets on everyone
     rout_k = rout(start_colloc+1:start_colloc+M_k);
     %Loop over particles
     for i = 1:Pp
-        Npk = singleLayer(rin((Pw+(i-1))*Nc+1:(Pw+i)*Nc),rout_k,1);
+        Npk = stokSLPmat(rin((Pw+(i-1))*Nc+1:(Pw+i)*Nc),rout_k,1);
         A = Npk*(eye(size(L))-L);
 
         last_col_blocks(start_colloc+1:start_colloc+M_k,(i-1)*Nc+1:i*Nc) = A(1:end/2,1:end/2);

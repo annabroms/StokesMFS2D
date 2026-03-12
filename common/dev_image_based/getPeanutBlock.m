@@ -52,7 +52,7 @@ if size(rimage,1)
 else
     Nimage =  [];
 end
-Nf = singleLayer(rin_pair_f,rout_peanut,mu);
+Nf = stokSLPmat(rin_pair_f,rout_peanut,mu);
 
 %% If mobility, need to project so that the fine sources don't contribute to force and torque
 if ~isempty(Lf_pair)
@@ -65,7 +65,7 @@ end
 
 %% Get coarse representation 
 % %i.e. coarse proxy grid of Stokeslets evaluated on peanut boundary
-Npeanut = singleLayer(rin_pair_c,rout_peanut,mu);
+Npeanut = stokSLPmat(rin_pair_c,rout_peanut,mu);
 
 % If we solve a mobility problem, the coarse sources equivalent to the fine
 % sources should not contribute to a force/torque on the particle pair.

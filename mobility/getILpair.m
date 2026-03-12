@@ -4,7 +4,7 @@ function ILpair = getILpair(L)
 %the individual projection blocks L of each particle in the pair (assumed
 %the same for everybody).
 %
-% Description: Used for an MFS solver for the Stokes mobility in 2D
+% Description: Used for an MFS solver for the Stokes mobility problem in 2D
 % using pair corrections (2-body preconditioning)
 %
 % Anna Broms April 4, 2025

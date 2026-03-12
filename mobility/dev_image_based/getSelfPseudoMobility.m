@@ -118,7 +118,7 @@ for i = 1:P
     rin = rin_vec(N*(i-1)+1:N*i);
 
     %Get single layer
-    Nio = singleLayer(rin,rout,mu);
+    Nio = stokSLPmat(rin,rout,mu);
 
     %Get image kernel
     if isempty(nim)

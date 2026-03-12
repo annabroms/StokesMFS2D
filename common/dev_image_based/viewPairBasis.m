@@ -99,22 +99,22 @@ tcoarse = tcoarse(1:end-1)';
 rout_fine_self = getFineOther(a_f,Nf,rads,refine,q,p2,i); 
 
 %Needed to determine pair-basis
-Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,1);
+Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,1);
 
 %Only used to check properties of the pair-basis
-Nother_c = singleLayer(rbase_in_c+q(i),q(p2)+cos(teval)+1i*sin(teval),1);
+Nother_c = stokSLPmat(rbase_in_c+q(i),q(p2)+cos(teval)+1i*sin(teval),1);
 
 tfiner = linspace(0,2*pi,1000+1);
 tfiner = tfiner(1:end-1)';
-Nother_finer = singleLayer(rbase_in_c+q(i),q(p2)+cos(tfiner)+1i*sin(tfiner),1);
+Nother_finer = stokSLPmat(rbase_in_c+q(i),q(p2)+cos(tfiner)+1i*sin(tfiner),1);
 
 %coarse self-interaction
-Nself = singleLayer(rbase_in_c,cos(tcoarse)+1i*sin(tcoarse),1);
-Nself = singleLayer(rbase_in_c,cos(teval)+1i*sin(teval),1);
-Nself3 = singleLayer(rbase_in_c,rcheck3,1);
-Nself4 = singleLayer(rbase_in_c,rcheck4,1);
+Nself = stokSLPmat(rbase_in_c,cos(tcoarse)+1i*sin(tcoarse),1);
+Nself = stokSLPmat(rbase_in_c,cos(teval)+1i*sin(teval),1);
+Nself3 = stokSLPmat(rbase_in_c,rcheck3,1);
+Nself4 = stokSLPmat(rbase_in_c,rcheck4,1);
 
-Ncheck = singleLayer(rbase_in_c,rcheck,1); 
+Ncheck = stokSLPmat(rbase_in_c,rcheck,1); 
 
 %% Check basis
 % loop over x, then y, one nonzero coordinate in mu at the time

@@ -22,7 +22,7 @@ function res = getVelocityField(rvec_in,rcheck,stok_x,stok_y,rimage,nimage,rot,s
 %   pot_y     - y-strengths for potential dipoles at image sources (optional).
 %   use_fmm   - Logical flag for Stokeslet evaluation:
 %               true  -> use `stfmm2d` (default)
-%               false -> use `stokesletDirect`
+%               false -> use `stokSLPdirect`
 %
 % Output:
 %   res       - Stacked velocity [u_x; u_y] at target points.
@@ -63,7 +63,7 @@ if n_src > 0
         U = stfmm2d(fmm_eps, srcinfo, 0, targ, 1);
         res = [U.pottarg(1,:)'; U.pottarg(2,:)']/2/pi;
     else
-        [udirect,vdirect] = stokesletDirect(real(rvec_in),imag(rvec_in),...
+        [udirect,vdirect] = stokSLPdirect(real(rvec_in),imag(rvec_in),...
             real(rcheck),imag(rcheck),stok_x,stok_y,n_src);
         res = [udirect; vdirect];
     end

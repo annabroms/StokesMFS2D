@@ -1,8 +1,8 @@
-function u = lapSLPField(rsrc,rtar,sigma,use_fmm)
+function u = lapSLPfield(rsrc,rtar,sigma,use_fmm)
 %LAPSLPFIELD Evaluate scalar Laplace SLP field.
 %
 % Syntax:
-%   u = lapSLPField(rsrc,rtar,sigma,use_fmm)
+%   u = lapSLPfield(rsrc,rtar,sigma,use_fmm)
 %
 % Inputs:
 %   rsrc    - Complex valued array of source locations.
@@ -14,15 +14,15 @@ function u = lapSLPField(rsrc,rtar,sigma,use_fmm)
 %   u       - Potential values at targets, size numel(rtar) x nd.
 %
 % Self-test:
-%   lapSLPField()
+%   lapSLPfield()
 %   Compares fmm2d output to loop-based direct summation.
 %
-% See also: lapSLPDirect, lapSLPmat.
+% See also: lapSLPdirect, lapSLPmat.
 %
 % Anna Broms, Mar 2026
 
 if nargin==0
-    test_lapSLPField;
+    test_lapSLPfield;
     return
 end
 
@@ -42,7 +42,7 @@ end
 assert(size(sigma,1)==ns,'sigma must have one row per source location.');
 
 if ~use_fmm
-    u = lapSLPDirect(rsrc,rtar,sigma);
+    u = lapSLPdirect(rsrc,rtar,sigma);
     return
 end
 
@@ -66,8 +66,8 @@ end
 
 end
 
-function test_lapSLPField
-fprintf('lapSLPField self-test\n');
+function test_lapSLPfield
+fprintf('lapSLPfield self-test\n');
 
 ns = 200;
 nt = 220;
@@ -77,8 +77,8 @@ rtar = rand(nt,1)+1i*rand(nt,1);
 
 sigma = randn(ns,1);
 
-u_dir = lapSLPField(rsrc,rtar,sigma,false);
-u_fmm = lapSLPField(rsrc,rtar,sigma,true);
+u_dir = lapSLPfield(rsrc,rtar,sigma,false);
+u_fmm = lapSLPfield(rsrc,rtar,sigma,true);
 
 rel = norm(u_fmm-u_dir,inf)/max(1,norm(u_dir,inf));
 fprintf('  rel. err (fmm vs direct): %.3e\n',rel);

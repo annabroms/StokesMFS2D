@@ -133,7 +133,7 @@ opt_c.Rp_c = 0.5526;
 %Check coeff magnitude and residual if we solve with a single SVD.
 
 % Nim = getImageKernels2D(rimage,nimage,rout,1,s);
-% N = singleLayer(rin,rout,1);
+% N = stokSLPmat(rin,rout,1);
 %
 % Ntot = [N Nim];
 % [Ytot,Btot]  = getPseudoFactors(Ntot,1e-8,1);

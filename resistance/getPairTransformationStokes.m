@@ -128,7 +128,7 @@ for pair_row = 1:size(pairs,1)
         rvec_out((p2-1)*N_large+1:p2*N_large,:)];
     rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
     st_all = length(rin_pair);
-    [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+    [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
         real(rout_pair),imag(rout_pair),...
         beta_tot(1:st_all),beta_tot(st_all+1:2*st_all),st_all);
     u_pair = [u1; v1];
@@ -142,10 +142,10 @@ for pair_row = 1:size(pairs,1)
     u_corr(pair_ind) = u_corr(pair_ind)+u_pair;
 
     % Subtract self-interaction on the neighbour block.
-    N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+    N2 = stokSLPmat(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
     u2 = N2*lambda_i;
 
-    N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+    N1 = stokSLPmat(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
     u1 = N1*lambda_p2;
 
     u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);

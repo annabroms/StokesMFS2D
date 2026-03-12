@@ -59,7 +59,7 @@ end
 
 %svd_type
 if run_Z
-    G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
+    G = stokSLPmat(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
     %[Uii,Yii] = getSelfPseudo(1,rin(1:Nc),rout(1:Nc*a),[],[],[1,opt.N_c*opt.a_c],opt.s);
     %pair_points = [0, Nc*a]; 
    % [Uii,Yii,Lii] = getSelfPseudoMobility(1,0,rin(1:Nc),rout(1:Nc*a),[],[],pair_points);
@@ -153,7 +153,7 @@ end
 
 
 %Make a coarse version of the same thing
-% Gc = singleLayer(rin_c,rout_c,1);
+% Gc = stokSLPmat(rin_c,rout_c,1);
 % if lr == 2
 %     AMc = getGlobalKmat2D(rout_c,q);
 %     ANc= getGlobalKmat2D(rin_c,q);

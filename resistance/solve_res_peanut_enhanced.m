@@ -130,7 +130,7 @@ opt.delta_pair = delta_pair;
 
 opt.cmap = 1;
 opt.P = P; 
-opt.use_fmm = true; % set false to evaluate Stokeslet part with stokesletDirect
+opt.use_fmm = true; % set false to evaluate Stokeslet part with stokSLPdirect
 
 opt.bndry_vel = 1; 
 opt.gmres_verbose = gmres_verbose;

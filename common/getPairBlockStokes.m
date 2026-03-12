@@ -21,11 +21,11 @@ function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
 %           can be applied as x = Y*(U'*rhs).
 % 
 % Operator assembled in this routine:
-%   S    = singleLayer(rin_pair, rout_f, 1)
+%   S    = stokSLPmat(rin_pair, rout_f, 1)
 %   Atot = S - S*Lf_pair + Lr_pair   (when Lr_pair is non-empty)
 %   Atot = S                         (otherwise)
 %
-% See also: getPseudoFactors, singleLayer, getLrPair, getLfPair
+% See also: getPseudoFactors, stokSLPmat, getLrPair, getLfPair
 %
 % Anna Broms Feb 12, 2026
 
@@ -48,7 +48,7 @@ else
 end
 
 % Compute the dense target from source matrix.
-S = singleLayer(rin_pair,rout_f,mu); 
+S = stokSLPmat(rin_pair,rout_f,mu); 
 
 % In a mobility problem, need to project so that fine sources don't
 % contribute to net force/torque on the particles

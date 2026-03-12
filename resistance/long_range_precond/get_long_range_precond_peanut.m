@@ -51,7 +51,7 @@ P = length(q);
 
 %svd_type
 
-G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
+G = stokSLPmat(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
 [Uii,Yii] = getSelfPseudo(1,rin(1:Nc),rout(1:Nc*a),[],[],[1,opt.N_c*opt.a_c],opt.s);
 %[V,D] = eig(G);
 [U,S,V] = svd(G); 
@@ -117,7 +117,7 @@ Sinv = (S\eye(db*P));
 
 
 %Make a coarse version of the same thing
-% Gc = singleLayer(rin_c,rout_c,1);
+% Gc = stokSLPmat(rin_c,rout_c,1);
 % if lr == 2
 %     AMc = getGlobalKmat2D(rout_c,q);
 %     ANc= getGlobalKmat2D(rin_c,q);

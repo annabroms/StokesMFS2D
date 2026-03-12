@@ -37,7 +37,7 @@ two_corr = true; % identity correction for pair blocks
 
 % Subtract self-interactions and replace diagonal with identity.
 rout = rvec_out(1:N_large)-q(1,:);
-Nii = singleLayer(rbase_in_c,rout,mu);
+Nii = stokSLPmat(rbase_in_c,rout,mu);
 
 for i = 1:P
     tau_xy = [tau_stokes_x(coarse_ind{i}); tau_stokes_y(coarse_ind{i})];

@@ -180,7 +180,7 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
 
-u_b = lapSLPField(rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPfield(rvec_in,rcheck_b,lambda_all,use_fmm);
 g_true = zeros(P*n_bound,1);
 for k = 1:P
     g_true((k-1)*n_bound+1:k*n_bound) = v_body(k);

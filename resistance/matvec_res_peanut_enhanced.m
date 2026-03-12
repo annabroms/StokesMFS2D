@@ -48,7 +48,7 @@ res = res + u_corr;
 
 % Subtract duplicated self-contribution and enforce identity on diagonal.
 rout = rvec_out(1:N_large)-q(1);
-Nii = singleLayer(rbase_in_c,rout,mu);
+Nii = stokSLPmat(rbase_in_c,rout,mu);
 
 for i = 1:P
     coarse_ind = (i-1)*N_c+1:i*N_c;

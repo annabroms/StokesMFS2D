@@ -1,3 +1,0 @@
-Lc_pair_basis,Lf_pair_basis and Kf_pair_basis should all not be in the opt, but should be separate inputs (not in the opt struct). For solve_res_peanut_enhanced, the counter should also be activated. 
-
-

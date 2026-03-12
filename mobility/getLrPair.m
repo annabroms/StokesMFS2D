@@ -6,9 +6,10 @@ function Lr = getLrPair(B1,B2,K1,K2)
 % 
 % Description: Returns the matrix Lr for a pair of circles, constructed
 % from the individual blocks Lr:=B_i*K_i' of each particle in the
-% pair. Lr is the matrix that maps u<-lambda, i.e. it evaluates the rigid
+% pair. Lr is the matrix that maps u <-lambda, i.e. it evaluates the rigid
 % body velocities on the surface of the particle, u = BU, using the ansatz that U =
-% -K'lambda. When we build the mobility system matrix, the sign is reversed.
+% -K'lambda. When we build the mobility system matrix, the sign is reversed 
+% as the unknown velocity is moved to the lhs.
 %
 % Note: B1,B2 and K1,K2 are constructed with getKmat2D
 %

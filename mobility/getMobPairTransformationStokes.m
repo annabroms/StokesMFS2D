@@ -37,7 +37,7 @@ PM = length(rvec_out);
 
 precomp = opt.precomp; 
 use_matrix_free_projection = true; % set false to use the original K-based projector
-use_singlelayer_pair_eval = false; % set false to use stokesletDirect for pair flow evaluation
+use_singlelayer_pair_eval = false; % set false to use stokSLPdirect for pair flow evaluation
 
 
 %map densities back
@@ -85,7 +85,7 @@ for i = 1:P
     tau_mapped = Y{1}*step1; %this is the mapped density for this particle to throw in to the kernel
     
     %check residual for the self-interaction only
-    %NN = singleLayer(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
+    %NN = stokSLPmat(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
     %disp('Self-interaction error')
     %norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
     %norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
@@ -165,7 +165,7 @@ for i = 1:P
                 %Read off coarse grid contribution on other particle fine
                 %grid
                 rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
-%               Nother2 = singleLayer(rbase_in_c+q(i),rout_fine_other2,mu);
+%               Nother2 = stokSLPmat(rbase_in_c+q(i),rout_fine_other2,mu);
 %               R2 = -Nother2*tau_mapped; 
             
                 [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
@@ -174,7 +174,7 @@ for i = 1:P
                 R2 = -[udirect; vdirect];
     
                 rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
-%                 Nother1 = singleLayer(rbase_in_c+q(p2),rout_fine_other1,mu);               
+%                 Nother1 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other1,mu);               
 %                 R1 = -Nother1*mapped;
 
                 [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
@@ -236,11 +236,11 @@ for i = 1:P
             st_all = length(rin_pair);
             if use_singlelayer_pair_eval
                 % New path: evaluate pair flow via dense single-layer matrix.
-                N_pair = singleLayer(rin_pair,rout_pair,1);
+                N_pair = stokSLPmat(rin_pair,rout_pair,1);
                 u_pair = N_pair*[beta_tot(1:st_all); beta_tot(st_all+1:2*st_all)];
             else
                 % Old path: direct kernel evaluation (kept for comparison).
-                [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+                [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                     real(rout_pair),imag(rout_pair),...
                     beta_tot(1:st_all),beta_tot(st_all+1:2*st_all),st_all);
                 u_pair = [u1; v1];
@@ -256,10 +256,10 @@ for i = 1:P
             u_corr(pair_ind) = u_corr(pair_ind)+u_pair; 
            
             %also subtract self-interaction on other.
-            N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+            N2 = stokSLPmat(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
             u2 = N2*tau_mapped;
 
-            N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+            N1 = stokSLPmat(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
             u1 = N1*mapped; 
 
             u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);

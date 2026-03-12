@@ -38,7 +38,7 @@ res = res+u_corr; %Subtraction of the contribution from the peanut compressed ba
 
 %Need to subract off the 1-body basis contribution computed twice
 rout = rvec_out(1:N_large)-q(1);
-Nii = singleLayer(rbase_in_c,rout,mu);
+Nii = stokSLPmat(rbase_in_c,rout,mu);
 
 for i = 1:P
     % Get sources on this particle from single layer

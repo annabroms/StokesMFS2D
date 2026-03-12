@@ -29,7 +29,7 @@ N_large = length(rvec_out)/P;
     transform_lap_peanut(tau,geom,basis);
 
 %% Evaluate field
-res = lapSLPField(rvec_in,rcheck,lam_c,opt.use_fmm);
+res = lapSLPfield(rvec_in,rcheck,lam_c,opt.use_fmm);
 res = res + u_corr;
 
 

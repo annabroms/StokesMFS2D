@@ -155,8 +155,8 @@ for row = 1:size(pairs,1)
     rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
     rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
 
-    u_fine = lapSLPField(rin_pair_f,rout_pair,beta_tot,false);
-    u_peanut = lapSLPField(rin_pair_c,rout_pair,tau_peanut,false);
+    u_fine = lapSLPfield(rin_pair_f,rout_pair,beta_tot,false);
+    u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut,false);
 
     pair_idx = [block_i block_p2]';
     u_corr(pair_idx) = u_corr(pair_idx) + u_fine - u_peanut;

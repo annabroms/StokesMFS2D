@@ -20,7 +20,7 @@ t = linspace(0,2*pi,a_c*Nc+1);
 t = t(1:end-1)'; 
 
 %coarse self-interaction
-Nself = singleLayer(rbase_in_c,cos(tself)+1i*sin(tself),1);
+Nself = stokSLPmat(rbase_in_c,cos(tself)+1i*sin(tself),1);
  
 
 %% Check basis

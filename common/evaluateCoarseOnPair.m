@@ -53,8 +53,8 @@ rout_1 = rout_f(1:nhalf);
 rout_2 = rout_f(nhalf+1:end);
 
 % Cross interactions only.
-N21 = singleLayer(rbase_in_c + q(1),rout_2,1); % body 1 -> body 2
-N12 = singleLayer(rbase_in_c + q(2),rout_1,1); % body 2 -> body 1
+N21 = stokSLPmat(rbase_in_c + q(1),rout_2,1); % body 1 -> body 2
+N12 = stokSLPmat(rbase_in_c + q(2),rout_1,1); % body 2 -> body 1
 
 % Reorder [x;y] block structure into pair ordering [x1;x2;y1;y2].
 xx12 = N12(1:end/2,1:end/2);
@@ -96,10 +96,10 @@ Npair = evaluateCoarseOnPair(q,rbase_in_c,rout_f);
 tau1 = randn(2*Nc,1);
 tau2 = randn(2*Nc,1);
 
-Nother_2 = singleLayer(rbase_in_c + q(1),rout_fine_2,1);
+Nother_2 = stokSLPmat(rbase_in_c + q(1),rout_fine_2,1);
 R2 = -Nother_2*tau2; % read off on particle 2
 
-Nother_1 = singleLayer(rbase_in_c + q(2),rout_fine_1,1);
+Nother_1 = stokSLPmat(rbase_in_c + q(2),rout_fine_1,1);
 R1 = -Nother_1*tau1; % read off on particle 1
 
 rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];

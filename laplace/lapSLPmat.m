@@ -15,7 +15,7 @@ function A = lapSLPmat(rsrc,rtar)
 % Self-test:
 %   lapSLPmat()
 %
-% See also: lapSLPField, lapSLPDirect.
+% See also: lapSLPfield, lapSLPdirect.
 %
 % Anna Broms, Mar 2026
 
@@ -52,7 +52,7 @@ sigma = randn(ns,1);
 
 A = lapSLPmat(rsrc,rtar);
 u_mat = A*sigma;
-u_dir = lapSLPField(rsrc,rtar,sigma,false);
+u_dir = lapSLPfield(rsrc,rtar,sigma,false);
 
 rel = norm(u_mat-u_dir,inf)/max(1,norm(u_dir,inf));
 fprintf('  rel. err (A*sigma vs direct): %.3e\n',rel);

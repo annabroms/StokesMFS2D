@@ -14,7 +14,7 @@ function Nimage = getImageKernels2D(rimage,nimage,rtest,mu,s)
 
 % Stokeslets
 if s(1)
-    Nimage = singleLayer(rimage,rtest,mu);
+    Nimage = stokSLPmat(rimage,rtest,mu);
 else
     Nimage = [];
 end

@@ -30,7 +30,7 @@ start_im= 0;
 if ~images
     rout = rvec_out(start_colloc+1:start_colloc+pairs(1,2));
     rin = rvec_in(1:N_small);
-    Nii = singleLayer(rin,rout,mu);
+    Nii = stokSLPmat(rin,rout,mu);
 end
 
 for i = 1:P
@@ -38,7 +38,7 @@ for i = 1:P
     if images 
         rout = rvec_out(start_colloc+1:start_colloc+pairs(i,2));
         rin = rvec_in((i-1)*N_small+1:i*N_small);
-        Nii = singleLayer(rin,rout,mu);
+        Nii = stokSLPmat(rin,rout,mu);
     end
     tau_xy = [tau_stokes_x((i-1)*N_small+1:i*N_small); tau_stokes_y((i-1)*N_small+1:i*N_small)];
     

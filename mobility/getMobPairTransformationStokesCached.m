@@ -38,7 +38,7 @@ PM = length(rvec_out);
 
 precomp = opt.precomp; 
 use_matrix_free_projection = true; % set false to use the original K-based projector
-use_singlelayer_pair_eval = false; % set false to use stokesletDirect for pair flow evaluation
+use_singlelayer_pair_eval = false; % set false to use stokSLPdirect for pair flow evaluation
 
 
 %map densities back

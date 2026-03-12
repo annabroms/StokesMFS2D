@@ -17,7 +17,7 @@ opt = get2Dparams();
 rads = ones(P,1); 
 [rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
 
-G = singleLayer(rin,rout,1);
+G = stokSLPmat(rin,rout,1);
 
 Rc = AM'*G*AN;
 

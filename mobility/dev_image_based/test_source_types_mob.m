@@ -411,7 +411,7 @@ for k = 1:P
     N = 0; 
     for i = 1:P
         
-        Npk = singleLayer(rin((i-1)*Nc+1:i*Nc),rout_k,1);
+        Npk = stokSLPmat(rin((i-1)*Nc+1:i*Nc),rout_k,1);
         A = Npk*(eye(size(L))-L);
 
         Sproxy(M+1:M+M_k,(i-1)*Nc+1:i*Nc) = A(1:end/2,1:end/2);
@@ -426,7 +426,7 @@ for k = 1:P
                 rim_i = rim(ind);
                 Kin_im = getKmat2D(rim_i,q(i));
                 L_im = Kin_im*((Kin_im'*Kin_im)\Kin_im');
-                Npk_im = singleLayer(rim_i,rout_k,1);
+                Npk_im = stokSLPmat(rim_i,rout_k,1);
                 A_im = Npk_im*(eye(size(L_im))-L_im);
 
                 if i == k

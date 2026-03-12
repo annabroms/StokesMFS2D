@@ -26,7 +26,7 @@ function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(q,Q_body,visua
 % To test: call without inputs.
 %
 % See also: solve_elast_2B, solve_elast_peanut, solve_cap_1B, ...
-%   getChargeCompletionFlowLaplace, lapSLPField.
+%   getChargeCompletionFlowLaplace, lapSLPfield.
 %
 % Anna Broms, Mar 2026
 
@@ -102,7 +102,7 @@ for k = 1:P
 end
 
 %Evaluate lhs, based on the representation 
-u_b = lapSLPField(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPfield(geom.rvec_in,rcheck_b,lambda_all,use_fmm);
 
 % Use unprojected sources to determine net voltages
 v_body = zeros(P,1);
@@ -146,7 +146,7 @@ end
 function res = matvec_elast_1B(tau,geom,basis)
 [lambda_all,lambda_body] = mapBoundaryToSourcesElast1B(tau,geom,basis);
 
-res = lapSLPField(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
+res = lapSLPfield(geom.rvec_in,geom.rout,lambda_all,basis.use_fmm);
 
 P = length(geom.target_ind);
 for k = 1:P
@@ -213,10 +213,10 @@ for k = 1:P
 end
 rcheck_ext = buildExteriorPoints(q,rad,600);
 
-u_it_b = lapSLPField(geom.rvec_in,rcheck_b,lam_it,false);
-u_dense_b = lapSLPField(geom.rvec_in,rcheck_b,lam_dense,false);
-u_it_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_it,false);
-u_dense_ext = lapSLPField(geom.rvec_in,rcheck_ext,lam_dense,false);
+u_it_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_it,false);
+u_dense_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_dense,false);
+u_it_ext = lapSLPfield(geom.rvec_in,rcheck_ext,lam_it,false);
+u_dense_ext = lapSLPfield(geom.rvec_in,rcheck_ext,lam_dense,false);
 
 v_dense = zeros(P,1);
 for k = 1:P

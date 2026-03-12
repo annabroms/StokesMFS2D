@@ -71,8 +71,9 @@ function test_compflow
 
 q = 0; %single body at the origin.
 F = [1 0]; %force on particle
-F = [0 0]; 
-T = 1; %torque on the particle
+%F = [0 0]; 
+%T = 1; %torque on the particle
+T = 0;
 %Generate proxy sources
 tin = linspace(0,2*pi,60);
 tin = tin(1:end-1)';

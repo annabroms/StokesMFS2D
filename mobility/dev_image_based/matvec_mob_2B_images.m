@@ -106,8 +106,8 @@ if isequal(rcheck,rvec_out)
     %in a pair. 
     rout = rvec_out(1:N_large)-q(1);
     rin = rbase_in_c;
-    Nii = singleLayer(rin,rout,mu);
-    %Nii_fine = singleLayer(rbase_in_f,rout,mu);
+    Nii = stokSLPmat(rin,rout,mu);
+    %Nii_fine = stokSLPmat(rbase_in_f,rout,mu);
 
     for i = 1:P
         % Get sources on this particle from single layer
@@ -118,7 +118,7 @@ if isequal(rcheck,rvec_out)
             %rout = rvec_out((i-1)*N_large+1:i*N_large,:);
             %rin = rbase_in_c+q(i);
         
-            %Nii = singleLayer(rin,rout,mu);
+            %Nii = stokSLPmat(rin,rout,mu);
             uii = Nii*tau_xy;
     
             %subract contribution in x

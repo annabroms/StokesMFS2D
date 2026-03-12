@@ -1,8 +1,8 @@
-function u = lapSLPDirect(rsrc,rtar,sigma)
+function u = lapSLPdirect(rsrc,rtar,sigma)
 %LAPSLPDIRECT Evaluate 2D Laplace single-layer potential by direct summation.
 %
 % Syntax:
-%   u = lapSLPDirect(rsrc,rtar,sigma)
+%   u = lapSLPdirect(rsrc,rtar,sigma)
 %
 % Inputs:
 %   rsrc  - Complex source locations.
@@ -15,7 +15,7 @@ function u = lapSLPDirect(rsrc,rtar,sigma)
 % Notes:
 %   Uses kernel -(1/(2*pi))*log(|x-y|). 
 %
-% See also: lapSLPField, lapSLPmat.
+% See also: lapSLPfield, lapSLPmat.
 %
 % Anna Broms, Mar 2026
 

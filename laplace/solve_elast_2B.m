@@ -182,7 +182,7 @@ for k = 1:P
     rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
 end
 
-u_b = lapSLPField(rvec_in,rcheck_b,lambda_all,use_fmm);
+u_b = lapSLPfield(rvec_in,rcheck_b,lambda_all,use_fmm);
 v_body = zeros(P,1);
 for k = 1:P
     idx = coarse_ind{k};

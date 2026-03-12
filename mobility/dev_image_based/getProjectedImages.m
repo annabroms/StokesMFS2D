@@ -24,7 +24,7 @@ for k = 1:2
         L_im = Kin_im*((Kin_im'*Kin_im)\Kin_im');
         
         if s(1)
-            Npk_im = singleLayer(rim_i,rout_k,1);
+            Npk_im = stokSLPmat(rim_i,rout_k,1);
             A_im = Npk_im-Npk_im*L_im;
 
             if i == k

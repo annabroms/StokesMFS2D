@@ -135,7 +135,7 @@ end
 
 %% 
 if svd_type
-    G = singleLayer(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
+    G = stokSLPmat(rin(1:Nc),rout(1:Nc*a),1); %rectangular matrix 
     %[V,D] = eig(G);
     %[U,S,V] = svd(G*(eye(2*Nc)-L)+Lr); 
     [U,S,V] = svd(G*(eye(2*Nc)-L)); 
@@ -266,7 +266,7 @@ for k = 1:P
     end    
 
     %replace with direct evaluation instead
-   % [x_comp,y_comp] = stokesletDirect(real(rin((k-1)*Nc+1:k*Nc))',imag(rin((k-1)*Nc+1:k*Nc))',...
+   % [x_comp,y_comp] = stokSLPdirect(real(rin((k-1)*Nc+1:k*Nc))',imag(rin((k-1)*Nc+1:k*Nc))',...
     %    real(rout),imag(rout),Z(1:end/2,:),Z(end/2+1:end,:),Nc);
    % x_comp(Nc*a*(k-1)+1:Nc*a*k,:) = x_comp(Nc*a*(k-1)+1:Nc*a*k,:)+LrZ(1:end/2,:);
     %y_comp(Nc*a*(k-1)+1:Nc*a*k,:) = y_comp(Nc*a*(k-1)+1:Nc*a*k,:)+LrZ(end/2+1:end,:);

@@ -1,5 +1,5 @@
-function S = singleLayer(rin,rout,mu)
-%singleLayer(rin,rout,mu) determines the target-from-source matrix for
+function S = stokSLPmat(rin,rout,mu)
+%stokSLPmat(rin,rout,mu) determines the target-from-source matrix for
 %2D Stokeslet sources centered at complex valued coordinates rin evaluated
 %at targets rout, given viscosity mu
 %

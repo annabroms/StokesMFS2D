@@ -563,7 +563,7 @@ warning('Check consistency with the matvec!')
         %Get A1:
         step1 = U{i}'*[tau_p1_x;tau_p1_y]; %here I assume x and y follow each other?
         tau_mapped = Y{i}*step1;
-        Nother = singleLayer(rbase_in_c+q(i),rbase_out_f+q(p2),mu);
+        Nother = stokSLPmat(rbase_in_c+q(i),rbase_out_f+q(p2),mu);
         R1 = -Nother*tau_mapped; %not correct. Should read off on particle 2
         block = R1(1:end/2);
     
@@ -577,7 +577,7 @@ warning('Check consistency with the matvec!')
         %Get A2
         step1 = U{p2}'*[tau_p2_x;tau_p2_y]; %here I assume x and y follow each other?
         mapped = Y{p2}*step1;
-        Nother = singleLayer(rbase_in_c+q(p2),rbase_out_f+q(i),mu);
+        Nother = stokSLPmat(rbase_in_c+q(p2),rbase_out_f+q(i),mu);
         R1 = -Nother*mapped;
         block = R1(1:end/2);
         A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
@@ -600,7 +600,7 @@ warning('Check consistency with the matvec!')
         ind_keep_2 = setdiff(ind_keep_1,ind2);
         %rcheck = rcheck(ind_keep_2);
 
-        Npair = singleLayer(rpair_fine,rcheck,mu);
+        Npair = stokSLPmat(rpair_fine,rcheck,mu);
         ucheck = Npair*tau_tot;
       %  ucheck(ind1) =  nan;
       %  ucheck(ind2) = nan; 
@@ -627,7 +627,7 @@ warning('Check consistency with the matvec!')
 
         %Also, compute residuals from the solve steps above.
         %ucheck is the velocity computed with the pair basis?
-        Npair = singleLayer(rpair_fine,[rbase_out_f+q(i); rbase_out_f+q(p2)],mu);
+        Npair = stokSLPmat(rpair_fine,[rbase_out_f+q(i); rbase_out_f+q(p2)],mu);
         ulhs = Npair*tau_mapped;
         urhs = A2;
 

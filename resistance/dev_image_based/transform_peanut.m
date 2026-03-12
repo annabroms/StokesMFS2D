@@ -46,7 +46,7 @@ for i = 1:P
 %         tau_stokes_y((i-1)*N_small+1:i*N_small) = tau_mapped(N_small+1:2*N_small);
     
     % %check residual for the self-interaction only
-    % NN = singleLayer(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
+    % NN = stokSLPmat(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
     % disp('Self-interaction error')
     % norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
     % norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
@@ -112,19 +112,19 @@ for i = 1:P
             if precomp || two_parts
                 %Read off coarse contribution in fine grid of other
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2); 
-                %Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
+                %Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,mu);
                 %R2 = -Nother*tau_mapped; %read off on particle 2
     
-                [u2,v2] = stokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+                [u2,v2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
                     real(rout_fine_other),imag(rout_fine_other),...
                     tau_mapped(1:N_c),tau_mapped(N_c+1:2*N_c),N_c);
                 R2  = -[u2; v2];
     
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i); 
-                %Nother2 = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
+                %Nother2 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other,mu);
                 %R1 = -Nother2*mapped; %read off on particle 1
     
-                [u1,v1] = stokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+                [u1,v1] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
                     real(rout_fine_other),imag(rout_fine_other),...
                     mapped(1:N_c),mapped(N_c+1:2*N_c),N_c);
                 R1 = -[u1; v1];
@@ -194,14 +194,14 @@ for i = 1:P
                 %For debugging, evaluate tau_peanut.
                 %Need the peanut colloc points
                 rout_peanut = create_peanut(q(i),q(p2),1060,0);
-                N_peanut = singleLayer([rbase_in_c+q(i); rbase_in_c+q(p2)],rout_peanut,mu);
+                N_peanut = stokSLPmat([rbase_in_c+q(i); rbase_in_c+q(p2)],rout_peanut,mu);
                 u_peanut = N_peanut*tau_peanut1;
     
                 %evaluate rhs
                 rimage = [rimage_vec{i,p2}; rimage_vec{p2,i}];
                 nimage_pair = [nimage{i,p2}; nimage{p2,i}];
                 N_image = getImageKernels2D(rimage,nimage_pair,rout_peanut,mu,s);
-                N_peanut_f = singleLayer([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_peanut,mu);
+                N_peanut_f = stokSLPmat([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_peanut,mu);
                 u_rhs = [N_peanut_f N_image]*tau_mapped;
                 u_peanut2 = N_peanut*tau_peanut2;
                 u_rhs2 = [N_peanut_f N_image]*tau_mapped2;
@@ -252,8 +252,8 @@ for i = 1:P
 
             if two_parts 
                 % Build matrices explicitly -> slower! 
-                N_pair_c = singleLayer([rbase_in_c+q(i); rbase_in_c+q(p2)],rout_pair,mu);
-                N_pair = singleLayer([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
+                N_pair_c = stokSLPmat([rbase_in_c+q(i); rbase_in_c+q(p2)],rout_pair,mu);
+                N_pair = stokSLPmat([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
                 if size(rimage,1)
                     N_image = getImageKernels2D(rimage,nimage_pair,rout_pair,mu,s);
                 else
@@ -276,7 +276,7 @@ for i = 1:P
                 %... and from fine grid of Stokeslets 
                 rin_pair = [rbase_in_f+q(i); rbase_in_f+q(p2)];
 
-                [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+                [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                     real(rout_pair),imag(rout_pair),...
                     tau_mapped_tot(1:2*N_f),tau_mapped_tot(2*N_f+1:4*N_f),2*N_f);
                 u_stok = [u1; v1];
@@ -286,7 +286,7 @@ for i = 1:P
 
                 rin_pair = [rbase_in_c+q(i); rbase_in_c+q(p2)];
 
-                [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+                [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                     real(rout_pair),imag(rout_pair),...
                     tau_peanut_tot(1:2*N_c),tau_peanut_tot(2*N_c+1:4*N_c),2*N_c);
                 u_peanut_corr = [u1; v1];
@@ -307,7 +307,7 @@ for i = 1:P
 %                     %U{i}, Y{i}
                     step1 = U{1}*[tau_particle_x;tau_particle_y]; 
                     mapped = Y{1}*step1;
-                    Nother = singleLayer(rbase_in_c+q(i),rout_pair(end/2+1:end,:),mu);
+                    Nother = stokSLPmat(rbase_in_c+q(i),rout_pair(end/2+1:end,:),mu);
                     R1 = -Nother*mapped;
                     block = R1(1:end/2);
                     A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)]; 
@@ -315,7 +315,7 @@ for i = 1:P
                     %For the other particle, p2
                     step1 = U{1}*[tau_particle_x2;tau_particle_y2]; 
                     mapped = Y{1}*step1;
-                    Nother = singleLayer(rbase_in_c+q(p2),rout_pair(1:end/2,:),mu);
+                    Nother = stokSLPmat(rbase_in_c+q(p2),rout_pair(1:end/2,:),mu);
                     R1 = -Nother*mapped;
                     block = R1(1:end/2);
                     A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];

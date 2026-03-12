@@ -49,7 +49,7 @@ function [x, reserr, coefnorm,solres] = solve_dense_stokes(rin, rout, rimage, ni
     %% Prepare system matrix
     mu = 1; %viscosity
     if size(rin,1)
-        Nio = singleLayer(rin,rout,mu);
+        Nio = stokSLPmat(rin,rout,mu);
         C = [ones(1,size(rin,1)) zeros(1,size(rin,1)); zeros(1,size(rin,1)) ones(1,size(rin,1))]; %Zero total force constraint?
     else
         Nio = [];

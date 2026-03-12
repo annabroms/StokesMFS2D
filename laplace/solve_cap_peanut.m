@@ -193,7 +193,7 @@ geom_eval.rcheck = rcheck_b;
 [lam_c,~,~,~,u_corr,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
     transform_lap_peanut(tau,geom_eval,basis);
 
-u_b = lapSLPField(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
+u_b = lapSLPfield(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
 
 g_true = zeros(P*n_bound,1);
 for k = 1:P

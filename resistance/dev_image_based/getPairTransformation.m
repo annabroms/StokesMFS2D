@@ -57,7 +57,7 @@ for i = 1:P
     % for this particle to throw in to the Stokeslet kernel,corresponding to the coarse grid.
     
     %check residual for the self-interaction only
-    %NN = singleLayer(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
+    %NN = stokSLPmat(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
     %disp('Self-interaction error')
     %norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
     %norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
@@ -130,7 +130,7 @@ for i = 1:P
                 %Read off coarse grid contribution on other particle fine
                 %grid
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
-                Nother = singleLayer(rbase_in_c+q(i),rout_fine_other,mu);
+                Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,mu);
     
                 R2 = -Nother*tau_mapped; %rhs on particle 2
                 block = R2(1:end/2);
@@ -149,7 +149,7 @@ for i = 1:P
                 mapped = Y{1}*step1;
     
                 rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
-                Nother = singleLayer(rbase_in_c+q(p2),rout_fine_other,mu);
+                Nother = stokSLPmat(rbase_in_c+q(p2),rout_fine_other,mu);
                
                 R1 = -Nother*mapped;
                 block = R1(1:end/2); %x-contribution
@@ -197,7 +197,7 @@ for i = 1:P
                 if ~precomp    
                     %Read off coarse grid contribution on other particle fine grid
                     rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
-                    %Nother2 = singleLayer(rbase_in_c+q(i),rout_fine_other2,mu);   
+                    %Nother2 = stokSLPmat(rbase_in_c+q(i),rout_fine_other2,mu);   
                     %R2 = -Nother2*tau_mapped; 
     
                     [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
@@ -206,7 +206,7 @@ for i = 1:P
                     R2  = -[u2; v2];
     
                     rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
-    %                 Nother1 = singleLayer(rbase_in_c+q(p2),rout_fine_other1,mu);               
+    %                 Nother1 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other1,mu);               
     %                 R1 = -Nother1*mapped;
     
                     [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
@@ -239,7 +239,7 @@ for i = 1:P
 
                 if two_parts 
                     % Build matrices explicitly -> slower! 
-                    N_pair = singleLayer([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
+                    N_pair = stokSLPmat([rbase_in_f+q(i); rbase_in_f+q(p2)],rout_pair,mu);
                     if size(rimage,1)
                         N_image = getImageKernels2D(rimage,nimage_pair,rout_pair,mu,s);
                     else
@@ -262,7 +262,7 @@ for i = 1:P
                     %... and from fine grid of Stokeslets 
                     rin_pair = [rbase_in_f+q(i); rbase_in_f+q(p2)];
     
-                    [u1,v1] = stokesletDirect(real(rin_pair),imag(rin_pair),...
+                    [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
                         real(rout_pair),imag(rout_pair),...
                         beta_tot(1:2*opt.N_f),beta_tot(2*opt.N_f+1:4*opt.N_f),2*opt.N_f);
                     u_stok = [u1; v1];
@@ -280,10 +280,10 @@ for i = 1:P
                
 
                 %also subtract self-interaction on other.
-                N2 = singleLayer(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
+                N2 = stokSLPmat(rbase_in_c+q(i),rvec_out((p2-1)*N_large+1:p2*N_large,:),1);
                 u2 = N2*tau_mapped;
 
-                N1 = singleLayer(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
+                N1 = stokSLPmat(rbase_in_c+q(p2),rvec_out((i-1)*N_large+1:i*N_large,:),1);
                 u1 = N1*mapped; 
 
                 u_corr(ind1x) = u_corr(ind1x)+u1(1:end/2);

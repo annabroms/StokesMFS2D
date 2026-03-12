@@ -1,7 +1,7 @@
-function [udirect,vdirect] = stokesletDirect(xsrc,ysrc,xtar,ytar,f1,f2,N)
-%STOKESLETDIRECT  Evaluate 2D Stokeslet flow from discrete sources using direct summation.
+function [udirect,vdirect] = stokSLPdirect(xsrc,ysrc,xtar,ytar,f1,f2,N)
+%STOKSLPDIRECT  Evaluate 2D Stokeslet flow from discrete sources using direct summation.
 %
-%   [udirect, vdirect] = STOKESLETDIRECT(xsrc, ysrc, xtar, ytar, f1, f2, N)
+%   [udirect, vdirect] = STOKSLPDIRECT(xsrc, ysrc, xtar, ytar, f1, f2, N)
 %
 %   Computes the velocity field (u,v) at a set of target points due to N
 %   Stokeslet sources in 2D, located at (xsrc, ysrc) with force strengths (f1, f2).
@@ -57,4 +57,3 @@ end
     vdirect = vdirect/4/pi;
     udirect = udirect/4/pi; 
 end
-

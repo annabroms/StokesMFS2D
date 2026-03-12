@@ -107,7 +107,7 @@ for i = 1:P
     rin = [rin_vec(N*(i-1)+1:N*i); rim];
 
     %Get single layer
-    Nio = singleLayer(rin,rout,mu);
+    Nio = stokSLPmat(rin,rout,mu);
 
     if noim
         Kout = getKmat2D(rout,0); %assume here that we use the base discretisation

@@ -71,7 +71,7 @@ if size(rimage,1)
 else
     Nimage = [];
 end
-N = singleLayer(rin_pair_f,rout_f,mu); 
+N = stokSLPmat(rin_pair_f,rout_f,mu); 
 
 % In a mobility problem, need to project so that fine sources don't
 % contribute to net force/torque on the particles

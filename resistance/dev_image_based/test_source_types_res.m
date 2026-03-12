@@ -150,7 +150,7 @@ for i = 1:size(smat,1)
     
     
     %% Prepare system matrix
-    Nio = singleLayer(rin,rout,mu);
+    Nio = stokSLPmat(rin,rout,mu);
     if size(rimage,1)
         Nimage = getImageKernels2D(rimage,nimage,rout,mu,s);
     else
