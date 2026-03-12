@@ -117,7 +117,7 @@ for i = 1:P
             %% First, determine beta, the fine sources
             if ~precomp                
                 
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2); 
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2); 
                 %Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,mu);
                 %R2 = -Nother*tau_mapped; %read off on particle 2
     
@@ -127,7 +127,7 @@ for i = 1:P
                 R2  = -[u2; v2];
     
                 %% Do a similar thing for the other order of the particles in the pair
-                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i); 
+                rout_fine_other = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i); 
                 %Nother2 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other,mu);
                 %R1 = -Nother2*mapped; %read off on particle 1
     

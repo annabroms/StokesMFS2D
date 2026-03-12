@@ -1,16 +1,24 @@
-function [geom,basis,opt,rad] = prepareLaplace1B(q,use_fmm,visualise,project_charge)
+function [geom,basis,opt,rad] = prepareLaplace1B(q,opt)
 %PREPARELAPLACE1B Build shared one-body Laplace geometry and pseudo-inverse factors.
 %
 % Syntax:
-%   [geom,basis,opt,rad] = prepareLaplace1B(q,use_fmm)
-%   [geom,basis,opt,rad] = prepareLaplace1B(q,use_fmm,visualise,project_charge)
+%   [geom,basis,opt,rad] = prepareLaplace1B(q,opt)
 %
 % Inputs:
 %   q              - Complex particle centers (P x 1).
-%   use_fmm        - Logical flag propagated to field evaluations.
-%   visualise      - Optional logical flag for enhanced-grid visualisation.
-%   project_charge - Optional logical flag. If true, build elastance-style
-%                    one-body factors from S(I-Lq)+Lr; otherwise use S.
+%   opt            - Option struct controlling geometry/discretization.
+%     Core fields:
+%       rad           physical particle radius
+%       N_c,N_f       coarse/fine proxy point counts
+%       a_c,a_f       coarse/fine collocation upsampling factors
+%       Rp_c,Rp_f     coarse/fine proxy radii
+%       Nclust        controls the number of shieldning nodes for close-to-touching geometries 
+%     Control fields:
+%       use_fmm       evaluate fields with fmm2d/direct
+%       visualise     visualize enhanced-grid construction
+%       project_charge build elastance-style projected 1B blocks when true
+%     Optional:
+%       delta_pair, precomp
 %
 % Outputs:
 %   geom, basis - One-body geometry and pseudo-inverse data.
@@ -21,50 +29,25 @@ function [geom,basis,opt,rad] = prepareLaplace1B(q,use_fmm,visualise,project_cha
 %
 % Anna Broms, Mar 2026
 
-if nargin < 3 || isempty(visualise)
-    visualise = false;
+if nargin < 2 || ~isstruct(opt)
+    error('prepareLaplace1B requires q and an options struct opt.');
 end
-if nargin < 4 || isempty(project_charge)
+
+if ~isfield(opt,'project_charge') || isempty(opt.project_charge)
     project_charge = false;
+else
+    project_charge = logical(opt.project_charge);
 end
+
+use_fmm = logical(opt.use_fmm);
 
 q = q(:);
 P = numel(q);
 
-opt = getLaplace2Dparams();
 rad = opt.rad;
-
-N_c = 80;
-N_f = 150;
-a_c = 1.2;
-a_f = 1.2;
-
-tol_c = 1e-10;
-sep_c = (1/N_c)*log(1/tol_c);
-sep_f = (1/N_f)*log(1/tol_c);
-Rp_c = rad*max([1-sep_c,0.01]);
-Rp_f = rad*max([1-sep_f,0.01]);
-
-accstop = (rad-Rp_c)^2/Rp_c;
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c;
-opt.a_f = a_f;
-opt.N_c = N_c;
-opt.N_f = N_f;
-opt.N_peanut = 0;
-opt.precomp = 1;
-opt.pc = 0;
-opt.delta_pair = accstop;
-opt.P = P;
-opt.Nclust = 100;
-opt.cmap = 0;
-opt.use_fmm = use_fmm;
-opt.show_counter = false;
-opt.visualise_grid = logical(visualise);
-opt.project_charge = logical(project_charge);
-opt.rads = rad*ones(P,1);
+N_c = opt.N_c;
+a_c = opt.a_c;
+Rp_c = opt.Rp_c;
 
 nout = ceil(a_c*N_c);
 tout = linspace(0,2*pi,nout+1)';

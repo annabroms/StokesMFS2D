@@ -1,4 +1,4 @@
-function [f1,g1,f2,g2] = testPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,L,Lf,Nc,Nf,a_c,a_f,rads)
+function [f1,g1,f2,g2] = testPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,L,Lf,Nc,Nf,a_c,a_f,rad)
 %Take U,Y as input, or recompute for an even coarser grid?
 
 %% Evaluation points
@@ -90,8 +90,8 @@ tcoarse = tcoarse(1:end-1)';
 
 
 %these matrices do not change if density changes
-[rout_fine_other,tother] = getFineOther(a_f,Nf,rads,refine,q,i,p2);  
-rout_fine_self = getFineOther(a_f,Nf,rads,refine,q,p2,i); 
+[rout_fine_other,tother] = getFineOther(a_f,Nf,rad,refine,q,i,p2);  
+rout_fine_self = getFineOther(a_f,Nf,rad,refine,q,p2,i); 
 
 %Needed to determine pair-basis
 Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,1);

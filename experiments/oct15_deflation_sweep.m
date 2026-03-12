@@ -12,7 +12,7 @@ rng(8);
 
 P = 10;
 nruns = 10; 
-rads = ones(P,1);
+rad = ones(P,1);
 visualise = 0; 
 lrvec = [0 4:10 23:10:70];
 lrvec = [0 5 7 11:4:27 (20:10:30)*4+3]; 
@@ -26,7 +26,7 @@ for k = 1:length(deltavec)
         W = rand(P,1); %angular velocities 
         for l = 1:length(lrvec)
             lr = lrvec(l);
-            [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
+            [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rad,images,lr,visualise);
             if it > 200
                 disp('Waiting')
             end

@@ -1,22 +1,22 @@
-function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose)
+function [FT,lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q,U,W,rad,image,lr,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_2D_RES_LR Solves a 2D Stokes resistance problem with circular particles
 % using 1-body preconditioned MFS COMBINED WITH LONG RANGE PRECONDITIONING
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q, U, W, rads, image, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_2D_res_lr(q, U, W, rad, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
 %   U         - Px2 matrix of translational velocities (columns: x and y components)
 %   W         - Px1 column vector of angular velocities
-%   rads      - Px1 vector of particle radii
+%   rad      - Px1 vector of particle radii
 %   image     - Logical flag (true/false): use image system for higher accuracy
 %   visualise - Logical flag: plot the configuration and solution details
 %   lr        - 0,1,2,..: sets use of long-range preconditioning. If false, no
 %               lr precond. lr > 1 determines the coarse space.
 %   gmres_tol - Optional GMRES tolerance (default 1e-10)
-%   debug     - Optional logical flag: build/draw dense matrix CC and its
-%               eigenvalues for diagnostics (default false)
+%   debug     - build/plot/investigate system matrix corresponding to
+%               matvec.
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -53,7 +53,7 @@ assert(size(W,1)==P,'Wrong size of angular velocity vector')
 assert(size(U,1)==P,'Wrong size of trans vel vector')
 assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordinates')
 
-if sum(rads)~=P
+if sum(rad)~=P
     warning('Double check radii') %in the design of image and collocation points, it's assumed all radii are 1.
 end
 
@@ -119,7 +119,7 @@ mu = 1; %viscosity
 
 %% GET GRIDS AND VISUALISE
 %get grids
-[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
+[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rad,opt);
 
 %get also a coarse representation, to be used for long range
 %preconditioning with deflation. 
@@ -129,7 +129,7 @@ Nc_c = 50;
 opt_c.N_c = Nc_c;
 opt_c.Rp_c = 0.15;
 opt_c.Rp_c = 0.5526;
-[rout_c,~,rin_c,~,~,~] = get2DImageGrid(q,rads,opt_c);
+[rout_c,~,rin_c,~,~,~] = get2DImageGrid(q,rad,opt_c);
 
 
 
@@ -152,7 +152,7 @@ n_bound = 1300;
 for k = 1:P
     t = linspace(0,2*pi,n_bound+1)';
     t = t(1:end-1);
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 
@@ -447,7 +447,7 @@ if lr
    % [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) Pmat*matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),Pmat*fout,2*size(rout,1),maxit,gmres_tol,1,rout);
         disp('...Solving for fine component...')
         Pf = applyPmat_mu(fout,rin,rout,Sinv,q,Zi,Yi,Uii,Yii,pair_points,opt);
-        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);
+        [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_Stokes_mu(x,rin,rout,q,Uii,Yii,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
         %[x_gmres,flag,relres,it,resvec] = gmres(@(x) lr_matvec_2D_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s,Rinv,Nx,Ny,Mx,Z,Y,opt), Pf,[],gmres_tol,maxit);
         disp('...Solve completed')
     else
@@ -455,7 +455,7 @@ if lr
         it = 0;
     end
 else
-    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    [x_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_Stokes(x,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
 % Determine residual
 %VL = matvec_res_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
@@ -598,7 +598,7 @@ if visualise
 %     subplot(2,2,4)
 %     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(fbound_x)),30,log10(abs(fbound_x)),'filled')
 %     colorbar
-%     axis equalaccstop_fine*rads(i)
+%     axis equalaccstop_fine*rad(i)
 %     view(0,90)
 %     grid off
 %     set(gca,'xtick',[])
@@ -685,13 +685,13 @@ images = 0; %images not needed for well separated particles
 q = [0; 2.01]; %center coordinates
 U = [1 0; 0 0]; %translational velocities 
 W = [1; 1]; %angular velocities 
-rads = [1; 1]; 
+rad = [1; 1]; 
 visualise = 1; 
-[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rad,images,visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[FT,lambda, it, gmres_tol, err_im] = solve_res_1B(q,U,W,rads,images,visualise);
+[FT,lambda, it, gmres_tol, err_im] = solve_res_1B(q,U,W,rad,images,visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)
@@ -714,10 +714,10 @@ P = 5;
 %q = [0; 2+delta]; %center coordinates
 U = rand(P,2); %translational velocities 
 W = rand(P,1); %angular velocities 
-rads = ones(P,1);
+rad = ones(P,1);
 visualise = 0; 
 lr = 5; %lr = 3  %discretization dependent what works here. lr = 3 corresponds to kmax = 0, 
 
-[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
+[FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rad,images,lr,visualise);
 
 end

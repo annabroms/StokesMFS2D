@@ -82,7 +82,7 @@ else
    % q(2) = q(2)+0.01; %perturb the position of one of the particles
 end
 
-rads = ones(P,1);  % particle radii
+rad = ones(P,1);  % particle radii
 %Mvec = [5:5:100];  % sets different number of collocation points in close to touching region
 tol = 1e-14; %low truncation here is important! 
 
@@ -136,7 +136,7 @@ for i = 1:size(smat,1)
     % The number of sources will have an impact on the number of
     % collocation points. 
     [rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid( ...
-        q, rads,opt);
+        q, rad,opt);
     
     if debug
         figure(5)

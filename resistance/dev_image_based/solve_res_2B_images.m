@@ -1,4 +1,4 @@
-function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose)
+function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_images(q,U,W,rad,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose)
 %SOLVE_RES_PRECOND_IMAGES Solves a 2D Stokes resistance problem with circular
 %particles using MFS with 2-body preconditioning. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -7,19 +7,19 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_images(q,U,W,rads,delta_
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_res_2B_images(q, U, W, rads, delta_pair, visualise)
+%   [FT, lambda, it, gmres_tol, maxres] = solve_res_2B_images(q, U, W, rad, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   U         - Px2 matrix of translational velocities (columns: x and y components)
 %   W         - Px1 column vector of angular velocities
-%   rads       - Px1 vector of particle radii
+%   rad       - Px1 vector of particle radii
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   lr         - long range preconditioning 
 %   visualise  - Logical flag: plot the configuration and solution details
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues for diagnostics (default false)
+%   debug      - build/plot/investigate system matrix corresponding to
+%                matvec.
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -128,7 +128,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads;
+opt.rad = rad;
 opt.s = s; 
 opt.P = P; 
 opt.N_peanut = 0; 
@@ -144,7 +144,7 @@ opt.n_clusters = 30;
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
-rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+rbase_out_c = rad(1)*cos(tout_c)+1i*rad(1)*sin(tout_c);
 %Inner basic grid
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
@@ -153,7 +153,7 @@ rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
 %Construct image grid
 %will return only the basic outer grid, else refined outer grid 
  
-[rout,rin,rimage,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,rin,rimage,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
 % pairs = [2,3];
 % figure()
 % for k = 1:P
@@ -208,7 +208,7 @@ rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
 
 %Visualise 1-body and pair-basis
 
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
 %% Construct rhs
 
@@ -237,7 +237,7 @@ rcheck_b = [];
 n_bound = 2000; %check in a large number of points
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% SOLVE SYSTEM
@@ -349,9 +349,9 @@ end
 disp(' == Solving... == ');
 if lr
    Pf = applyPmat(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Z,Y,opt);    
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_pairprecond(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s,Sinv,Z,Y),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);   
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_pairprecond(x,rin_c,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s,Sinv,Z,Y),Pf,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);   
 else                                                                                 
-    [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
 plot_gmres = true; 
 
@@ -690,14 +690,14 @@ W = [1; 1; 1]; %angular velocities
 % U = [1 0; 0 0];
 % W = [0; 0]; 
 
-rads = [1; 1; 1]; 
+rad = [1; 1; 1]; 
 visualise = 1; 
 images = 1; 
 delta_pair = 0.2; 
 test = 1; % 1 or 2
 %% compare to a solution with 1 body precond only
 if test == 1
-    %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, visualise);
+    %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, visualise);
     rng(9);
     P = 40;
     delta = 0.01; %P = 5
@@ -708,12 +708,12 @@ if test == 1
     % q = R * exp(1i * (0:P-1).' * (2*pi/P));
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
-    U = rand(P,2); W = rand(P,1); rads = ones(P,1);
+    U = rand(P,2); W = rand(P,1); rad = ones(P,1);
     lr = 20; 
     lr = 0; 
     images = 0; 
-    [FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, lr,visualise);
-    [FT,lambda,it2,gmres_tol,err2] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
+    [FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, lr,visualise);
+    [FT,lambda,it2,gmres_tol,err2] = solve_res_2B_images(q,U,W,rad,delta_pair,lr,visualise);
     
     str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
     disp(str)
@@ -723,10 +723,10 @@ else
     
     %% determine 2-way error (solve resistance followed by mob)
     lr = 0;
-    [FT,lambda,it1,gmres_res, err_res] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
+    [FT,lambda,it1,gmres_res, err_res] = solve_res_2B_images(q,U,W,rad,delta_pair,lr,visualise);
     F = [FT(1:3:end) FT(2:3:end)];
     T = FT(3:3:end); 
-    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
     Ures = [U W]';
     str = sprintf('Two way error is %1.3e, with resistance residual %1.3e and mobility residual %1.3e',norm(Ures(:)-UW),err_res,err_mob)
     alignfigs;

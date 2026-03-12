@@ -164,7 +164,7 @@ for i = 1:P
             if ~precomp
                 %Read off coarse grid contribution on other particle fine
                 %grid
-                rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);            
+                rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);            
 %               Nother2 = stokSLPmat(rbase_in_c+q(i),rout_fine_other2,mu);
 %               R2 = -Nother2*tau_mapped; 
             
@@ -173,7 +173,7 @@ for i = 1:P
                     tau_mapped(end/2+1:end),opt.N_c);
                 R2 = -[udirect; vdirect];
     
-                rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);            
+                rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);            
 %                 Nother1 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other1,mu);               
 %                 R1 = -Nother1*mapped;
 

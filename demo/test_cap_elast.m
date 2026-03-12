@@ -18,15 +18,13 @@ clc;
 rng(9);
 
 %% Configuration
-opt = getLaplace2Dparams();
-R = opt.rad;
-
+R = 2;
 P = 20;
 delta = 1e-3;
 geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
 q = buildGeometry(geometry_mode,P,delta,R);
 P = numel(q);
-rads = R*ones(P,1);
+rad = R*ones(P,1);
 
 delta_pair = 0.2;             % near-pair threshold for 2B/peanut
 N_peanut = 400;               % points per peanut separation surface
@@ -42,7 +40,7 @@ fprintf('geometry=%s, P=%d, R=%.3f, delta=%.2e, delta_pair=%.2e, N_peanut=%d\n\n
 
 %% Geometry preview
 printDivider('Geometry preview');
-plotGeometryPreview(q,rads,sprintf('test_cap_elast geometry (%s, P=%d, R=%.3f)',geometry_mode,P,R));
+plotGeometryPreview(q,rad,sprintf('test_cap_elast geometry (%s, P=%d, R=%.3f)',geometry_mode,P,R));
 
 printPauseDivider();
 disp('Press key to continue...')
@@ -51,9 +49,25 @@ pause();
 %% Capacitance: v_body -> Q
 printDivider('Capacitance comparison (input v_body -> output Q_body)');
 v_ref = randn(P,1);
-[Q_1B,~,gmres_iter_cap_1B,~,maxres_cap_1B] = solve_cap_1B(q,v_ref,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
-[Q_2B,~,gmres_iter_cap_2B,~,maxres_cap_2B] = solve_cap_2B(q,v_ref,delta_pair,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
-[Q_P,~,gmres_iter_cap_peanut,~,maxres_cap_peanut] = solve_cap_peanut(q,v_ref,delta_pair,N_peanut,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
+opt = getLaplace2Dparams(P,R);
+opt_cap = opt;
+opt_cap.visualise = visualise;
+opt_cap.gmres_tol = gmres_tol;
+opt_cap.debug = debug;
+opt_cap.use_fmm = use_fmm;
+opt_cap.gmres_verbose = gmres_verbose;
+opt_cap.delta_pair = delta_pair;
+opt_cap.N_peanut = N_peanut;
+
+[Q_1B,sol_cap_1B] = solve_cap_1B(q,v_ref,opt_cap);
+[Q_2B,sol_cap_2B] = solve_cap_2B(q,v_ref,opt_cap);
+[Q_P,sol_cap_P] = solve_cap_peanut(q,v_ref,opt_cap);
+gmres_iter_cap_1B = sol_cap_1B.it;
+gmres_iter_cap_2B = sol_cap_2B.it;
+gmres_iter_cap_peanut = sol_cap_P.it;
+maxres_cap_1B = sol_cap_1B.maxres;
+maxres_cap_2B = sol_cap_2B.maxres;
+maxres_cap_peanut = sol_cap_P.maxres;
 
 printSummaryHeader('Capacitance comparison');
 fprintf('Capacitance (input v_body)\n');
@@ -71,9 +85,16 @@ pause();
 %% Elastance: Q_body -> v_body
 printDivider('Elastance comparison (input Q_body -> output v_body)');
 Q_ref = randn(P,1);
-[v_1B,~,gmres_iter_elast_1B,~,maxres_elast_1B] = solve_elast_1B(q,Q_ref,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
-[v_2B,~,gmres_iter_elast_2B,~,maxres_elast_2B] = solve_elast_2B(q,Q_ref,delta_pair,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
-[v_P,~,gmres_iter_elast_peanut,~,maxres_elast_peanut] = solve_elast_peanut(q,Q_ref,delta_pair,N_peanut,visualise,gmres_tol,debug,use_fmm,gmres_verbose);
+opt_elast = opt_cap;
+[v_1B,sol_elast_1B] = solve_elast_1B(q,Q_ref,opt_elast);
+[v_2B,sol_elast_2B] = solve_elast_2B(q,Q_ref,opt_elast);
+[v_P,sol_elast_P] = solve_elast_peanut(q,Q_ref,opt_elast);
+gmres_iter_elast_1B = sol_elast_1B.it;
+gmres_iter_elast_2B = sol_elast_2B.it;
+gmres_iter_elast_peanut = sol_elast_P.it;
+maxres_elast_1B = sol_elast_1B.maxres;
+maxres_elast_2B = sol_elast_2B.maxres;
+maxres_elast_peanut = sol_elast_P.maxres;
 
 printSummaryHeader('Elastance comparison');
 fprintf('Elastance (input Q_body)\n');
@@ -91,24 +112,27 @@ pause();
 %% Two-way checks
 printDivider('Two-way checks');
 % Capacitance -> Elastance
-[Q_cap_1B,~,~,~,~] = solve_cap_1B(q,v_ref,0,gmres_tol,0,use_fmm,gmres_verbose);
-[v_back_1B,~,~,~,~] = solve_elast_1B(q,Q_cap_1B,0,gmres_tol,0,use_fmm,gmres_verbose);
+opt_tw = opt_cap;
+opt_tw.visualise = 0;
+opt_tw.debug = 0;
+[Q_cap_1B,~] = solve_cap_1B(q,v_ref,opt_tw);
+[v_back_1B,~] = solve_elast_1B(q,Q_cap_1B,opt_tw);
 
-[Q_cap_2B,~,~,~,~] = solve_cap_2B(q,v_ref,delta_pair,0,gmres_tol,0,use_fmm,gmres_verbose);
-[v_back_2B,~,~,~,~] = solve_elast_2B(q,Q_cap_2B,delta_pair,0,gmres_tol,0,use_fmm,gmres_verbose);
+[Q_cap_2B,~] = solve_cap_2B(q,v_ref,opt_tw);
+[v_back_2B,~] = solve_elast_2B(q,Q_cap_2B,opt_tw);
 
-[Q_cap_P,~,~,~,~] = solve_cap_peanut(q,v_ref,delta_pair,N_peanut,0,gmres_tol,0,use_fmm,gmres_verbose);
-[v_back_P,~,~,~,~] = solve_elast_peanut(q,Q_cap_P,delta_pair,N_peanut,0,gmres_tol,0,use_fmm,gmres_verbose);
+[Q_cap_P,~] = solve_cap_peanut(q,v_ref,opt_tw);
+[v_back_P,~] = solve_elast_peanut(q,Q_cap_P,opt_tw);
 
 % Elastance -> Capacitance
-[v_el_1B,~,~,~,~] = solve_elast_1B(q,Q_ref,0,gmres_tol,0,use_fmm,gmres_verbose);
-[Q_back_1B,~,~,~,~] = solve_cap_1B(q,v_el_1B,0,gmres_tol,0,use_fmm,gmres_verbose);
+[v_el_1B,~] = solve_elast_1B(q,Q_ref,opt_tw);
+[Q_back_1B,~] = solve_cap_1B(q,v_el_1B,opt_tw);
 
-[v_el_2B,~,~,~,~] = solve_elast_2B(q,Q_ref,delta_pair,0,gmres_tol,0,use_fmm,gmres_verbose);
-[Q_back_2B,~,~,~,~] = solve_cap_2B(q,v_el_2B,delta_pair,0,gmres_tol,0,use_fmm,gmres_verbose);
+[v_el_2B,~] = solve_elast_2B(q,Q_ref,opt_tw);
+[Q_back_2B,~] = solve_cap_2B(q,v_el_2B,opt_tw);
 
-[v_el_P,~,~,~,~] = solve_elast_peanut(q,Q_ref,delta_pair,N_peanut,0,gmres_tol,0,use_fmm,gmres_verbose);
-[Q_back_P,~,~,~,~] = solve_cap_peanut(q,v_el_P,delta_pair,N_peanut,0,gmres_tol,0,use_fmm,gmres_verbose);
+[v_el_P,~] = solve_elast_peanut(q,Q_ref,opt_tw);
+[Q_back_P,~] = solve_cap_peanut(q,v_el_P,opt_tw);
 
 two_way_cap_elast_1B = relerr(v_back_1B,v_ref);
 two_way_cap_elast_2B = relerr(v_back_2B,v_ref);
@@ -169,7 +193,7 @@ fprintf('Summary of test: %s\n',test_name);
 fprintf('%s\n',bar);
 end
 
-function plotGeometryPreview(q,rads,title_str)
+function plotGeometryPreview(q,rad,title_str)
 t = linspace(0,2*pi,240);
 figure('Name','test_cap_elast geometry','Color','w');
 clf;
@@ -178,8 +202,8 @@ hold on;
 P = numel(q);
 show_labels = P <= 40;
 for i = 1:P
-    x = real(q(i)) + rads(i)*cos(t);
-    y = imag(q(i)) + rads(i)*sin(t);
+    x = real(q(i)) + rad(i)*cos(t);
+    y = imag(q(i)) + rad(i)*sin(t);
     plot(x,y,'k-','LineWidth',1.3);
     plot(real(q(i)),imag(q(i)),'k.','MarkerSize',12);
     if show_labels

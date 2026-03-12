@@ -1,4 +1,4 @@
-function viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,L,Lf,Nc,Nf,a_c,a_f,rads)
+function viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,L,Lf,Nc,Nf,a_c,a_f,rad)
 %Take U,Y as input, or recompute for an even coarser grid?
 
 %% Evaluation points
@@ -95,8 +95,8 @@ tcoarse = tcoarse(1:end-1)';
 
 
 %these matrices do not change if density changes
-[rout_fine_other,tother] = getFineOther(a_f,Nf,rads,refine,q,i,p2);  
-rout_fine_self = getFineOther(a_f,Nf,rads,refine,q,p2,i); 
+[rout_fine_other,tother] = getFineOther(a_f,Nf,rad,refine,q,i,p2);  
+rout_fine_self = getFineOther(a_f,Nf,rad,refine,q,p2,i); 
 
 %Needed to determine pair-basis
 Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,1);
@@ -520,7 +520,7 @@ for k = 1 :2*a_c*Nc
     surfir(real(rcheck),imag(rcheck),log10(abs(utot(1:end/2))))
     view(0,90)
     hold on
-    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),10)
+    removePatches([real(q(1:2)) imag(q(1:2))],0,rad(1:2),10)
     %caxis([-8,1])
     colorbar
     plot3(real(q(1))+0.9*cos(tstar),imag(q(1))+0.9*sin(tstar),10,'r*')
@@ -528,7 +528,7 @@ for k = 1 :2*a_c*Nc
     %surfir(real(rcheck),imag(rcheck),utot(end/2+1:end))
     surfir(real(rcheck),imag(rcheck),log10(abs(utot(end/2+1:end))))
     hold on
-    removePatches([real(q(1:2)) imag(q(1:2))],0,rads(1:2),10)
+    removePatches([real(q(1:2)) imag(q(1:2))],0,rad(1:2),10)
     plot3(real(q(1))+0.9*cos(tstar),imag(q(1))+0.9*sin(tstar),10,'r*')
     view(0,90)
    % caxis([-8,1])

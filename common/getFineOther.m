@@ -15,15 +15,15 @@ if iscell(varargin{1})
         rad = varargin{5};
     end
 else
-    rads = varargin{1};
+    rad = varargin{1};
     refine = varargin{2};
     q = varargin{3};
     i = varargin{4}; %#ok<NASGU>
     p2 = varargin{5};
-    if isscalar(rads)
-        rad = rads;
+    if isscalar(rad)
+        rad = rad;
     else
-        rad = rads(p2);
+        rad = rad(p2);
     end
 end
 

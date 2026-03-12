@@ -1,4 +1,4 @@
-function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rads, delta_pair, visualise, gmres_tol, debug, surface_error_mode, gmres_verbose)
+function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rad, delta_pair, visualise, gmres_tol, debug, surface_error_mode, gmres_verbose)
 %SOLVE_MOB_PRECOND_IMAGES Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -7,18 +7,18 @@ function [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rads, delta_pair, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_images(q, F, T, rad, delta_pair, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   F          - Px2 matrix of net force vectors (columns: x and y components)
 %   T          - Px1 column vector of torques acting on the particles
-%   rads       - Px1 vector of particle radii
+%   rad       - Px1 vector of particle radii
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   visualise  - Logical flag: plot the configuration and solution details
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues (default false)
+%   debug      - build/plot/investigate system matrix corresponding to
+%                matvec.
 %   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
 %                or 'rel'
 %
@@ -123,7 +123,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads;
+opt.rad = rad;
 opt.N_peanut = 0;
 opt.s = s; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
@@ -138,11 +138,11 @@ opt.n_clusters = 30; % sets number of image points. Hard-coded for now.
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
 
-rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+rbase_out_c = rad(1)*cos(tout_c)+1i*rad(1)*sin(tout_c);
 
 %Construct image grid
 %will return only the basic outer grid.                               
-[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
 
 
 tin = linspace(0,2*pi,N_c+1);
@@ -216,7 +216,7 @@ opt.project_pair = true;
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rad)
 
 %checkOneBasis(rbase_in_c,U,Y,Lc{1},N_c,a_c)
 %% Construct check boundaries
@@ -226,7 +226,7 @@ rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% SOLVE SYSTEM
@@ -380,7 +380,7 @@ if debug
 end
 
 disp(' == Solving... == ');
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,opt,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 plot_gmres = true; 
 
 %Modify to build with krylov preconditioning
@@ -703,23 +703,23 @@ q = grow_cluster(P,delta,2);
 
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
-rads = [1; 1; 1]; 
+rad = [1; 1; 1]; 
 
 %If only two particles
 % q = [0; 2+delta];
 % F = F(1:2,:); 
 % T = T(1:2); 
-% rads = [1;1]; 
+% rad = [1;1]; 
 
 visualise = 1; 
 images = 1; 
 delta_pair = 0.2; 
 lr= 0; 
-[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 %compare to a solution with image enhancement
 
-[UW2,lambda,it2,gmres_tol,err2] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+[UW2,lambda,it2,gmres_tol,err2] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

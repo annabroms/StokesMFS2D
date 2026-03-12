@@ -22,7 +22,7 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f
 %             considered close. This can include more pairs than those in 
 %             need of image enhancement. 
 % opt       - struct containing parameters. Uses fields:
-%             N_f, a_f, rads, s, N_peanut, precomp and optional fields:
+%             N_f, a_f, rad, s, N_peanut, precomp and optional fields:
 %             project_pair     (logical, default false)
 %             pair_basis_debug (logical, default false)
 %             show_counter     (logical, default false)
@@ -68,10 +68,10 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_F,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f
 
 N_f = opt.N_f;
 a_f = opt.a_f;
-if isfield(opt,'rads')
-    rads = opt.rads;
+if isfield(opt,'rad')
+    rad = opt.rad;
 else
-    error('getPairBasis:MissingRads','opt.rads is required by getPairBasis.');
+    error('getPairBasis:MissingRads','opt.rad is required by getPairBasis.');
 end
 
 if isfield(opt,'project_pair') && ~isempty(opt.project_pair)
@@ -170,11 +170,11 @@ for i = 1:P
           % nout = ceil(a2*(opt.N_c+size(rimage,1))); %Old choice
             t = linspace(0,2*pi,nout+1);
             t = t(1:end-1)';
-            rout_base = rads(k)*(cos(t)+1i*sin(t));
+            rout_base = rad(k)*(cos(t)+1i*sin(t));
             t1 = refine{i,p2};
-            fine_1 = q(i)+rads(k)*(cos(t1)+1i*sin(t1));
+            fine_1 = q(i)+rad(k)*(cos(t1)+1i*sin(t1));
             t2 = refine{p2,i};
-            fine_2 = q(p2)+rads(k)*(cos(t2)+1i*sin(t2));
+            fine_2 = q(p2)+rad(k)*(cos(t2)+1i*sin(t2));
             rout_f = [q(i)+rout_base; fine_1 ;q(p2)+rout_base; fine_2];
             
             %fine grid of Stokeslets

@@ -1,25 +1,43 @@
-function [v_body,lambda_proxy,it,gmres_tol,maxres] = solve_elast_peanut(q,Q_body,delta_pair,N_peanut,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
+function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %SOLVE_ELAST_PEANUT Solve exterior Laplace elastance problem (known charges, unknown voltages) with peanut-compressed 2B preconditioning.
 %
 % Syntax:
-%   [v_body,lambda_proxy,it,gmres_tol,maxres] = solve_elast_peanut(...)
+%   [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   Q_body     - Prescribed net charge per body (P x 1).
-%   delta_pair - Pair threshold.
-%   N_peanut   - Number of points on peanut boundary for pair compression.
-%   visualise  - Plot diagnostics.
-%   gmres_tol  - GMRES tolerance.
-%   debug      - Build dense system matrix diagnostics.
-%   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
+%   opt        - Options struct.
+%     Required fields:
+%       rad           physical particle radius
+%       N_c,N_f       coarse/fine proxy point counts
+%       a_c,a_f       coarse/fine collocation upsampling factors
+%       Rp_c,Rp_f     coarse/fine proxy radii
+%       delta_pair    pair-detection threshold
+%       N_peanut      peanut boundary node count
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract the shielding arc of enhancing sources for
+%                     each close pair
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent, 1 = final summary only,
+%                     2 = per-iteration estimated residuals + final summary
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     plot postprocessing diagnostics
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       precomp       pair-block precomputation mode
+%       cmap          use compressed coarse-to-coarse map    
 %
 % Outputs:
 %   v_body      - Recovered constant voltage values per body (P x 1).
-%   lambda_proxy- Coarse proxy strengths after completion/correction merge.
-%   it          - GMRES iteration count.
-%   gmres_tol   - GMRES tolerance used.
-%   maxres      - Max relative equipotential residual on independent boundary points.
+%   sol         - Struct with fields:
+%                 lambda_proxy : coarse proxy strengths after correction merge
+%                 it           : GMRES iteration count
+%                 gmres_tol    : GMRES tolerance used
+%                 maxres       : max relative equipotential residual
+%                 resvec       : GMRES convergence history
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -28,7 +46,7 @@ function [v_body,lambda_proxy,it,gmres_tol,maxres] = solve_elast_peanut(q,Q_body
 % To test: call without inputs.
 %
 % See also: solve_elast_1B, solve_elast_2B, solve_cap_peanut, ...
-%   transform_laplace_peanut, matvec_laplace_peanut_enhanced.
+%   transform_lap_peanut, matvec_lap_peanut_enhanced.
 %
 % Anna Broms, Mar 2026
 
@@ -37,11 +55,15 @@ if nargin==0
     return
 end
 
-if nargin < 5 || isempty(visualise), visualise = 0; end
-if nargin < 6 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 7 || isempty(debug), debug = false; end
-if nargin < 8 || isempty(use_fmm), use_fmm = true; end
-if nargin < 9 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 3 || ~isstruct(opt)
+    error('solve_elast_peanut requires q, Q_body, and an options struct opt.');
+end
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-7);
+debug = logical(getOptField(opt,'debug',false));
+use_fmm = logical(getOptField(opt,'use_fmm',true));
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
 
 q = q(:);
 Q_body = Q_body(:);
@@ -55,55 +77,26 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-opt = getLaplace2Dparams();
-rad = opt.rad;
+rad = getOptField(opt,'rad',2);
 opt.gmres_verbose = gmres_verbose;
 
-N_c = 80; %coarse proxy sources per body
-N_f = 150; %fine proxy sources per body (used to construct pair corrections only)
-a_c = 1.2; %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
-a_f = 1.2;
+N_c = getOptField(opt,'N_c',80); %coarse proxy sources per body
+N_f = getOptField(opt,'N_f',150); %fine proxy sources per body (used to construct pair corrections only)
+a_c = getOptField(opt,'a_c',1.2); %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
 
 % Set radii for proxy points (see Stein & Barnett 2022 for discussion on how to choose these)
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
-Rp_c = rad*max([1-sep_c,0.01]);
-Rp_f = rad*max([1-sep_f,0.01]);
+Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
-% Set distance for which to apply pair compression, with accstop the largest separation where enhancing nodes are needed 
-% (based on image accumulation points)
-if nargin < 3 || isempty(delta_pair)
-    delta_pair = accstop;
-end
-if nargin < 4 || isempty(N_peanut)
-    N_peanut = 400;
-end
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c;
-opt.a_f = a_f;
-opt.N_c = N_c;
-opt.N_f = N_f;
-opt.N_peanut = N_peanut;
-opt.precomp = 1;
-opt.pc = 1;
-opt.delta_pair = delta_pair;
-opt.P = P;
-opt.Nclust = 100; %determines number of enhancing nodes on 
-% ellipse segments, but the ones within the proxy radius will be discarded. 
-opt.cmap = 0; % use coarse-to-coarse compressed map?
-opt.use_fmm = use_fmm;
-opt.show_counter = true; % show progress for compressed pairs?
 opt.project_charge = true; % always true for elastance, false for capacitance
 if visualise %of discretisation and computed sources
     opt.visualise_grid = true;
 else
     opt.visualise_grid = false;
 end
-opt.rads = rad*ones(P,1);
-
 
 %% Discretize
 nout = ceil(a_c*N_c);
@@ -171,15 +164,22 @@ if debug
         fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
-        CC(:,k) = matvec_laplace_peanut_enhanced(x,geom,basis);
+        CC(:,k) = matvec_lap_peanut_enhanced(x,geom,basis);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    [V,D] = eig(CC);
+    D = diag(D);
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
-    u_rhs,length(rout),maxit,gmres_tol,opt,rout);
+    u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence elastance peanut','interpreter','latex')
@@ -230,6 +230,13 @@ if visualise
     title('Coarse proxy strengths (Laplace elastance peanut)')
 end
 
+sol = struct();
+sol.lambda_proxy = lambda_proxy;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.maxres = maxres;
+sol.resvec = resvec;
+
 end
 
 function test_solve_elast_peanut
@@ -238,35 +245,49 @@ fprintf('--- solve_elast_peanut self-test ---\n');
 close all; 
 run_two_way = true;
 
-opt = getLaplace2Dparams();
-rad = opt.rad;
-delta = 1e-3;
-visualise = 1;
-debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
-
 rng(9);
-P = 20;
-q = grow_cluster(P,delta,2,rad);
+%% Set geometry and data
+R = 2; 
+delta = 1e-3;
+P = 20; 
+q = grow_cluster(P,delta,2,R);
 Q_body = randn(P,1);
 
-delta_pair = 0.2;
-N_peanut = 400;
+%% Tune parameters
+opt = getLaplace2Dparams(P,R);
+opt.visualise = 1;
+opt.debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
+opt.use_fmm = true;
+opt.gmres_verbose = 0; %no output from gmres
+opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
+opt.N_peanut = 400; % nodes on peanut separation surface
+opt.gmres_tol = 1e-10;
 
-[vp,~,itp,~,resp] = solve_elast_peanut(q,Q_body,delta_pair,N_peanut,visualise,1e-10,debug,true);
-[v2,~,it2,~,res2] = solve_elast_2B(q,Q_body,delta_pair,0,1e-10,0,true);
+%% Solve
+[vp,solp] = solve_elast_peanut(q,Q_body,opt);
+opt_2B = opt;
+opt_2B.visualise = 0;
+[v2,sol2] = solve_elast_2B(q,Q_body,opt_2B);
+itp = solp.it;
+resp = solp.maxres;
+it2 = sol2.it;
+res2 = sol2.maxres;
 
 fprintf('Peanut: it=%d, maxres=%.3e\n',itp,resp);
 fprintf('2B    : it=%d, maxres=%.3e\n',it2,res2);
 fprintf('Rel diff in v_body (peanut vs 2B): %.3e\n',norm(vp-v2)/max(1,norm(v2)));
 
 if run_two_way
-    if visualise
+    if opt.visualise
         disp('Press any key to continue')
         pause();
     end
     v_ref = randn(P,1);
-    [Q_cap,~,~,~,~] = solve_cap_peanut(q,v_ref,delta_pair,N_peanut,0,1e-10,0,true);
-    [v_back,~,~,~,~] = solve_elast_peanut(q,Q_cap,delta_pair,N_peanut,0,1e-10,0,true);
+    opt_tw = opt;
+    opt_tw.visualise = 0;
+    opt_tw.debug = 0;
+    [Q_cap,~] = solve_cap_peanut(q,v_ref,opt_tw);
+    [v_back,~] = solve_elast_peanut(q,Q_cap,opt_tw);
     rel_two = norm(v_back-v_ref,inf)/max(1,norm(v_ref,inf));
     fprintf('Two-way rel diff in v_body         : %.3e\n',rel_two);
 end

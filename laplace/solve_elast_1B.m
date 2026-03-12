@@ -1,23 +1,39 @@
-function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(q,Q_body,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
+function [v_body,sol] = solve_elast_1B(q,Q_body,opt)
 %SOLVE_ELAST_1B Solve exterior Laplace elastance problem (known charges, unknown voltages) with 1-body preconditioning.
 %
 % Syntax:
-%   [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_1B(...)
+%   [v_body,sol] = solve_elast_1B(q,Q_body,opt)
 %
 % Inputs:
 %   q         - Complex particle centers (P x 1).
 %   Q_body    - Prescribed net charge per body (P x 1).
-%   visualise - Plot diagnostics.
-%   gmres_tol - GMRES tolerance.
-%   debug     - Build dense system matrix for diagnostics.
-%   use_fmm   - Use fmm2d (of flatiron) for Laplace evaluations when available.
+%   opt       - Options struct.
+%     Required fields:
+%       rad           physical particle radius
+%       N_c,N_f       coarse/fine proxy point counts
+%       a_c,a_f       coarse/fine collocation upsampling factors
+%       Rp_c,Rp_f     coarse/fine proxy radii
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract the shielding arc of enhancing sources for
+%                     each close pair
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent, 1 = final summary only,
+%                     2 = per-iteration estimated residuals + final summary
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     plot postprocessing diagnostics
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %
 % Outputs:
 %   v_body    - Recovered constant boundary values per body (P x 1).
-%   lambda_all- Stacked source strengths (all one-body sources).
-%   it        - GMRES iteration count.
-%   gmres_tol - GMRES tolerance used.
-%   maxres    - Max relative equipotential residual on independent boundary points.
+%   sol       - Struct with fields:
+%               lambda_all : stacked source strengths (all one-body sources)
+%               it         : GMRES iteration count
+%               gmres_tol  : GMRES tolerance used
+%               maxres     : max relative equipotential residual
+%               resvec     : GMRES convergence history
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -35,11 +51,19 @@ if nargin==0
     return
 end
 
-if nargin < 3 || isempty(visualise), visualise = 0; end
-if nargin < 4 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 5 || isempty(debug), debug = false; end
-if nargin < 6 || isempty(use_fmm), use_fmm = true; end
-if nargin < 7 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 3 || ~isstruct(opt)
+    error('solve_elast_1B requires q, Q_body, and an options struct opt.');
+end
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-7);
+debug = logical(getOptField(opt,'debug',false));
+use_fmm = logical(getOptField(opt,'use_fmm',true));
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
+opt.visualise = visualise;
+opt.use_fmm = use_fmm;
+opt.gmres_verbose = gmres_verbose;
+opt.project_charge = true;
 
 q = q(:);
 Q_body = Q_body(:);
@@ -54,9 +78,7 @@ end
 fprintf('==== START: %s ====\n', solver_name);
 
 %% Build geometry and basis functions
-[geom,basis,~,rad] = prepareLaplace1B(q,use_fmm,visualise,true);
-opt = struct();
-opt.gmres_verbose = gmres_verbose;
+[geom,basis,opt,rad] = prepareLaplace1B(q,opt);
 
 %% Build rhs
 [lambda0,u_rhs] = getChargeCompletionFlowLaplace(geom.rvec_in,geom.rout,geom.source_ind,Q_body,use_fmm);
@@ -76,11 +98,18 @@ if debug
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    [V,D] = eig(CC);
+    D = diag(D);
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_elast_1B(x,geom,basis), ...
-    u_rhs,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
+    u_rhs,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence elastance 1B','interpreter','latex')
@@ -125,6 +154,13 @@ if visualise
     plot(v_bnd);
     title('Boundary potential and per-body means (Laplace elastance 1B)')
 end
+
+sol = struct();
+sol.lambda_all = lambda_all;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.maxres = maxres;
+sol.resvec = resvec;
 
 end
 
@@ -183,20 +219,30 @@ function test_solve_elast_1B
 fprintf('--- solve_elast_1B self-test ---\n');
 close all;
 run_two_way = true;
-visualise = false; 
-debug = false; % track system matrix and visualise
 
-opt = getLaplace2Dparams();
-rad = opt.rad;
+% Set geometry and data
+R = 2; 
 delta = 1e-3; 
-q = [0; rad*(2+delta)];
+q = [0; R*(2+delta)];
 P = numel(q);
 Q_body = [1; -2];
 
-[v_it,lam_it,it_it,~,res_it] = solve_elast_1B(q,Q_body,visualise,1e-10,debug,true);
-[geom,~,~,~] = prepareLaplace1B(q,false,visualise,true);
-[lambda0,u_rhs] = getChargeCompletionFlowLaplace(geom.rvec_in,geom.rout,geom.source_ind,Q_body,false);
+% Set parameters and settings
+opt = getLaplace2Dparams(P,R);
+opt.visualise = false;
+opt.gmres_tol = 1e-10;
+opt.debug = false; % track system matrix and visualise
+opt.use_fmm = true;
+opt.gmres_verbose = 0;
+[v_it,sol_it] = solve_elast_1B(q,Q_body,opt);
+lam_it = sol_it.lambda_all;
+it_it = sol_it.it;
+res_it = sol_it.maxres;
 
+opt_dense = opt;
+opt_dense.use_fmm = false;
+[geom,~,~,~] = prepareLaplace1B(q,opt_dense);
+[lambda0,u_rhs] = getChargeCompletionFlowLaplace(geom.rvec_in,geom.rout,geom.source_ind,Q_body,false);
 
 A_dense = buildDenseElastSystemMatrix(geom);
 [Yd,Ud] = getPseudoFactors(A_dense,1e-14,0);
@@ -209,9 +255,9 @@ tb = linspace(0,2*pi,n_bound+1)';
 tb = tb(1:end-1);
 rcheck_b = zeros(P*n_bound,1);
 for k = 1:P
-    rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
+    rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
 end
-rcheck_ext = buildExteriorPoints(q,rad,600);
+rcheck_ext = buildExteriorPoints(q,R,600);
 
 u_it_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_it,false);
 u_dense_b = lapSLPfield(geom.rvec_in,rcheck_b,lam_dense,false);
@@ -237,8 +283,11 @@ if run_two_way
     disp('Press key to continue...')
     pause();
     v_ref = rand(P,1); 
-    [Q_cap,~,~,~,~] = solve_cap_1B(q,v_ref,0,1e-10,debug,true);
-    [v_back,~,~,~,~] = solve_elast_1B(q,Q_cap,0,1e-10,0,true);
+    opt_tw = opt;
+    opt_tw.visualise = 0;
+    opt_tw.debug = 0;
+    [Q_cap,~] = solve_cap_1B(q,v_ref,opt_tw);
+    [v_back,~] = solve_elast_1B(q,Q_cap,opt_tw);
     rel_two = norm(v_back-v_ref,inf)/max(1,norm(v_ref,inf));
     fprintf('Two-way rel diff in v_body         : %.3e\n',rel_two);
 end

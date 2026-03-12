@@ -1,23 +1,40 @@
-function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(q,v_body,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
+function [Q,sol] = solve_cap_1B(q,v_body,opt)
 %SOLVE_CAP_1B Solve exterior Dirichlet Laplace problem (capacitance: known
-%voltages, unknown charges) with 1-body preconditioning.
+%voltages, unknown charges) with 1-body preconditioning. Uses enhancing
+%SLP sources located to shield image accumulation points.
 %
 % Syntax:
-%   [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_1B(...)
+%   [Q,sol] = solve_cap_1B(q,v_body,opt)
 % Inputs:
 %   q         - Complex particle centers (P x 1).
 %   v_body    - Constant boundary values per body (P x 1).
-%   visualise - Plot diagnostics.
-%   gmres_tol - GMRES tolerance.
-%   debug     - Build dense system matrix for diagnostics.
-%   use_fmm   - Use fmm2d (of flatiron) for Laplace evaluations when available.
-%
+%   opt       - Options struct.
+%     Required fields:
+%       rad           physical particle radius 
+%       N_c           proxy point count
+%       a_c           collocation upsampling factor
+%       Rp_c          proxy radius
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract the shielding arc of enhancing sources for
+%                     each close pair
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent, 1 = final summary only,
+%                     2 = per-iteration estimated residuals + final summary
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     plot postprocessing quantities
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       
 % Outputs:
-%   Q          - Per-body sums of all source strengths belonging to each body.
-%   lambda_all - Stacked source strengths on all one-body sources.
-%   it         - GMRES iteration count.
-%   gmres_tol  - GMRES tolerance used.
-%   maxres     - Max relative residual on independent boundary points.
+%   Q          - Net charges: per-body sums of all source strengths belonging to each body.
+%   sol        - Struct with fields:
+%                lambda_all : stacked source strengths
+%                it         : GMRES iteration count
+%                gmres_tol  : GMRES tolerance used
+%                maxres     : max relative residual on independent boundary points
+%                resvec     : GMRES convergence history
 %
 % Notes: what is solved is what is referred to as the modified exterior Laplace 
 % BVP in the Stein & Barnett QFS paper from 2022. 
@@ -36,11 +53,20 @@ if nargin==0
     return
 end
 
-if nargin < 3 || isempty(visualise), visualise = 0; end
-if nargin < 4 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 5 || isempty(debug), debug = false; end
-if nargin < 6 || isempty(use_fmm), use_fmm = true; end
-if nargin < 7 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 3 || ~isstruct(opt)
+    error('solve_cap_1B requires q, v_body, and an options struct opt.');
+end
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-7);
+debug = logical(getOptField(opt,'debug',false));
+use_fmm = logical(getOptField(opt,'use_fmm',true));
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
+opt.visualise = visualise;
+opt.use_fmm = use_fmm;
+opt.gmres_verbose = gmres_verbose;
+opt.project_charge = false;
+
 
 q = q(:);
 v_body = v_body(:);
@@ -54,9 +80,7 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-[geom,basis,~,R] = prepareLaplace1B(q,use_fmm);
-opt = struct();
-opt.gmres_verbose = gmres_verbose;
+[geom,basis,opt,R] = prepareLaplace1B(q,opt);
 
 %% RHS
 fout = zeros(length(geom.rout),1);
@@ -78,11 +102,18 @@ if debug
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    [V,D] = eig(CC);
+    D = diag(D);
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_1B(x,geom,basis), ...
-    fout,length(geom.rout),maxit,gmres_tol,opt,geom.rout);
+    fout,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence capacitance 1B','interpreter','latex')
@@ -122,6 +153,13 @@ if visualise
     title('Source strengths (proxy+enhancement) capacitance 1B')
     axis tight
 end
+
+sol = struct();
+sol.lambda_all = lambda_all;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.maxres = maxres;
+sol.resvec = resvec;
 
 end
 
@@ -177,14 +215,30 @@ end
 function test_solve_cap_1B
 fprintf('--- solve_cap_1B self-test ---\n');
 close all; 
-opt = getLaplace2Dparams();
-R = opt.rad;
-q = [0; 2*R+0.08*R; 6*R+1.5i*R];
+
+%Set geometry and data
+R = 2;
+q = [0; 2*R+0.01*R; 6*R+1.5i*R];
 P = numel(q);
 v_body = [1; -0.7; 0.25];
 
-[Q_it,lam_it,it_it,~,res_it] = solve_cap_1B(q,v_body,0,1e-10,0,true);
-[geom,~,~,~] = prepareLaplace1B(q,false);
+opt = getLaplace2Dparams(P,R);
+opt.visualise = 1;
+opt.gmres_tol = 1e-10;
+opt.debug = 0;
+opt.use_fmm = true;
+opt.gmres_verbose = 0;
+opt.visualise_grid = 1; 
+
+% Solve 
+[Q_it,sol_it] = solve_cap_1B(q,v_body,opt);
+lam_it = sol_it.lambda_all;
+it_it = sol_it.it;
+res_it = sol_it.maxres;
+
+opt_dense = opt;
+opt_dense.use_fmm = false;
+[geom,~,~,~] = prepareLaplace1B(q,opt_dense);
 
 rhs = zeros(length(geom.rout),1);
 for k = 1:P

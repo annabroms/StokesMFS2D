@@ -1,25 +1,13 @@
-function [x,it,resvec,trueres] = helsing_gmres(f,b,n,m,tol,opt,grid)
+function [x,it,resvec,trueres] = helsing_gmres(f,b,n,m,tol,gmres_verbose,grid)
 % *** GMRES with low-threshold stagnation control taken from RCIP code of Helsing***
-% Optional verbosity input is passed in opt.gmres_verbose:
+% Optional verbosity input is passed as gmres_verbose:
 %   0 = silent, 1 = final summary, 2 = per-iteration + final summary
-%
-% Backward compatibility:
-%   If the 6th input is numeric, it is interpreted as gmres verbosity.
+%.
 if nargin < 6
-    opt = struct();
+    gmres_verbose = 0;
 end
 if nargin < 7
     grid = [];
-end
-
-if isnumeric(opt) && isscalar(opt)
-    gmres_verbose = opt;
-elseif isstruct(opt) && isfield(opt,'gmres_verbose') && ...
-        ~isempty(opt.gmres_verbose) && isnumeric(opt.gmres_verbose) && ...
-        isscalar(opt.gmres_verbose)
-    gmres_verbose = opt.gmres_verbose;
-else
-    gmres_verbose = 0;
 end
 
 % Debug levels:
@@ -70,12 +58,10 @@ s(it1) =-sn(it)*s(it);
 s(it)  = cs(it)*s(it);                         
 est_relres = abs(s(it1))/bnrm2;
 resvec(it) = est_relres;
-    if verbose_iter
-        fprintf('GMRES iter %4d: est_relres = %.3e\n',it,est_relres);
-    end
 
-
-
+if verbose_iter
+    fprintf('GMRES iter %4d: est_relres = %.3e\n',it,est_relres);
+end
 
 
 if (est_relres<=tol)||(it==m)                     

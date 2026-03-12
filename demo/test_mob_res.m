@@ -41,7 +41,7 @@ surface_error_mode = 'rel';
 
 q = buildGeometry(geometry_mode,P,delta);
 P = numel(q);
-rads = ones(P,1);
+rad = ones(P,1);
 
 fprintf('=== test_mob_res ===\n');
 fprintf('geometry=%s, P=%d, delta=%.2e, delta_pair=%.2e, N_peanut=%d\n', ...
@@ -54,7 +54,7 @@ fprintf('\n');
 
 %% Geometry preview
 printDivider('Geometry preview');
-plotGeometryPreview(q,rads,sprintf('test_mob_res geometry (%s, P=%d)',geometry_mode,P));
+plotGeometryPreview(q,rad,sprintf('test_mob_res geometry (%s, P=%d)',geometry_mode,P));
 
 printPauseDivider();
 disp('Press key to continue...')
@@ -65,15 +65,28 @@ printDivider('Mobility comparison (input F,T -> output U,W)');
 F_ref = randn(P,2);
 T_ref = randn(P,1);
 
-[UW_2B,~,gmres_iter_mob_2B,~,boundary_rel_mob_2B,boundary_abs_mob_2B] = ...
-    solve_mob_2B_enhanced(q,F_ref,T_ref,delta_pair,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+opt_mob = get2Dparams(P);
+opt_mob.delta_pair = delta_pair;
+opt_mob.N_peanut = N_peanut;
+opt_mob.visualise = visualise;
+opt_mob.gmres_tol = gmres_tol;
+opt_mob.debug = debug;
+opt_mob.surface_error_mode = surface_error_mode;
+opt_mob.gmres_verbose = gmres_verbose;
+opt_mob.rad = rad(1);
 
-[UW_peanut,~,gmres_iter_mob_peanut,~,boundary_rel_mob_peanut,boundary_abs_mob_peanut] = ...
-    solve_mob_peanut_enhanced(q,F_ref,T_ref,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+[UW_2B,sol_mob_2B] = solve_mob_2B_enhanced(q,F_ref,T_ref,opt_mob);
+[UW_peanut,sol_mob_peanut] = solve_mob_peanut_enhanced(q,F_ref,T_ref,opt_mob);
+gmres_iter_mob_2B = sol_mob_2B.it;
+gmres_iter_mob_peanut = sol_mob_peanut.it;
+boundary_rel_mob_2B = sol_mob_2B.rel_res;
+boundary_rel_mob_peanut = sol_mob_peanut.rel_res;
+boundary_abs_mob_2B = sol_mob_2B.abs_res;
+boundary_abs_mob_peanut = sol_mob_peanut.abs_res;
 
 if run_image_1B
     [UW_1B,~,gmres_iter_mob_1B,~,boundary_rel_mob_1B,boundary_abs_mob_1B] = ...
-        solve_mob_1B(q,F_ref,T_ref,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+        solve_mob_1B(q,F_ref,T_ref,rad,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
 end
 
 printSummaryHeader('Mobility comparison');
@@ -103,15 +116,26 @@ printDivider('Resistance comparison (input U,W -> output F,T)');
 U_ref = randn(P,2);
 W_ref = randn(P,1);
 
-[FT_2B,~,gmres_iter_res_2B,~,boundary_rel_res_2B] = ...
-    solve_res_2B_enhanced(q,U_ref,W_ref,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose);
+opt_res = get2Dparams();
+opt_res.rad = rad;
+opt_res.delta_pair = delta_pair;
+opt_res.N_peanut = N_peanut;
+opt_res.lr = lr;
+opt_res.visualise = visualise;
+opt_res.gmres_tol = gmres_tol;
+opt_res.debug = debug;
+opt_res.gmres_verbose = gmres_verbose;
 
-[FT_peanut,~,gmres_iter_res_peanut,~,boundary_rel_res_peanut] = ...
-    solve_res_peanut_enhanced(q,U_ref,W_ref,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose);
+[FT_2B,sol_res_2B] = solve_res_2B_enhanced(q,U_ref,W_ref,opt_res);
+[FT_peanut,sol_res_peanut] = solve_res_peanut_enhanced(q,U_ref,W_ref,opt_res);
+gmres_iter_res_2B = sol_res_2B.it;
+gmres_iter_res_peanut = sol_res_peanut.it;
+boundary_rel_res_2B = sol_res_2B.rel_res;
+boundary_rel_res_peanut = sol_res_peanut.rel_res;
 
 if run_image_1B
     [FT_1B,~,gmres_iter_res_1B,~,boundary_rel_res_1B] = ...
-        solve_res_1B(q,U_ref,W_ref,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose);
+        solve_res_1B(q,U_ref,W_ref,rad,image,lr,visualise,gmres_tol,debug,gmres_verbose);
 end
 
 printSummaryHeader('Resistance comparison');
@@ -143,29 +167,29 @@ UW_ref = packUW(U_ref,W_ref);
 
 % Mobility -> Resistance
 [U_m2,W_m2] = unpackUW(UW_2B);
-[FT_back_m2,~,~,~,~] = solve_res_2B_enhanced(q,U_m2,W_m2,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose);
+[FT_back_m2,~] = solve_res_2B_enhanced(q,U_m2,W_m2,opt_res);
 
 [U_mp,W_mp] = unpackUW(UW_peanut);
-[FT_back_mp,~,~,~,~] = solve_res_peanut_enhanced(q,U_mp,W_mp,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose);
+[FT_back_mp,~] = solve_res_peanut_enhanced(q,U_mp,W_mp,opt_res);
 
 two_way_mob_res_2B = relerr(FT_back_m2,FT_ref);
 two_way_mob_res_peanut = relerr(FT_back_mp,FT_ref);
 
 % Resistance -> Mobility
 [F_r2,T_r2] = unpackFT(FT_2B);
-[UW_back_r2,~,~,~,~,~] = solve_mob_2B_enhanced(q,F_r2,T_r2,delta_pair,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+[UW_back_r2,~] = solve_mob_2B_enhanced(q,F_r2,T_r2,opt_mob);
 
 [F_rp,T_rp] = unpackFT(FT_peanut);
-[UW_back_rp,~,~,~,~,~] = solve_mob_peanut_enhanced(q,F_rp,T_rp,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+[UW_back_rp,~] = solve_mob_peanut_enhanced(q,F_rp,T_rp,opt_mob);
 
 two_way_res_mob_2B = relerr(UW_back_r2,UW_ref);
 two_way_res_mob_peanut = relerr(UW_back_rp,UW_ref);
 
 if run_image_1B
     [U_m1,W_m1] = unpackUW(UW_1B);
-    [FT_back_m1,~,~,~,~] = solve_res_1B(q,U_m1,W_m1,rads,image,lr,visualise,gmres_tol,debug,gmres_verbose);
+    [FT_back_m1,~,~,~,~] = solve_res_1B(q,U_m1,W_m1,rad,image,lr,visualise,gmres_tol,debug,gmres_verbose);
     [F_r1,T_r1] = unpackFT(FT_1B);
-    [UW_back_r1,~,~,~,~,~] = solve_mob_1B(q,F_r1,T_r1,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
+    [UW_back_r1,~,~,~,~,~] = solve_mob_1B(q,F_r1,T_r1,rad,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose);
 
     two_way_mob_res_1B = relerr(FT_back_m1,FT_ref);
     two_way_res_mob_1B = relerr(UW_back_r1,UW_ref);
@@ -254,7 +278,7 @@ fprintf('Summary of test: %s\n',test_name);
 fprintf('%s\n',bar);
 end
 
-function plotGeometryPreview(q,rads,title_str)
+function plotGeometryPreview(q,rad,title_str)
 t = linspace(0,2*pi,240);
 figure('Name','test_mob_res geometry','Color','w');
 clf;
@@ -263,8 +287,8 @@ hold on;
 P = numel(q);
 show_labels = P <= 40;
 for i = 1:P
-    x = real(q(i)) + rads(i)*cos(t);
-    y = imag(q(i)) + rads(i)*sin(t);
+    x = real(q(i)) + rad(i)*cos(t);
+    y = imag(q(i)) + rad(i)*sin(t);
     plot(x,y,'k-','LineWidth',1.3);
     plot(real(q(i)),imag(q(i)),'k.','MarkerSize',12);
     if show_labels

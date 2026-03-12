@@ -1,25 +1,42 @@
-function [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_2B(q,v_body,delta_pair,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
+function [Q,sol] = solve_cap_2B(q,v_body,opt)
 %SOLVE_CAP_2B Solve exterior Dirichlet Laplace problem
 %(capacitance: known voltages, unknown charges) with 2 body preconditioning
 %(no compression).
 %
 % Syntax:
-%   [Q,lambda_all,it,gmres_tol,maxres] = solve_cap_2B(...)
+%   [Q,sol] = solve_cap_2B(q,v_body,opt)
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   v_body     - Constant boundary values per body (P x 1).
-%   delta_pair - Pair threshold.
-%   visualise  - Plot diagnostics.
-%   gmres_tol  - GMRES tolerance.
-%   debug      - Build dense system matrix for diagnostics.
-%   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
+%   opt        - Options struct.
+%     Required fields:
+%       rad           physical particle radius
+%       N_c,N_f       coarse/fine proxy point counts
+%       a_c,a_f       coarse/fine collocation upsampling factors
+%       Rp_c,Rp_f     coarse/fine proxy radii
+%       delta_pair    pair compression threshold
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract the shielding arc of enhancing sources for
+%                     each close pair
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent, 1 = final summary only,
+%                     2 = per-iteration estimated residuals + final summary
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     plot postprocessing diagnostics
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       precomp       determines form of precomputed blocks for pairs
 %
 % Outputs:
-%   Q          - Per-body unweighted sums of source strengths.
-%   lambda_all - Stacked source strengths used in global field evaluation.
-%   it         - GMRES iteration count.
-%   gmres_tol  - GMRES tolerance used.
-%   maxres     - Max relative residual on independent boundary points.
+%   Q          - Net charges per body, computed as per-body unweighted sums of source strengths.
+%   sol        - Struct with fields:
+%                lambda_all : stacked fine source strengths used in field evaluation
+%                it         : GMRES iteration count
+%                gmres_tol  : GMRES tolerance used
+%                maxres     : max relative residual on independent boundary points
+%                resvec     : GMRES convergence history
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -37,11 +54,15 @@ if nargin==0
     return
 end
 
-if nargin < 4 || isempty(visualise), visualise = 0; end
-if nargin < 5 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 6 || isempty(debug), debug = false; end
-if nargin < 7 || isempty(use_fmm), use_fmm = true; end
-if nargin < 8 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 3 || ~isstruct(opt)
+    error('solve_cap_2B requires q, v_body, and an options struct opt.');
+end
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-7);
+debug = logical(getOptField(opt,'debug',false));
+use_fmm = logical(getOptField(opt,'use_fmm',true));
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
 
 q = q(:);
 v_body = v_body(:);
@@ -57,46 +78,23 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-opt = getLaplace2Dparams();
-R = opt.rad;
+R = getOptField(opt,'rad',2);
 opt.gmres_verbose = gmres_verbose;
 
-N_c = 80;
-N_f = 150;
-a_c = 1.2;
-a_f = 1.2;
+N_c = getOptField(opt,'N_c',80);
+N_f = getOptField(opt,'N_f',150);
+a_c = getOptField(opt,'a_c',1.2);
 
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
-Rp_c = R*max([1-sep_c,0.01]);
-Rp_f = R*max([1-sep_f,0.01]);
-
-accstop = (R-Rp_c)^2/Rp_c;
-if nargin < 3 || isempty(delta_pair)
-    delta_pair = accstop;
-end
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c;
-opt.a_f = a_f;
-opt.N_c = N_c;
-opt.N_f = N_f;
-opt.N_peanut = 0;
-opt.precomp = 1;
-opt.pc = 1;
-opt.delta_pair = delta_pair;
-opt.P = P;
-opt.Nclust = 100;
-opt.use_fmm = use_fmm;
-opt.show_counter = true;
+Rp_c = getOptField(opt,'Rp_c',R*max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',R*max([1-sep_f,0.01]));
 
 if visualise
     opt.visualise_grid = true;
 end
 
-opt.rads = R*ones(P,1);
 
 %% Build grids
 nout = ceil(a_c*N_c);
@@ -159,11 +157,18 @@ if debug
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    [V,D] = eig(CC);
+    D = diag(D);
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
-    fout,length(rout),maxit,gmres_tol,opt,rout);
+    fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence capacitance 2B','interpreter','latex')
@@ -202,26 +207,43 @@ if visualise
     title('Boundary values: lhs vs rhs (Laplace 2B)')
 end
 
+sol = struct();
+sol.lambda_all = lambda_all;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.maxres = maxres;
+sol.resvec = resvec;
+
 end
 
 function test_solve_cap_2B
 fprintf('--- solve_cap_2B self-test ---\n');
 
 close all; 
-opt = getLaplace2Dparams();
-R = opt.rad;
-delta = 0.001; 
-% q = [0; 2*R+delta*R; 6*R+1.5i*R];
-% v_body = [1; -0.7; 0.25];
 
+
+%% Set geometry and data
 rng(8);
+delta = 0.001; 
+R = 2; 
 P = 40;
 q = grow_cluster(P,delta,2,R);
 v_body = rand(P,1); 
-visualise = 1; 
 
-[Q2,~,it2,~,res2] = solve_cap_2B(q,v_body,[],visualise,1e-10,0,true);
-[Q1,~,it1,~,res1] = solve_cap_1B(q,v_body,visualise,1e-10,0,true);
+%% Set params and settings
+opt = getLaplace2Dparams(P,R);
+opt.visualise = 1;
+opt.gmres_tol = 1e-10;
+opt.debug = 0;
+opt.use_fmm = true;
+opt.gmres_verbose = 0;
+
+[Q2,sol2] = solve_cap_2B(q,v_body,opt);
+[Q1,sol1] = solve_cap_1B(q,v_body,opt);
+it2 = sol2.it;
+res2 = sol2.maxres;
+it1 = sol1.it;
+res1 = sol1.maxres;
 
 fprintf('2B: it=%d, maxres=%.3e\n',it2,res2);
 fprintf('1B: it=%d, maxres=%.3e\n',it1,res1);

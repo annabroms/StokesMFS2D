@@ -1,6 +1,6 @@
 function [min_eig,c,no_image] = get_eigs(q,delta_pair)
 
-rads = ones(size(q));
+rad = ones(size(q));
 
 %% SET PARAMS
 %GMRES params
@@ -65,7 +65,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads; 
+opt.rad = rad; 
 opt.s = s; 
 opt.precomp = 0; %faster if evaluation of one body basis on fine grid is compted only once. 
 % %Less storage required.
@@ -76,11 +76,11 @@ opt.precomp = 0; %faster if evaluation of one body basis on fine grid is compted
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
 
-rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+rbase_out_c = rad(1)*cos(tout_c)+1i*rad(1)*sin(tout_c);
 
 %Construct image grid
 basic = 1; %return only the basic outer grid.                               
-[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1,Rg_f,a_f,N_f,basic,delta_pair);
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,Rg_c, a_c, N_c, 1,Rg_f,a_f,N_f,basic,delta_pair);
 
 % %Now, very deliberately, remove the 1-3 pair!
 % pairs = [1 2; 2 3]; 
@@ -110,12 +110,12 @@ Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
 
 %Get pair basis
 
-[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rads,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,0,Lf,Kf,1);
+[Upf,Ypf,~,~,nimage] = getPairBasis(q,a_f,N_f,rad,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,s,opt,0,Lf,Kf,1);
 
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rad)
 
 %% SOLVE SYSTEM
 % Build the matrix to check it out

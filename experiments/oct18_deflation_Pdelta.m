@@ -17,7 +17,7 @@ images = 0;
 
 for k = 1:length(Pvec)
     P = Pvec(k);
-    rads = ones(P,1);
+    rad = ones(P,1);
     for i = 1:length(deltavec)
         delta = deltavec(i);
 
@@ -31,7 +31,7 @@ for k = 1:length(Pvec)
             
             for m = 1:length(svec)
                 lr = svec(m)+3;
-                [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rads,images,lr,visualise);
+                [FT,lambda, it, gmres_tol, err] = solve_res_1B(q,U,W,rad,images,lr,visualise);
                 it_lm(l,m) = it;
                 err_lm(l,m) = err;
             end

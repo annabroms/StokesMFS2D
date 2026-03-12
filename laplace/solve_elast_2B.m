@@ -1,24 +1,42 @@
-function [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_2B(q,Q_body,delta_pair,visualise,gmres_tol,debug,use_fmm,gmres_verbose)
+function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %SOLVE_ELAST_2B Solve exterior Laplace elastance problem (known charges, unknown voltages) with 2-body preconditioning.
 %
 % Syntax:
-%   [v_body,lambda_all,it,gmres_tol,maxres] = solve_elast_2B(...)
+%   [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   Q_body     - Prescribed net charge per body (P x 1).
-%   delta_pair - Pair threshold.
-%   visualise  - Plot diagnostics.
-%   gmres_tol  - GMRES tolerance.
-%   debug      - Build dense system matrix for diagnostics.
-%   use_fmm    - Use fmm2d (of flatiron) for Laplace evaluations when available.
+%   opt        - Options struct.
+%     Required fields:
+%       rad           physical particle radius
+%       N_c,N_f       coarse/fine proxy point counts
+%       a_c,a_f       coarse/fine collocation upsampling factors
+%       Rp_c,Rp_f     coarse/fine proxy radii
+%       delta_pair    pair-detection threshold
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract the shielding arc of enhancing sources for
+%                     each close pair
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent, 1 = final summary only,
+%                     2 = per-iteration estimated residuals + final summary
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     plot postprocessing diagnostics
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       precomp       sets what is stored for each pair
+%        
 %
 % Outputs:
 %   v_body    - Recovered constant boundary values per body (P x 1).
-%   lambda_all- Stacked source strengths used in global field evaluation.
-%   it        - GMRES iteration count.
-%   gmres_tol - GMRES tolerance used.
-%   maxres    - Max relative equipotential residual on independent boundary points.
+%   sol       - Struct with fields:
+%               lambda_all : stacked source strengths used in field evaluation
+%               it         : GMRES iteration count
+%               gmres_tol  : GMRES tolerance used
+%               maxres     : max relative equipotential residual
+%               resvec     : GMRES convergence history
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -36,11 +54,14 @@ if nargin==0
     return
 end
 
-if nargin < 4 || isempty(visualise), visualise = 0; end
-if nargin < 5 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 6 || isempty(debug), debug = false; end
-if nargin < 7 || isempty(use_fmm), use_fmm = true; end
-if nargin < 8 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 3 || ~isstruct(opt)
+    error('solve_elast_2B requires q, Q_body, and an options struct opt.');
+end
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-7);
+debug = logical(getOptField(opt,'debug',false));
+use_fmm = logical(getOptField(opt,'use_fmm',true));
 
 q = q(:);
 Q_body = Q_body(:);
@@ -54,45 +75,21 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-opt = getLaplace2Dparams();
-rad = opt.rad;
-opt.gmres_verbose = gmres_verbose;
-
-N_c = 80;
-N_f = 150;
-a_c = 1.2;
-a_f = 1.2;
+rad = getOptField(opt,'rad',2);
+N_c = getOptField(opt,'N_c',80);
+N_f = getOptField(opt,'N_f',150);
+a_c = getOptField(opt,'a_c',1.2);
 
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
-Rp_c = rad*max([1-sep_c,0.01]);
-Rp_f = rad*max([1-sep_f,0.01]);
+Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
-accstop = (rad-Rp_c)^2/Rp_c;
-if nargin < 3 || isempty(delta_pair)
-    delta_pair = accstop;
-end
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c;
-opt.a_f = a_f;
-opt.N_c = N_c;
-opt.N_f = N_f;
-opt.N_peanut = 0;
-opt.precomp = 1;
-opt.pc = 1;
-opt.delta_pair = delta_pair;
-opt.P = P;
-opt.Nclust = 100;
-opt.use_fmm = use_fmm;
-opt.show_counter = true;
 opt.project_charge = true;
 if visualise
     opt.visualise_grid = true;
 end
-opt.rads = rad*ones(P,1);
 
 %% Discretize
 nout = ceil(a_c*N_c);
@@ -156,11 +153,18 @@ if debug
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    [V,D] = eig(CC);
+    D = diag(D);
+    figure()
+    plot(real(D),imag(D),'+')
+    xlabel('Re \lambda')
+    ylabel('Im \lambda')
+    title([solver_name ': eigenvalues of CC'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
-    u_rhs,length(rout),maxit,gmres_tol,opt,rout);
+    u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure(); semilogy(resvec)
 title('GMRES convergence elastance 2B','interpreter','latex')
@@ -203,6 +207,13 @@ if visualise
     title('Boundary potential and per-body means (Laplace elastance 2B)')
 end
 
+sol = struct();
+sol.lambda_all = lambda_all;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.maxres = maxres;
+sol.resvec = resvec;
+
 end
 
 function test_solve_elast_2B
@@ -210,22 +221,34 @@ fprintf('--- solve_elast_2B self-test ---\n');
 close all;
 run_two_way = false;
 
-opt = getLaplace2Dparams();
-rad = opt.rad;
-delta = 1e-3;
-visualise = 1; 
-debug = 0; 
-delta_pair = 0.2; 
 
-
+% Set geometry and data
 rng(8);
+rad = 2;
+delta = 1e-3;
 P = 30;
 q = grow_cluster(P,delta,2,rad);
 Q_body = randn(P,1);
-gmres_tol = 1e-7; 
 
-[v2,~,it2,~,res2] = solve_elast_2B(q,Q_body,delta_pair,visualise,gmres_tol,debug,true);
-[v1,~,it1,~,res1] = solve_elast_1B(q,Q_body,0,gmres_tol,0,true);
+% Set params
+opt = getLaplace2Dparams(P,rad);
+opt.rad = rad;
+opt.visualise = 1;
+opt.debug = 0;
+opt.delta_pair = 0.2;
+opt.gmres_tol = 1e-7;
+opt.use_fmm = true;
+opt.gmres_verbose = 0;
+
+% Solve
+[v2,sol2] = solve_elast_2B(q,Q_body,opt);
+opt_1B = opt;
+opt_1B.visualise = 0;
+[v1,sol1] = solve_elast_1B(q,Q_body,opt_1B);
+it2 = sol2.it;
+res2 = sol2.maxres;
+it1 = sol1.it;
+res1 = sol1.maxres;
 
 fprintf('2B: it=%d, maxres=%.3e\n',it2,res2);
 fprintf('1B: it=%d, maxres=%.3e\n',it1,res1);
@@ -233,8 +256,12 @@ fprintf('Rel diff in v_body (2B vs 1B): %.3e\n',norm(v2-v1)/max(1,norm(v1)));
 
 if run_two_way
     v_ref = randn(P,1);
-    [Q_cap,~,~,~,~] = solve_cap_2B(q,v_ref,[],0,1e-10,0,true);
-    [v_back,~,~,~,~] = solve_elast_2B(q,Q_cap,[],0,1e-10,0,true);
+    opt_tw = opt;
+    opt_tw.visualise = 0;
+    opt_tw.debug = 0;
+    opt_tw.gmres_tol = 1e-10;
+    [Q_cap,~] = solve_cap_2B(q,v_ref,opt_tw);
+    [v_back,~] = solve_elast_2B(q,Q_cap,opt_tw);
     rel_two = norm(v_back-v_ref,inf)/max(1,norm(v_ref,inf));
     fprintf('Two-way rel diff in v_body      : %.3e\n',rel_two);
 end

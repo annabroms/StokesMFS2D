@@ -33,7 +33,7 @@ else
    % q(2) = q(2)+0.01; %perturb the position of one of the particles
 end
 
-rads = ones(P,1); %set radii
+rad = ones(P,1); %set radii
 
 %Set truncation level in SVD. Low truncation important for high accuracy
 tol = 1e-12; 
@@ -60,7 +60,7 @@ for i = 1%:size(smat,1) %loop over the combinations.
     opt.s = s; 
 
     %% Get grid
-    [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt);
+    [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rad, opt);
 
     if debug
         figure()

@@ -1,4 +1,4 @@
-function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug,gmres_verbose)
+function [FT,sol] = solve_res_2B_enhanced(q,U,W,opt)
 %SOLVE_RES_PRECOND_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using MFS with 2-body preconditioning. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -7,26 +7,22 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delt
 % obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda, it, gmres_tol, maxres] = solve_res_2B_enhanced(q, U, W, rads, delta_pair, lr, visualise)
+%   [FT,sol] = solve_res_2B_enhanced(q,U,W,opt)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
-%   U         - Px2 matrix of translational velocities (columns: x and y components)
-%   W         - Px1 column vector of angular velocities
-%   rads       - Px1 vector of particle radii
-%   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
-%   lr         - long range preconditioning 
-%   visualise  - Logical flag: plot the configuration and solution details
-%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues for diagnostics (default false)
+%   U          - Px2 matrix of translational velocities (columns: x and y components)
+%   W          - Px1 column vector of angular velocities
+%   opt        - Options struct. Common fields:
+%                rad, delta_pair, lr, visualise, gmres_tol,opt.gmres_verbose,
+%                use_fmm, N_c, N_f, a_c, a_f, tol_c.
+%       debug    build/plot/investigate system matrix corresponding to
+%                matvec.
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
-%   lambda     - Solution vector of source strengths
-%   it         - Number of GMRES iterations required
-%   gmres_tol  - Set GMRES tolerance
-%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   sol        - Struct with fields:
+%                lambda, it, gmres_tol, rel_res, resvec.
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
@@ -47,75 +43,66 @@ function [FT,lambda,it,gmres_tol,maxres] = solve_res_2B_enhanced(q,U,W,rads,delt
 %
 % To test: Call without arguments.
 %
-% Anna Broms, Feb 13, 2025
+% Anna Broms, Mar 2026
 
 if nargin==0, test_solve_res; 
     return; end
 
-if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 9 || isempty(debug), debug = false; end
-if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 4 || ~isstruct(opt)
+    error('solve_res_2B_enhanced requires q, U, W, and an options struct opt.');
+end
 
-P = length(q);
+q = q(:);
+W = W(:);
+P = numel(q);
+assert(size(U,1)==P,'U must have one row per particle.');
+assert(size(U,2)==2,'U must have two columns [Ux, Uy].');
+assert(numel(W)==P,'W must have one entry per particle.');
 
-%% Checks
-
-assert(size(W,1)==P,'Wrong size of angular velocity vector')
-assert(size(U,1)==P,'Wrong size of trans vel vector')
-assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordinates')
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-10);
+debug = logical(getOptField(opt,'debug',false));
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
+maxit = getOptField(opt,'maxit',800);
+use_fmm = logical(getOptField(opt,'use_fmm',true));
+lr = getOptField(opt,'lr',0);
+rad = getOptField(opt,'rad',ones(P,1));
+rad = rad(:);
+assert(numel(rad)==P,'opt.rad must have one entry per particle.');
 
 
 %% SET PARAMS
-%GMRES params
-maxit = 800; 
-
 if ~exist('solver_name','var') || isempty(solver_name)
     solver_name = mfilename;
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-% Grid params
-P = length(q); 
-
-opt = get2Dparams();
+opt.P = P;
 opt.gmres_verbose = gmres_verbose;
+opt.visualise = visualise;
+opt.use_fmm = use_fmm;
 
 
 %Play with N_c, N_f, a (a_f). 
-N_c = 60;  %100 better here? 
-%N_c = 80; 
-%N_c = 150; 
-%N_c = 100; 
-N_f = 150; 
-N_f = 60;
-%N_f = N_c; %debug
-
-%N_c = 250; 
-a_c = 1.2;
- 
-%a = 2; 
-a_f = 1.2; %upsampling factor for the fine grid 
+N_c = getOptField(opt,'N_c',60);
+N_f = getOptField(opt,'N_f',60);
+a_c = getOptField(opt,'a_c',1.2);
+a_f = getOptField(opt,'a_f',1.2);
 
 % Determine separation to proxy surface.
-tol_c = 1e-12; %I think this works reasonably
-
-%tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
-%tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+tol_c = getOptField(opt,'tol_c',1e-12);
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
-Rp_f = max([1-sep_f,0.01]);  % and fine grid
-%Rp_f = Rp_c; %debugs
+Rp_c = getOptField(opt,'Rp_c',max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',max([1-sep_f,0.01]));
 
  
 %accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
 accstop = (1-Rp_c)^2/Rp_c;  
 
-if nargin < 5
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
-end
+delta_pair = getOptField(opt,'delta_pair',accstop);
  
 opt.Rp_c = Rp_c;
 opt.Rp_f = Rp_f;
@@ -126,19 +113,19 @@ opt.N_f = N_f;
 
 opt.P = P; 
 opt.N_peanut = 0; 
-opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
-% %Less storage required.
+opt.precomp = getOptField(opt,'precomp',1);
 opt.pc = 1; %prepare grid to do pair corrections
 opt.delta_pair = delta_pair; 
 opt.lr = lr; %using long range preconditioning? 
-opt.Nclust = 200; %trial nodes at ellipse segments. 
+opt.Nclust = getOptField(opt,'Nclust',200);
+opt.beta = getOptField(opt,'beta',0.3);
 
 
 %% CREATE GRID
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
-rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+rbase_out_c = rad(1)*cos(tout_c)+1i*rad(1)*sin(tout_c);
 %Inner basic grid
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
@@ -183,7 +170,7 @@ basis.Ypf = Ypf;
 
 %Visualise 1-body and pair-basis
 
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
 %% Construct rhs
 
@@ -208,7 +195,7 @@ rcheck_b = [];
 n_bound = 2000; %check in a large number of points
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% SOLVE SYSTEM
@@ -313,7 +300,7 @@ if lr
 end
 
 disp(' == Solving... == ');
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 plot_gmres = true; 
 
@@ -421,8 +408,8 @@ for k = 1:P
     fb_y = [fb_y; fb_true(n_bound+1:end)];   
 end
 
-maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
-fprintf('Max surface rel residual at new nodes is %.3e\n', maxres);
+rel_res = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+fprintf('Max surface rel residual at new nodes is %.3e\n', rel_res);
 
 %Some visualisation stuff... 
 if visualise
@@ -533,6 +520,13 @@ if visualise
     % axis off
     % set(gcf,'color','w');
 end
+
+sol = struct();
+sol.lambda = lambda;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.rel_res = rel_res;
+sol.resvec = resvec;
 
 end
 
@@ -676,14 +670,14 @@ W = [1; 1; 1]; %angular velocities
 % U = [1 0; 0 0];
 % W = [0; 0]; 
 
-rads = [1; 1; 1]; 
+rad = [1; 1; 1]; 
 visualise = 1; 
 images = 1; %only relevant for 1-body precond
 delta_pair = 0.2; 
 test = 1; % 1 or 2
 %% compare to a solution with 1 body precond only
 if test == 1
-    %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, visualise);
+    %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, visualise);
     rng(9);
     P = 2;
     delta = 0.05; %P = 5
@@ -696,23 +690,30 @@ if test == 1
     %q = R * exp(1i * (0:P-1).' * (2*pi/P));
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
-    U = rand(P,2); W = rand(P,1); rads = ones(P,1);
+    U = rand(P,2); W = rand(P,1); rad = ones(P,1);
     lr = 20; 
     lr = 0; 
     images = 1; 
 
-    [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rads,images, lr,visualise);
+    [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, lr,visualise);
     gmres_tol = 1e-7;
     debug = 1; 
-    [FT2,lambda,it2,gmres_tol,err2] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,lr,visualise,gmres_tol,debug);
-    [FT3,lambda,it3,gmres_tol,err3] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
+    opt = get2Dparams();
+    opt.rad = rad;
+    opt.delta_pair = delta_pair;
+    opt.lr = lr;
+    opt.visualise = visualise;
+    opt.gmres_tol = gmres_tol;
+    opt.debug = debug;
+    [FT2,sol2] = solve_res_2B_enhanced(q,U,W,opt);
+    [FT3,lambda,it3,gmres_tol,err3] = solve_res_2B_images(q,U,W,rad,delta_pair,lr,visualise);
 
     rel_FT2_vs_FT1 = norm(FT2-FT1,inf)/max(1,norm(FT1,inf));
     rel_FT3_vs_FT1 = norm(FT3-FT1,inf)/max(1,norm(FT1,inf));
     rel_FT3_vs_FT2 = norm(FT3-FT2,inf)/max(1,norm(FT2,inf));
 
-    fprintf('Relative residuals: 1B=%1.2e, 2B-enhanced=%1.2e, 2B-images=%1.2e\n',err1,err2,err3);
-    fprintf('GMRES iterations  : 1B=%u, 2B-enhanced=%u, 2B-images=%u\n',it1,it2,it3);
+    fprintf('Relative residuals: 1B=%1.2e, 2B-enhanced=%1.2e, 2B-images=%1.2e\n',err1,sol2.rel_res,err3);
+    fprintf('GMRES iterations  : 1B=%u, 2B-enhanced=%u, 2B-images=%u\n',it1,sol2.it,it3);
     fprintf('Relative force / torque errors: ||FT2-FT1||/||FT1|| = %1.2e\n',rel_FT2_vs_FT1);
     fprintf('                    ||FT3-FT1||/||FT1|| = %1.2e\n',rel_FT3_vs_FT1);
     fprintf('                    ||FT3-FT2||/||FT2|| = %1.2e\n',rel_FT3_vs_FT2);
@@ -724,10 +725,10 @@ else
     
     %% determine 2-way error (solve resistance followed by mob)
     lr = 0;
-    [FT,lambda,it1,gmres_res, err_res] = solve_res_2B_images(q,U,W,rads,delta_pair,lr,visualise);
+    [FT,lambda,it1,gmres_res, err_res] = solve_res_2B_images(q,U,W,rad,delta_pair,lr,visualise);
     F = [FT(1:3:end) FT(2:3:end)];
     T = FT(3:3:end); 
-    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
     Ures = [U W]';
     str = sprintf('Two way error is %1.3e, with resistance residual %1.3e and mobility residual %1.3e',norm(Ures(:)-UW),err_res,err_mob)
     alignfigs;

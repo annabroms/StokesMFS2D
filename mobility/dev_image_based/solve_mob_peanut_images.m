@@ -1,4 +1,4 @@
-function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
+function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
 %SOLVE_MOB_PRECOND_PEANUT Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -7,13 +7,13 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_peanut_images(q, F, T, rads, delta_pair, N_peanut, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_peanut_images(q, F, T, rad, delta_pair, N_peanut, visualise)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   F          - Px2 matrix of net force vectors (columns: x and y components)
 %   T          - Px1 column vector of torques acting on the particles
-%   rads       - Px1 vector of particle radii
+%   rad       - Px1 vector of particle radii
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   N_peanut   - Number of points on the peanut separation surface between
 %                every close pair of particles. The peanut boundary is used
@@ -21,8 +21,8 @@ function [UW,lambda,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_images(q,F
 %                same flow field exterior to the close pair of particles.
 %   visualise  - Logical flag: plot the configuration and solution details
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues (default false)
+%   debug      - build/plot/investigate system matrix corresponding to
+%                matvec.
 %   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
 %                or 'rel'
 %
@@ -125,7 +125,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads; 
+opt.rad = rad; 
 opt.N_peanut = N_peanut;
 opt.s = s; 
 opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
@@ -152,7 +152,7 @@ end
 %Construct image grid
 basic = 1; %return only the basic outer grid, else refined outer grid 
 %[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] 
-[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
 
 
 %get evaluation of lambda0
@@ -236,7 +236,7 @@ opt.project_pair = true;
 
 %Visualise 1-body and pair-basis
 %warning('Deactivate opt.precomp');
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
 
 Lc_pair = getILpair(Lc{1});
@@ -252,7 +252,7 @@ rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% Solve system
@@ -290,7 +290,7 @@ if debug
 end
 
 disp(' == Solving... == ');
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure()
 semilogy(resvec); 
@@ -559,19 +559,19 @@ q = R * exp(1i * (0:P-1).' * (2*pi/P));
 q(1) = 8;
 F = [real(q) imag(q)]; 
 T = zeros(size(q)); 
-rads = ones(size(q)); 
+rad = ones(size(q)); 
 
 
 %F = [1 0; 0 0; 0 1; -1 0]; %forces on the particles
 %T = [1; 1; 1; -1]; %torques on the particles
-%rads = [1; 1; 1; 1]; 
+%rad = [1; 1; 1; 1]; 
 visualise = 1; 
 delta_pair = 0.2; 
-%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 
 %compare to a solution with image enhancement
 N_peanut = 1200; 
-[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
+[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
 
 str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

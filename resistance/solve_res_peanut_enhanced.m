@@ -1,4 +1,4 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug,gmres_verbose)
+function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %SOLVE_PRECOND_PEANUT_ENHANCED Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
 %fine grid enhanced with shielding Stokeslets near image points is used locally for every
@@ -7,29 +7,42 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_res_peanut_enhanced(q, U, W, rads, delta_pair, N_peanut, visualise)
+%   [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   U          - Px2 matrix of translational velocities (columns: x and y components)
 %   W          - Px1 column vector of angular velocities
-%   rads       - Px1 vector of particle radii
-%   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
-%   N_peanut   - Number of points on the peanut separation surface between
-%                every close pair of particles. The peanut boundary is used
-%                to map fine sources to effective coarse sources, giving the
-%                same flow field exterior to the close pair of particles.
-%   visualise  - Logical flag: plot the configuration and solution details
-%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues for diagnostics (default false)
+%   opt        - Options struct.
+%     Required geometry/discretisation fields:
+%       rad           single particle radius (constant for all particles)
+%       N_c,N_f       coarse/fine proxy source counts per particle
+%       a_c           coarse collocation upsampling (M_c = ceil(a_c*N_c))
+%       Rp_c,Rp_f     coarse/fine proxy radii defined via tol_c by default
+%       delta_pair    close-pair threshold used for enhanced discretisation
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract shielding arcs for close pairs
+%       beta          ellipse shape parameter for the shielding-node construction
+
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent
+%                     1 = final convergence summary only
+%                     2 = per-iteration residual history + final summary
+%       maxit         maximum GMRES iterations
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     show diagnostic plots in postprocessing
+%       use_fmm       use FMM-accelerated Stokeslet evaluation in field
+%                     evaluation paths that support it
+%       bndry_vel     if true, evaluate and report boundary velocity residuals
+%       cmap          if true, use coarse-to-coarse pair map for FT updates
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
-%   lambda_proxy     - Solution vector of coarse source strengths
-%   it         - Number of GMRES iterations required
-%   gmres_tol  - Set GMRES tolerance
-%   maxres     - Maximum relative residual in a test (non-collocation) set of boundary nodes
+%   sol        - Struct with fields:
+%                lambda_proxy, it, gmres_tol, rel_res, resvec.
 %
 % Description:
 %   The FMM is used for Stokeslet evaluation. No other source types are
@@ -47,28 +60,29 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_enhanced(q,U,W
 %
 % To test: Call without arguments.
 %
-% Anna Broms, Feb 23, 2026
+% Anna Broms, Mar 2026
 
 if nargin==0, test_solve_res; 
     return; end
 
-if nargin < 8 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 9 || isempty(debug), debug = false; end
-if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 4 || ~isstruct(opt)
+    error('solve_res_peanut_enhanced requires q, U, W, and an options struct opt.');
+end
 
-P = length(q); % number of particles
+q = q(:);
+W = W(:);
+P = numel(q);
+assert(size(U,1)==P,'U must have one row per particle.');
+assert(size(U,2)==2,'U must have two columns [Ux, Uy].');
+assert(numel(W)==P,'W must have one entry per particle.');
 
-%% Checks 
-
-assert(size(W,1)==P,'Wrong size of angular velocity vector')
-assert(size(U,1)==P,'Wrong size of trans vel vector')
-assert(size(U,2)==2,'Wrong size of trans vel vector, should contain x y coordinates')
-
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-10);
+debug = logical(getOptField(opt,'debug',false));
+maxit = getOptField(opt,'maxit',800);
+rad = getOptField(opt,'rad',1);
 
 %% SET PARAMS
-%GMRES params
-maxit = 800; 
-
 if ~exist('solver_name','var') || isempty(solver_name)
     solver_name = mfilename;
 end
@@ -76,69 +90,23 @@ fprintf('==== START: %s ====\n', solver_name);
 
 % Grid params
 %Set coarse and fine grid. 
-
-%Play with N_c, N_f, a (a_f). 
-N_c = 150;  %100 better here? 
-%N_c = 50;
-
-N_f = 150;
-%N_f = N_c; %debug
-
-%N_c = 250; 
-a_c = 1.2; %upsampling for coarse grid
-
-%a_c = 5;
-%a_c = 1.2; %results in horrible fourier decay if we 
-           % evaluate on a particle close by in coarse colloc points 
-
-a_f = 1.2; %upsampling factor for the fine grid
-
-tol_c = 1e-9; %I think this works reasonably
-%tol_c = 1e-12;
-%tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff 
-%tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+ 
+N_c = getOptField(opt,'N_c',150);
+N_f = getOptField(opt,'N_f',150);
+a_c = getOptField(opt,'a_c',1.2);
+tol_c = getOptField(opt,'tol_c',1e-9);
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
-Rp_f = max([1-sep_f,0.01]);  % and fine grid
-%Rp_c = 0.8;
-%Rp_f = Rp_c; %debug
+Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
-
-%accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
-accstop = (1-Rp_c)^2/Rp_c;  
-
-if nargin < 5
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
-end
-
-opt = get2Dparams(); 
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c; 
-opt.a_f = a_f; 
-opt.N_c = N_c;
-opt.N_f = N_f; 
-opt.Nclust = 200;
-opt.N_peanut = N_peanut; 
-opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
-% %Less storage required.
-opt.pc = 1; %prepare grid to do pair corrections
-opt.delta_pair = delta_pair; 
-
-opt.cmap = 1;
-opt.P = P; 
-opt.use_fmm = true; % set false to evaluate Stokeslet part with stokSLPdirect
-
-opt.bndry_vel = 1; 
-opt.gmres_verbose = gmres_verbose;
 %% CREATE GRID
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
-rbase_out_c = cos(tout_c)+1i*sin(tout_c);
+rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
 
 tin_f = linspace(0,2*pi,N_f+1);
 tin_f = tin_f(1:end-1)'; 
@@ -237,7 +205,7 @@ end
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
-    fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure()
 semilogy(resvec); 
@@ -261,7 +229,7 @@ if opt.bndry_vel
     n_bound = 803;
     t = linspace(0,2*pi,n_bound)';
     for k = 1:P
-        rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+        rcheck_b = [rcheck_b; q(k)+rad*(cos(t)+1i*sin(t))];
     end
 
     % Prepare for evaluating flow field in rcheck_b.
@@ -288,13 +256,13 @@ if opt.bndry_vel
         fb_y = [fb_y; fb_true(n_bound+1:end)];   
     end
     
-    maxres = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
-    fprintf('Max surf rel res at new nodes %.3e\n', maxres);
+    rel_res = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
+    fprintf('Max surf rel res at new nodes %.3e\n', rel_res);
 else
     geom_eval = geom;
     [lam_c_x, lam_self_x, ~,lam_c_y,lam_self_y,~,~,rimage_k] = ...
         transform_peanut_stokes(tau,geom_eval,basis);
-    maxres = nan; 
+    rel_res = nan; 
 end
 
 %return compressed coarse sources
@@ -376,6 +344,13 @@ if visualise
    
 end
 
+sol = struct();
+sol.lambda_proxy = lambda_proxy;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.rel_res = rel_res;
+sol.resvec = resvec;
+
 end
 
 
@@ -401,36 +376,45 @@ if test == 1
     W = [1; 1; 1]; %angular velocities
     % U = U*1e-5;
     % W = W*1e-5;
-    rads = [1; 1; 1]; 
+    rad = [1; 1; 1]; 
     visualise = 0; 
 
     q = [0; 2+delta];
     %q = q+5;
     U = U(1:2,:);
     W = W(1:2); 
-    rads = rads(1:2); 
+    rad = rad(1:2); 
 
     gmres_tol = 1e-10;
     debug = 1; 
-    
-    [FT1,lambda,it1,gmres_res, err1] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug);
+
+    opt = get2Dparams();
+    opt.rad = rad;
+    opt.delta_pair = delta_pair;
+    opt.N_peanut = N_peanut;
+    opt.visualise = visualise;
+    opt.gmres_tol = gmres_tol;
+    opt.debug = debug;
+    [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
     debug = 0; 
-    [FT2,lambda2,it2,gmres_res2, err2] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
-    [FT3,lambda,it3,gmres_res, err3] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,0,visualise,gmres_tol,debug);
+    [FT2,lambda2,it2,gmres_res2, err2] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
+    opt.debug = debug;
+    [FT3,sol3] = solve_res_2B_enhanced(q,U,W,opt);
     
     F = [FT2(1:3:end) FT2(2:3:end)];
     T = FT2(3:3:end); 
-    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
+    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
     Ures = [U W]';
     
     
     % Compare to solution with pair corrections but without peanut compression
     visualise = 0; 
-    [FTp,lambda,it2,gmres_tol, err2] = solve_res_2B_images(q,U,W,rads,delta_pair,0,visualise,gmres_tol,debug);
+    [FTp,lambda,it2,gmres_tol, err2] = solve_res_2B_images(q,U,W,rad,delta_pair,0,visualise,gmres_tol,debug);
     
     str = sprintf('Two way error is %1.3e',norm(Ures(:)-UW));
     disp(str); 
-    str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err2,err1,it2,it1);
+    str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp %u iterations', ...
+        err2,sol1.rel_res,it2,sol1.it);
     disp(str)
     
     alignfigs(4);
@@ -449,14 +433,22 @@ else
     q = grow_cluster(P,delta,2);
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
-    U = rand(P,2); W = rand(P,1); rads = ones(P,1);
+    U = rand(P,2); W = rand(P,1); 
     %W = zeros(P,1); 
     gmres_tol = 1e-7; 
     debug = 0; 
-    [FT1,lambda1,it1,gmres_tol,err1] = solve_res_peanut_enhanced(q,U,W,rads,delta_pair,N_peanut,visualise,gmres_tol,debug);
-    [FT2,lambda2,it2,gmres_tol,err2] = solve_res_2B_enhanced(q,U,W,rads,delta_pair,0,visualise,gmres_tol);
+
+    opt = get2Dparams(P);
+    opt.delta_pair = delta_pair;
+    opt.N_peanut = N_peanut;
+    opt.visualise = visualise;
+    opt.gmres_tol = gmres_tol;
+    opt.debug = debug;
+    [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
+    [FT2,sol2] = solve_res_2B_enhanced(q,U,W,opt);
     
-    str = sprintf('Relative residual with peanut compression: %1.2e vs 2B preconditioner without compression: %1.2e\n Converging in %u resp %u iterations',err1,err2,it1,it2);
+    str = sprintf('Relative residual with peanut compression: %1.2e vs 2B preconditioner without compression: %1.2e\n Converging in %u resp %u iterations', ...
+        sol1.rel_res,sol2.rel_res,sol1.it,sol2.it);
     disp(str)
     
     alignfigs;

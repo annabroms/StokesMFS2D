@@ -1,4 +1,4 @@
-function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,lr,gmres_tol,debug,gmres_verbose)
+function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,lr,gmres_tol,debug,gmres_verbose)
 %SOLVE_RES_PEANUT_IMAGES Solves a 2D Stokes resistance problem with circular
 %particles using a 2-body preconditioned MFS formulation. A
 %fine grid enhanced with approximate image points is used locally for every
@@ -7,13 +7,13 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,r
 %solve the problem iteratively, effectively preconditioning the system.
 %
 % Syntax:
-%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_res_peanut_images(q, U, W, rads, delta_pair, N_peanut, visualise,lr)
+%   [FT, lambda_proxy, it, gmres_tol, maxres] = solve_res_peanut_images(q, U, W, rad, delta_pair, N_peanut, visualise,lr)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   U          - Px2 matrix of net force vectors (columns: x and y components)
 %   W          - Px1 column vector of torques acting on the particles
-%   rads       - Px1 vector of particle radii
+%   rad       - Px1 vector of particle radii
 %   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
 %   N_peanut   - Number of points on the peanut separation surface between
 %                every close pair of particles. The peanut boundary is used
@@ -22,8 +22,8 @@ function [FT,lambda_proxy,it,gmres_tol,maxres] = solve_res_peanut_images(q,U,W,r
 %   visualise  - Logical flag: plot the configuration and solution details
 %   lr         - Flag for long-range preconditioning
 %   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues for diagnostics (default false)
+%   debug      - build/plot/investigate system matrix corresponding to
+%                matvec.
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -128,7 +128,7 @@ opt.a_c = a_c;
 opt.a_f = a_f; 
 opt.N_c = N_c;
 opt.N_f = N_f; 
-opt.rads = rads; 
+opt.rad = rad; 
 opt.N_peanut = N_peanut;
 opt.s = s; 
 opt.mask = 0; %cutoff in long range preconditioning
@@ -160,7 +160,7 @@ end
 %Construct image grid
 %Will return only the basic outer grid, else refined outer grid 
 %[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base]
-[rout,~,~,~,~,pair_points,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,opt);
+[rout,~,~,~,~,pair_points,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
 
 
 %Get pair basis
@@ -171,7 +171,7 @@ end
 
 
 %Visualise 1-body and pair-basis
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,UU,YY,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,UU,YY,[],[],N_c, N_f,a_c,a_f,rad)
 
 %% Construct rhs
 
@@ -198,7 +198,7 @@ rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% Experiment with left preconditioner based on deflation
@@ -262,10 +262,10 @@ if lr
    Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,q,Zi,Yi,rbase_in_c,...
         rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap);
    %Pf = applyPmat_peanut(fout,rin_c,rout,Sinv,Nx,Ny,Mx,Zi,Yi,opt);    
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_peanut(x,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);   
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_peanut(x,rin_c,rbase_in_c,rbase_in_f,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Sinv,Zi,Yi),Pf,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);   
 else                                                                                 
    matvec_debug = 0;
-   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug),fout,2*size(rout,1),maxit,gmres_tol,opt,rout);
+   [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,rbase_out_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,UB_all,YB_all,UC_all, YC_all,Cmap,matvec_debug),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
 
 %[tau,flag,relres,iter,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
@@ -690,19 +690,19 @@ if test == 1
     W = [1; 1; 1]; %angular velocities
     % U = U*1e-5;
     % W = W*1e-5;
-    rads = [1; 1; 1]; 
+    rad = [1; 1; 1]; 
     visualise = 1; 
     
-    [FT,lambda,it1,gmres_res, err1] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise);
+    [FT,lambda,it1,gmres_res, err1] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise);
     F = [FT(1:3:end) FT(2:3:end)];
     T = FT(3:3:end); 
-    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
+    [UW,lambdahat,it1,gmres_mob, err_mob] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
     Ures = [U W]';
     
     
     % Compare to solution with pair corrections but without peanut compression
     visualise = 0; 
-    [FTp,lambda,it2,gmres_tol, err2] = solve_res_2B_images(q,U,W,rads,delta_pair,visualise);
+    [FTp,lambda,it2,gmres_tol, err2] = solve_res_2B_images(q,U,W,rad,delta_pair,visualise);
     
     str = sprintf('Two way error is %1.3e',norm(Ures(:)-UW));
     disp(str); 
@@ -725,14 +725,14 @@ else
     q = grow_cluster(P,delta,2);
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
-    U = rand(P,2); W = rand(P,1); rads = ones(P,1);
+    U = rand(P,2); W = rand(P,1); rad = ones(P,1);
     %W = zeros(P,1); 
     lr = 20; 
    % lr = 0; 
     images = 0; 
-   % [FT,lambda,it,gmres_tol,err] = solve_res_1B(q,U,W,rads,images, lr,visualise);
-    [FT1,lambda1,it1,gmres_tol,err1] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,lr);
-    [FT2,lambda2,it2,gmres_tol,err2] = solve_res_peanut_images(q,U,W,rads,delta_pair,N_peanut,visualise,0);
+   % [FT,lambda,it,gmres_tol,err] = solve_res_1B(q,U,W,rad,images, lr,visualise);
+    [FT1,lambda1,it1,gmres_tol,err1] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,lr);
+    [FT2,lambda2,it2,gmres_tol,err2] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,0);
     
     str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
     disp(str)

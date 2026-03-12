@@ -31,7 +31,7 @@ P = length(q);
 NN = 20; 
 a1vec = linspace(1.2,10,NN+1);
 Rgvec = linspace(0.1,0.9,NN); 
-rads = ones(2,1);  
+rad = ones(2,1);  
 
 for i = 1:length(Rgvec)
     Rg_c = Rgvec(i); 
@@ -49,11 +49,11 @@ for i = 1:length(Rgvec)
         tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
         tout_c = tout_c(1:end-1)';
         
-        rbase_out_c = rads(1)*cos(tout_c)+1i*rads(1)*sin(tout_c);
+        rbase_out_c = rad(1)*cos(tout_c)+1i*rad(1)*sin(tout_c);
         
         %Construct image grid
         basic = 1; %return only the basic outer grid, else refined outer grid 
-        [rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rads,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
+        [rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,Rg_c, a_c, N_c, 1, Rg_f,a_f,N_f, basic,delta_pair);
 
         tin = linspace(0,2*pi,N_c+1);
         tin = tin(1:end-1)';
@@ -63,7 +63,7 @@ for i = 1:length(Rgvec)
         opt_pair = struct();
         opt_pair.N_f = N_f;
         opt_pair.a_f = a_f;
-        opt_pair.rads = rads;
+        opt_pair.rad = rad;
         opt_pair.s = s;
         opt_pair.N_peanut = 0;
         opt_pair.precomp = 1;
@@ -75,7 +75,7 @@ for i = 1:length(Rgvec)
         [U,Y] = getSelfPseudo(rbase_in_c,rbase_out_c);
         
         
-        [f1,g1,f2,g2] = testPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c,N_f,a_c,a_f,rads);
+        [f1,g1,f2,g2] = testPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c,N_f,a_c,a_f,rad);
         try
             m1(k,i) = f1(end/2);
             m2(k,i) = g1(end/2);

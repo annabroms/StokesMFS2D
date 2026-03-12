@@ -14,8 +14,8 @@ AM = blkdiag(blocksM{:});
 
 opt = get2Dparams(); 
 [q,B] = grow_cluster(P,delta,2);
-rads = ones(P,1); 
-[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt);
+rad = ones(P,1); 
+[rout,~,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rad,opt);
 
 G = stokSLPmat(rin,rout,1);
 

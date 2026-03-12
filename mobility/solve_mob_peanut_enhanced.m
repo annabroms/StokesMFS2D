@@ -1,59 +1,78 @@
-function [UW,lambda_c,it,gmres_tol, rel_res,abs_res] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
+function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %SOLVE_MOB_PEANUT_ENHANCED Solve a 2D Stokes mobility problem with
 %peanut-compressed pair corrections. The enhanced discretisation for each
 %pair consists of Stokeslets only. 
 %
 % Syntax:
-%   [UW,lambda,it,gmres_tol,rel_res,abs_res] = solve_mob_peanut_enhanced( ...
-%       q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug)
+%   [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   F          - Net forces per particle (P x 2), columns are x y.
 %   T          - Net torques per particle (P x 1).
-%   delta_pair - Near-pair threshold; pairs closer than this use pair correction.
-%   N_peanut   - Number of peanut check points used in pairwise compression.
-%   visualise  - Plot diagnostics if true.
-%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix generated 
-%                by matvec and its
-%                eigenvalues (default false)
-%   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
-%                or 'rel'
+%   opt        - Options struct.
+%     Required geometry/discretisation fields:
+%       rad           single particle radius (constant for all particles)
+%       N_c,N_f       coarse/fine proxy source counts per particle
+%       a_c           coarse collocation upsampling (M_c = ceil(a_c*N_c))
+%       Rp_c,Rp_f     coarse/fine proxy radii, defined via tol_c by default
+%       delta_pair    close-pair threshold used for enhanced discretisation
+%       Nclust        total Chebyshev nodes on each enclosing ellipse used
+%                     to extract shielding arcs for close pairs
+%       beta          ellipse shape parameter for the shielding-node construction
+
+%     Solver-control fields:
+%       gmres_tol     GMRES tolerance
+%       gmres_verbose GMRES print level:
+%                     0 = silent
+%                     1 = final convergence summary only
+%                     2 = per-iteration residual history + final summary
+%       maxit         maximum GMRES iterations
+%       debug         build/plot/investigate system matrix corresponding to
+%                     matvec.
+%       visualise     show diagnostic plots in postprocessing
+%       surface_error_mode
+%                     'rel' plots relative boundary errors, 'abs' plots
+%                     absolute boundary errors
+%       use_fmm       use FMM-accelerated Stokeslet evaluation in field
+%                     evaluation paths that support it
+%       cmap          if true, use coarse-to-coarse pair map in postprocessing
+
 %
 % Outputs:
 %   UW         - Rigid-body motion vector [Ux1; Uy1; W1; ...; UxP; UyP; WP].
-%   lambda_c   - Stacked coarse source strengths [lambda_x; lambda_y]
-%                based on compressed grid.
-%   it         - GMRES iterations.
-%   gmres_tol  - GMRES tolerance used.
-%   rel_res    - Maximum relative boundary residual on an independent check grid.
-%   abs_res    - Maximum absolute boundary residual on an independent check grid.
+%   sol        - Struct with fields:
+%                lambda_c, it, gmres_tol, rel_res, abs_res, resvec.
 %
 % Notes:
 %   - Call with no inputs to run the built-in test.
 %   - All Stokeslet sources contribute to the rigid body velocities
 %     computed in UW.
 %
-% Anna Broms, Feb 23, 2026
+% Anna Broms, Mar 2026
 
 if nargin==0, test_solve_mob; 
     return; end
 
-if nargin < 6 || isempty(visualise), visualise = 0; end
-if nargin < 7 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 8 || isempty(debug), debug = false; end
-if nargin < 9 || isempty(surface_error_mode), surface_error_mode = 'rel'; end
-if nargin < 10 || isempty(gmres_verbose), gmres_verbose = 0; end
-surface_error_mode = lower(char(surface_error_mode));
-if ~any(strcmp(surface_error_mode, {'abs','rel'}))
-    error('surface_error_mode must be ''abs'' or ''rel''.')
+if nargin < 4 || ~isstruct(opt)
+    error('solve_mob_peanut_enhanced requires q, F, T, and an options struct opt.');
 end
 
-%% SET PARAMS
-%GMRES params
-maxit = 800; % max GMRES iterations
+q = q(:);
+T = T(:);
+P = numel(q);
+assert(size(F,1)==P,'F must have one row per particle.');
+assert(size(F,2)==2,'F must have two columns [Fx, Fy].');
+assert(numel(T)==P,'T must have one entry per particle.');
 
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-10);
+debug = logical(getOptField(opt,'debug',false));
+surface_error_mode = getOptField(opt,'surface_error_mode','rel');
+maxit = getOptField(opt,'maxit',800);
+rad = getOptField(opt,'rad',1);
+
+%% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
     solver_name = mfilename;
 end
@@ -61,62 +80,22 @@ fprintf('==== START: %s ====\n', solver_name);
 
 %Set coarse and fine grid. 
 %Play with N_c, N_f, a (a_f). 
-N_c = 80;  %Number of Stokeslets per body on coarse grid.
-% higher resolution better here for dense systems
-%N_c = 150; 
-
-N_f = 150; %Number of Stokeslets per body on coarse grid. Only used for the 2-body BVP
-%N_f = N_c; 
-
-%N_c = 250; 
-a_c = 1.2; % ratio between number of source and collocation points for coarse proxy grid
-a_f = 1.2; % ... for the fine proxy grid
-
-tol_c = 1e-12; %I think this works reasonably
-tol_c = 1e-10; %Curve moves closer to the surface -> smaller coeff  
-%tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+N_c = getOptField(opt,'N_c',80);
+N_f = getOptField(opt,'N_f',150);
+a_c = getOptField(opt,'a_c',1.2);
+tol_c = getOptField(opt,'tol_c',1e-10);
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
-Rp_f = max([1-sep_f,0.01]);  % and fine grid
-%Rp_f = Rp_c; %testing
+Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01])); %check!
+Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
-%radius for which additional, enhancing nodes, should not be used. Based on
-%closed formula from fixed point of reflection.
-accstop = (1-Rp_c)^2/Rp_c;  
-
-if nargin < 4 || isempty(delta_pair)
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop). 
-    % We may choose delta_pair larger than accstop.
-end
-
-opt = get2Dparams(); 
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c; 
-opt.a_f = a_f; 
-opt.N_c = N_c;
-opt.N_f = N_f; 
-opt.N_peanut = N_peanut; %numer of points on peanut boundary
-opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
-% %Less storage required.
-opt.pc = 1; %prepare grid to do pair corrections
-opt.delta_pair = delta_pair; 
-opt.bndry_vel = 1; 
-
-opt.cmap = 1; % Use coarse to coarse mapping by multiplying together all factors needed for the fine grid mapping 
-opt.Nclust = 100; %points on ellipse segments, for now (not the actual number as some will fall inside the proxy curve)
-
-P = length(q);
-opt.P = P; 
-opt.gmres_verbose = gmres_verbose;
 %% Discretize
 %Outer basic grid
 tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c_all(1:end-1)';
-rbase_out_c = cos(tout_c)+1i*sin(tout_c);
+rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin); 
@@ -154,20 +133,18 @@ opt.show_counter = true;
 % TODO: update visualisation:
 %Visualise 1-body and pair-basis
 %warning('Deactivate opt.precomp');
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
 Lc_pair = getILpair(Lc{1}); %I-L projection with coarse grid for a pair. TODO: replace.
 
 %% Construct check boundaries
-%rcheck_dom = 100+100i; %some point far away
-
 % Create new grid points, for which the accuracy of the solution is
 % to be evaluated. 
 rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+cos(t)+1i*sin(t)];
+    rcheck_b = [rcheck_b; q(k)+rad*(cos(t)+1i*sin(t))];
 end
 
 %% Repackage to prepare for solve
@@ -234,7 +211,7 @@ end
 
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob),...
-    urhs,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    urhs,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure()
 semilogy(resvec); 
@@ -381,6 +358,14 @@ if visualise
     
 end
 
+sol = struct();
+sol.lambda_c = lambda_c;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.rel_res = rel_res;
+sol.abs_res = abs_res;
+sol.resvec = resvec;
+
 
 end
 
@@ -508,6 +493,8 @@ end
 function test_solve_mob
 
 close all; 
+
+%% Set geometry and data
 q = [0; 2.001; 2.001i]; %center coordinates
 
 delta = 1e-3; 
@@ -515,8 +502,6 @@ P = 3;
 q = 0:2+delta:(P-1)*(2+delta);
 P = 4; 
 q = [0; 2+delta; 7; 9+delta];
-
-
 P = 20; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
@@ -530,27 +515,37 @@ q = grow_cluster(P,delta,2);
 
 
 F = [real(q) imag(q)]; 
-T = zeros(size(q)); 
-rads = ones(size(q)); 
+T = zeros(size(q));  
 %F = [1 0; -1 0];
 
 %F = [1 0; 0 0; 0 1; -1 0]; %forces on the particles
 %T = [1; 1; 1; -1]; %torques on the particles
-%rads = [1; 1; 1; 1]; 
+%rad = [1; 1; 1; 1]; 
 visualise = 1; 
-delta_pair = 0.5; 
-%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+delta_pair = 0.5;
+
+%% Solve
+%[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 
 %compare to a solution with image enhancement
 N_peanut = 400; 
-%[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_2B_images(q,F,T,rads,delta_pair,visualise);
+%[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 gmres_tol = 1e-8;
 images = 1; 
-lr = 0; 
+lr = 0; % long-range precond
 debug = 0; 
-%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
-[UW2,lambdahat2,it2,gmres_tol, rel2, abs2] = solve_mob_peanut_enhanced(q,F,T,delta_pair,N_peanut,visualise,gmres_tol,debug);
-% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rads,delta_pair,N_peanut,visualise);
+%[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
+
+opt = get2Dparams(P);
+opt.delta_pair = delta_pair;
+opt.N_peanut = N_peanut;
+opt.visualise = visualise;
+opt.gmres_tol = gmres_tol;
+opt.debug = debug;
+opt.surface_error_mode = 'rel';
+
+[UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt); 
+% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
 % [UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise);
 alignfigs(3);
 

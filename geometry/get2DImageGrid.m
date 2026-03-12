@@ -1,12 +1,12 @@
-function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+function [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rad, opt)
 %GET2DIMAGEGRID Distributes source, collocation, and image points for circular particles in 2D
 %
 % Syntax:
-%   [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rads, opt)
+%   [rout, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] = get2DImageGrid(q, rad, opt)
 %
 % Inputs:
 %   q          - Complex vector of particle center coordinates (length P)
-%   rads       - Vector of particle radii (length P)
+%   rad       - Vector of particle radii (length P)
 %   opt        - Struct with options including:
 %                   * Rp_c  - Proxy radius for the coarse grid (the only grid used for 1-body preconditioning)
 %                   * N_c   - Number of proxy points on the coarse grid
@@ -116,11 +116,11 @@ if image
     for i = 1:P
         ind = setdiff(1:P,i); %check neighbours with everyone else
         for k = ind
-            delta = abs(q(i)-q(k))-rads(k)-rads(i);
-            d = delta/rads(i);
-            %if delta< Rp*rads(i)
+            delta = abs(q(i)-q(k))-rad(k)-rad(i);
+            d = delta/rad(i);
+            %if delta< Rp*rad(i)
            
-            if delta < accstop_fine*rads(i)
+            if delta < accstop_fine*rad(i)
                 %new close pair detected
                 if i<k
                     pairs = [pairs; i k]; 
@@ -138,8 +138,8 @@ if image
                 %generate points from Rp out to the accumulation point.
                 %first determine accumulation point            
 
-                a1  = rads(i); 
-                a2 = rads(k); 
+                a1  = rad(i); 
+                a2 = rad(k); 
                 D = a1+a2+delta;
                 S1 = D^2-a2^2+a1^2; 
                 xa1 = (S1/D/2-sqrt((S1^2)/D^2/4-a1^2))/D;
@@ -163,9 +163,9 @@ if image
 
                 
                 
-                aa = rads(i)*Rp_f*1.01; %start just exterior to the proxy grid     
-                %aa = rads(i)*Rp_f*1.05;
-               % aa = rads(i)*Rp_f*1.1;
+                aa = rad(i)*Rp_f*1.01; %start just exterior to the proxy grid     
+                %aa = rad(i)*Rp_f*1.05;
+               % aa = rad(i)*Rp_f*1.1;
                 %aa = 0.6; %test
                 
                 %Rescale image line to be exactly between the end points
@@ -245,7 +245,7 @@ if image
                 %Need to store also the number of extra collocation  points
     
                 %location for the point of contact. 
-                xstar = q(i)+rads(i)*(q(k)-q(i))./abs(q(k)-q(i));
+                xstar = q(i)+rad(i)*(q(k)-q(i))./abs(q(k)-q(i));
 
                 %determine the corresponding angle (parameter
                 %value) at point of contact
@@ -328,7 +328,7 @@ Mf = ceil(a_f*N_f);
 for k = 1:P
     %Assign inner grid to particles, based on fine grid (if 1-body precond,
     %same as coarse grid)
-    rin_base = Rp_f*rads(k)*cos(tin)+1i*Rp_f*rads(k)*sin(tin);
+    rin_base = Rp_f*rad(k)*cos(tin)+1i*Rp_f*rad(k)*sin(tin);
     rin = [rin; q(k)+rin_base];
 
     if image
@@ -399,7 +399,7 @@ for k = 1:P
     end
     
     
-    rout_part = q(k)+rads(k)*(cos(t)+1i*sin(t));
+    rout_part = q(k)+rad(k)*(cos(t)+1i*sin(t));
     rout = [rout; rout_part]; %add to global list
     %weights = [weights; w_k];
 

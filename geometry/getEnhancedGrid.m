@@ -5,7 +5,7 @@ function [cent_clust_cells, acc_cells, coll_clust_cells, clust_pairs, coll_pairs
 %   Inputs:
 %     q   - complex centers (P x 1)
 %     opt - struct with fields:
-%           rads    : radii (P x 1), default ones
+%           rad    : radii (P x 1), default ones
 %           Nclust  : number of clustered nodes per close pair
 %           beta    : ellipse tip parameter (0<beta<1)
 %           r_proxy : proxy radius for filtering |z|>r_proxy
@@ -31,16 +31,16 @@ end
 q = q(:);
 P = numel(q);
 
-if isfield(opt,'rads') && ~isempty(opt.rads)
-    rads = opt.rads(:);
-    if isscalar(rads)
-        rads = repmat(rads,P,1);
+if isfield(opt,'rad') && ~isempty(opt.rad)
+    rad = opt.rad;
+    if isscalar(rad)
+        rad = repmat(rad,P,1);
     end
-    if numel(rads) ~= P
-        error('getEnhancedGrid:badRadii','opt.rads must be scalar or length P.');
+    if numel(rad) ~= P
+        error('getEnhancedGrid:badRadii','opt.rad must be scalar or length P.');
     end
 else
-    rads = ones(P,1);
+    rad = ones(P,1);
 end
 
 
@@ -77,7 +77,7 @@ pairs = [];
 for i = 1:P-1
     for j = i+1:P
         ci = q(i); cj = q(j);
-        ri = rads(i); rj = rads(j);
+        ri = rad(i); rj = rad(j);
         D = abs(cj-ci);
         gap = D - (ri + rj);
         if gap < delta_pair
@@ -111,7 +111,7 @@ for i = 1:P-1
 end
 
 if visualise_grid
-    showEnhancedGridPoints(q,rads,r_proxy,cent_clust_cells,acc_cells, ...
+    showEnhancedGridPoints(q,rad,r_proxy,cent_clust_cells,acc_cells, ...
         coll_clust_cells,clust_pairs,coll_pairs,pairs);
 end
 end
@@ -120,11 +120,11 @@ function getEnhancedGrid_selftest()
 % Self-test for three particles with uniform proxy circles
 P = 3;
 q = [0; 2.1; 1.05 + 1.8i];
-opt.rads = ones(P,1);
+opt.rad = ones(P,1);
 opt.Nclust = 100;
-opt.beta = 0.5;
+opt.beta = 0.3;
 opt.r_proxy = 0.7;
-opt.delta_pair = 0.5;
+opt.delta_pair = 0.2;
 opt.visualise_grid = true;
 
 [cent_clust_cells, acc_cells, coll_clust_cells, clust_pairs, coll_pairs, pairs] = getEnhancedGrid(q, opt);
@@ -150,7 +150,7 @@ axis equal; grid on;
 legend('proxy boundaries','centers','accumulation points','clustered centers','clustered collocation','Location','best');
 end
 
-function showEnhancedGridPoints(q,rads,r_proxy,cent_clust_cells,acc_cells, ...
+function showEnhancedGridPoints(q,rad,r_proxy,cent_clust_cells,acc_cells, ...
     coll_clust_cells,clust_pairs,coll_pairs,pairs)
 %SHOWENHANCEDGRIDPOINTS Plot all node families used in getEnhancedGrid.
 
@@ -161,7 +161,7 @@ figure('Name','getEnhancedGrid points');
 hold on;
 
 for k = 1:P
-    body = q(k) + rads(k)*(cos(t)+1i*sin(t));
+    body = q(k) + rad(k)*(cos(t)+1i*sin(t));
     proxy = q(k) + r_proxy*(cos(t)+1i*sin(t));
     if k == 1
         plot(real(body),imag(body),'k-','LineWidth',1.0,'DisplayName','body boundary');

@@ -1,23 +1,23 @@
-function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_mob_1B(q,F,T,rads,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
+function [UW,lambdahat,it,gmres_tol,rel_res,abs_res] = solve_mob_1B(q,F,T,rad,image,lr,visualise,gmres_tol,debug,surface_error_mode,gmres_verbose)
 %SOLVE_MOB_1B Solves a 2D Stokes mobility problem with circular particles
 % using 1-body preconditioned recompleted MFS, with a combination of source
 % types at enhancing nodes
 %
 % Syntax:
-%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_1B(q, F, T, rads, image, visualise)
+%   [UW, lambdahat, it, gmres_tol, rel_res, abs_res] = solve_mob_1B(q, F, T, rad, image, visualise)
 %
 % Inputs:
 %   q         - Vector of length P, complex-valued center coordinates for the particles
 %   F         - Px2 matrix of net force vectors (columns: x and y components)
 %   T         - Px1 column vector of torques acting on the particles
-%   rads      - Px1 vector of particle radii
+%   rad      - Px1 vector of particle radii
 %   image     - Logical flag (true/false): use image system for higher accuracy
 %   lr        - 0,1,2,..: sets use of long-range preconditioning. If false, no
 %               lr precond. lr > 1 determines the coarse space.
 %   visualise - Logical flag: plot the configuration and solution details
 %   gmres_tol - Optional GMRES tolerance (default 1e-10)
-%   debug     - Optional logical flag: build/draw dense matrix CC and its
-%               eigenvalues (default false)
+%   debug     - build/plot/investigate system matrix corresponding to
+%               matvec.
 %   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
 %               or 'rel'
 %
@@ -43,7 +43,7 @@ if nargin==0, test_solve_mob;
     return; end
 
 P = length(q);
-if nargin < 4 || isempty(rads), rads = ones(P,1); end
+if nargin < 4 || isempty(rad), rad = ones(P,1); end
 if nargin < 5 || isempty(image), image = 1; end
 if nargin < 6 || isempty(lr), lr = 0; end
 if nargin < 7 || isempty(visualise), visualise = 0; end
@@ -63,7 +63,7 @@ assert(size(T,1)==P,'Wrong size of torque vector')
 assert(size(F,1)==P,'Wrong size of force vector')
 assert(size(F,2)==2,'Wrong size of force vector, should contain x y coordinates')
 
-if sum(rads)~=P
+if sum(rad)~=P
     warning('Double check radii') %in the design of image and collocation points, it's assumed all radii are 1.
 end
 
@@ -79,7 +79,7 @@ fprintf('==== START: %s ====\n', solver_name);
 
 project_proxy = 1; %version of the algorithm project_proxy = 0 corresponds to the version where also image points are projected
 
-opt = get2Dparams(); 
+opt = get2Dparams(P); 
 opt.gmres_verbose = gmres_verbose;
 
 %Params to set Rp and grid resolution, based on heuristic relationship from
@@ -87,7 +87,6 @@ opt.gmres_verbose = gmres_verbose;
 a = opt.a_c; 
 opt.image = image;
 opt.lr = lr; 
-opt.P = P; 
 
 if image
     Nc = 60; %has been 60 all the time before
@@ -126,7 +125,7 @@ opt.s = s;
 %% GET GRIDS AND VISUALISE
 
 %create grids
-[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rads,opt); 
+[rout,rin,rimage,nimage,pair_points] = get2DImageGrid(q,rad,opt); 
 
  
 if visualise
@@ -151,7 +150,7 @@ rcheck_b = [];
 n_bound = 803;
 for k = 1:length(q)
     t = linspace(0,2*pi,n_bound)';
-    rcheck_b = [rcheck_b; q(k)+rads(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% PREPARE PRECONDITIONING AND RHS
@@ -236,10 +235,10 @@ disp(' == Solving... == ');
 if opt.lr && solve
     disp('...Solving for fine component...')
     Pf = applyPmat_mob(u,rin,rout,L{1},Lr,Sinv,Zi,Yi,opt); 
-    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) lr_matvec_2D_mobility(x,rin,rout,rimage,nimage,q,UU,Y,L,Lr,pair_points,s,Sinv,Zi,Yi,opt),Pf,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 elseif solve
-    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,opt,rout);
+    [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
 % Decay of residual with iteration number
 figure()
@@ -430,14 +429,14 @@ images = 0; %images not needed for well separated particles
 q = [0; 2.01]; %center coordinates
 F = [1 0; 0 0]; %forces on the particles
 T = [1; 1]; %torques on the particles
-rads = [1; 1]; 
+rad = [1; 1]; 
 visualise = 1; 
 lr = 0; %long range preconditioning
-[UW,lambda_mob,it,gmres_tol,err] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW,lambda_mob,it,gmres_tol,err] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 %compare to a solution with image enhancement
 images = 1; 
-[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW_im,lambda_mob,it,gmres_tol,err_im] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 str = sprintf('Relative residual with image enhancement: %1.2e vs without: %1.2e',err_im,err);
 disp(str)

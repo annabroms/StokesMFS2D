@@ -1,4 +1,4 @@
-function [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q, F, T, delta_pair, visualise, gmres_tol, debug, surface_error_mode, gmres_verbose)
+function [UW,sol] = solve_mob_2B_enhanced(q,F,T,opt)
 %SOLVE_MOB_PRECOND_ENHANCED Solves a 2D Stokes mobility problem with circular
 %particles using a 2-body preconditioned recompleted MFS formulation. To resolve
 % challenging close interactions, a fine 2-body BVP is solved for fine
@@ -6,27 +6,22 @@ function [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q
 % correct the representation obtained from a coarse grid, effectively preconditioning the system.
 %
 % Syntax:
-%   [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q, F, T, delta_pair, visualise)
+%   [UW,sol] = solve_mob_2B_enhanced(q,F,T,opt)
 %
 % Inputs:
 %   q          - Vector of length P, complex-valued center coordinates for the particles
 %   F          - Px2 matrix of net force vectors (columns: x and y components)
 %   T          - Px1 column vector of torques acting on the particles
-%   delta_pair - Scalar threshold used to determine which particle pairs are considered close. For such pairs, a fine BVP is solved locally (a pair correction is built).
-%   visualise  - Logical flag: plot the configuration and solution details
-%   gmres_tol  - Optional GMRES tolerance (default 1e-10)
-%   debug      - Optional logical flag: build/draw dense matrix CC and its
-%                eigenvalues (default false)
-%   surface_error_mode - Optional boundary-error plot mode: 'abs' (default)
-%                or 'rel'
+%   opt        - Options struct. Common fields:
+%                delta_pair, visualise, gmres_tol,opt.gmres_verbose,
+%                surface_error_mode, use_fmm, N_c, N_f, a_c, a_f, tol_c.
+%       debug    build/plot/investigate system matrix corresponding to
+%                matvec.
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
-%   lambda     - Solution vector of source strengths
-%   it         - Number of GMRES iterations required
-%   gmres_tol  - Set GMRES tolerance
-%   rel_res    - Maximum relative residual in a test (non-collocation) set of boundary nodes
-%   abs_res    - Maximum absolute residual in a test (non-collocation) set of boundary nodes
+%   sol        - Struct with fields:
+%                lambda, it, gmres_tol, rel_res, abs_res, resvec.
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
@@ -45,86 +40,55 @@ function [UW, lambda, it, gmres_tol, rel_res, abs_res] = solve_mob_2B_enhanced(q
 %
 % To test: Call without arguments.
 %
-% Anna Broms, Feb12, 2026
+% Anna Broms, Mar 2026
 
 if nargin==0, test_solve_mob; 
     return; end
 
-if nargin < 5 || isempty(visualise), visualise = 0; end
-if nargin < 6 || isempty(gmres_tol), gmres_tol = 1e-10; end
-if nargin < 7 || isempty(debug), debug = false; end
-if nargin < 8 || isempty(surface_error_mode), surface_error_mode = 'abs'; end
-if nargin < 9 || isempty(gmres_verbose), gmres_verbose = 0; end
+if nargin < 4 || ~isstruct(opt)
+    error('solve_mob_2B_enhanced requires q, F, T, and an options struct opt.');
+end
+
+q = q(:);
+T = T(:);
+P = numel(q);
+assert(size(F,1)==P,'F must have one row per particle.');
+assert(size(F,2)==2,'F must have two columns [Fx, Fy].');
+assert(numel(T)==P,'T must have one entry per particle.');
+
+visualise = logical(getOptField(opt,'visualise',0));
+gmres_tol = getOptField(opt,'gmres_tol',1e-10);
+debug = logical(getOptField(opt,'debug',false));
+surface_error_mode = getOptField(opt,'surface_error_mode','abs');
+gmres_verbose = getOptField(opt,'gmres_verbose',0);
+maxit = getOptField(opt,'maxit',800);
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
 end
 
 %% SET PARAMS
-%GMRES params
-maxit = 800; 
-
 if ~exist('solver_name','var') || isempty(solver_name)
     solver_name = mfilename;
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-%Grid params
-P = length(q); 
-
-opt = get2Dparams();
-opt.P = P; 
+opt.P = P;
 opt.gmres_verbose = gmres_verbose;
-
-%Set coarse and fine grid. 
-%Play with N_c, N_f, a (a_f). 
-N_c = 150;  %100 better here? 
-%N_c = 60; 
-%N_c = 100;  
-N_f = 150; 
+opt.visualise = visualise;
 
 
-a_c = 1.2;
-%a_c = 1; 
-
- 
-a_f = 1.2; %upsampling factor for the fine grid
-%a_f = 5;  
-
-tol_c = 1e-12; %I think this works reasonably
-%tol_c = 1e-8; %Curve moves closer to the surface -> smaller coeff and 
-% smoother coarse 1-body basis to evaluate on neighbour
-%tol_c = 1e-16; %Curve moves further from surface -> larger coeff. 
+%Params for coarse and fine grid. 
+N_c = getOptField(opt,'N_c',150);
+N_f = getOptField(opt,'N_f',150);
+a_c = getOptField(opt,'a_c',1.2);
+tol_c = getOptField(opt,'tol_c',1e-12);
 
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = max([1-sep_c,0.01]); %radius of proxy surface for coarse grid
-Rp_f = max([1-sep_f,0.01]);  % and fine grid
-%Rp_f = Rp_c; %debug
-
-%accumulation point, given Rp and delta. Closed formula from fixed point of reflection formula
-accstop = (1-Rp_c)^2/Rp_c;  
-
-if nargin < 4 || isempty(delta_pair)
-    delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
-end
-
-
-opt.Rp_c = Rp_c;
-opt.Rp_f = Rp_f;
-opt.a_c = a_c; 
-opt.a_f = a_f; 
-opt.N_c = N_c;
-opt.N_f = N_f; 
-opt.N_peanut = 0;
-opt.precomp = 1; %faster if evaluation of one body basis on fine grid is compted only once. 
-% %Less storage required.
-opt.pc = 1; %prepare grid to do pair corrections
-opt.delta_pair = delta_pair; 
-opt.Nclust = 100;
-opt.use_cached_pair_transform = false; % set true to use getMobPairTransformationStokesCached
-
+Rp_c = getOptField(opt,'Rp_c',max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',max([1-sep_f,0.01]));
 
 %% CREATE GRID
 %Outer basic grid
@@ -196,14 +160,9 @@ end
 rimage_in = []; 
 [U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
 
-%Kf = getKmat2D(rbase_in_f,0); % Kf' maps force density to net force and torque
-%Lf = Kf*((Kf'*Kf)\Kf'); %Projects onto the range of the constraint matrix Kf'
-
-%Get pair basis
-%opt.project_pair = true;
-%[Upf,Ypf,~,~,~,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);
 %Get pair basis
 opt.project_pair = true;
+opt.N_peanut = 0; %no peanut compression here!
 [Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
 
 geom = struct();
@@ -227,7 +186,7 @@ basis.Ypf = Ypf;
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
 %warning('Deactivate opt.precomp');
-%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rads)
+%viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,Lc{1},Lf,N_c,N_f,a_c,a_f,rad)
 
 %checkOneBasis(rbase_in_c,U,Y,Lc{1},N_c,a_c)
 %% Construct check boundaries
@@ -391,7 +350,7 @@ if debug
 end
 
 disp(' == Solving... == ');
-[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt,rout);
+[tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 plot_gmres = true; 
 
 %Modify to build with krylov preconditioning
@@ -584,6 +543,14 @@ if visualise
     
 end
 
+sol = struct();
+sol.lambda = lambda;
+sol.it = it;
+sol.gmres_tol = gmres_tol;
+sol.rel_res = rel_res;
+sol.abs_res = abs_res;
+sol.resvec = resvec;
+
 end
 
 
@@ -723,7 +690,7 @@ q = [0; 2+delta; x+1i*y];
 
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
-rads = [1; 1; 1]; 
+rad = [1; 1; 1]; 
 
 
 
@@ -731,21 +698,27 @@ rads = [1; 1; 1];
 %q = [0; 2+delta; 6];
 % F = F(1:2,:); 
 % T = T(1:2); 
-% rads = [1;1]; 
+% rad = [1;1]; 
 
 visualise = 1; 
 images = 1; 
 delta_pair = 0.5; 
 lr= 0; 
-[UW1,lambda_1,it1,~,err1] = solve_mob_1B(q,F,T,rads,images, lr, visualise);
+[UW1,lambda_1,it1,~,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 %compare to a solution with image enhancement
 gmres_tol = 1e-8;
 debug = 0; 
-[UW2,lambda_2,it2,~,err2] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise,gmres_tol,debug);
+opt = get2Dparams(length(q));
+opt.delta_pair = delta_pair;
+opt.visualise = visualise;
+opt.gmres_tol = gmres_tol;
+opt.debug = debug;
+opt.surface_error_mode = 'rel';
+[UW2,sol2] = solve_mob_2B_enhanced(q,F,T,opt);
 
-
-str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
+str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp %u iterations', ...
+    err1,sol2.rel_res,it1,sol2.it);
 disp(str)
 rel_diff_UW = norm(UW1(:)-UW2(:))/max(norm(UW1(:)),eps);
 fprintf('Relative difference between UW1 and UW2: %1.2e\n', rel_diff_UW);

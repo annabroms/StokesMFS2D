@@ -121,13 +121,13 @@ for pair_row = 1:size(pairs,1)
 
     if ~precomp
         % Read off coarse grid contribution on the other particle's fine grid.
-        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);
+        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);
         [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
             real(rout_fine_other2),imag(rout_fine_other2),lambda_coarse_i(1:end/2),...
             lambda_coarse_i(end/2+1:end),opt.N_c);
         R2 = -[udirect; vdirect];
 
-        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);
+        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);
         [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
             real(rout_fine_other1),imag(rout_fine_other1),lambda_coarse_p2(1:end/2),...
             lambda_coarse_p2(end/2+1:end),opt.N_c);

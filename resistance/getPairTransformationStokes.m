@@ -102,13 +102,13 @@ for pair_row = 1:size(pairs,1)
     e_ind2_y = 4*N_f+3*im_nr+1:4*N_f+4*im_nr;
 
     if ~precomp
-        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,i,p2);
+        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);
         [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
             real(rout_fine_other2),imag(rout_fine_other2),...
             lambda_i(1:N_coarse),lambda_i(N_coarse+1:2*N_coarse),N_coarse);
         R2 = -[u2; v2];
 
-        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rads,refine,q,p2,i);
+        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);
         [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
             real(rout_fine_other1),imag(rout_fine_other1),...
             lambda_p2(1:N_coarse),lambda_p2(N_coarse+1:2*N_coarse),N_coarse);
