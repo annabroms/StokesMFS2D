@@ -84,6 +84,7 @@ opt.gmres_verbose = gmres_verbose;
 N_c = getOptField(opt,'N_c',80);
 N_f = getOptField(opt,'N_f',150);
 a_c = getOptField(opt,'a_c',1.2);
+a_f = getOptField(opt,'a_f',1.2);
 
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
@@ -105,6 +106,10 @@ tin_f = linspace(0,2*pi,N_f+1)';
 tin_f = tin_f(1:end-1);
 rbase_in_f = Rp_f*(cos(tin_f)+1i*sin(tin_f));
 
+tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1)';
+tout_f = tout_f(1:end-1);
+rout_base_f = R*(cos(tout_f)+1i*sin(tout_f));
+
 rout = zeros(P*nout,1);
 for k = 1:P
     rout((k-1)*nout+1:k*nout) = q(k)+rbase_out_c;
@@ -113,7 +118,7 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Basis factors
-[Upf,Ypf,~,~,~] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[Upf,Ypf,~,~,~,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout]);
 
 geom = struct();
@@ -125,12 +130,14 @@ geom.rvec_out = rout;
 geom.q = q;
 geom.pairs = pairs;
 geom.rimage_vec = rimage_vec;
+geom.pair_cache = pair_cache;
 
 basis = struct();
 basis.U = UU;
 basis.Y = YY;
 basis.Upf = Upf;
 basis.Ypf = Ypf;
+basis.pair_cache = pair_cache;
 
 %% RHS
 fout = zeros(P*nout,1);

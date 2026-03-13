@@ -1,8 +1,9 @@
-function opt = getLaplace2Dparams(P,R)
+function opt = getLaplace2Dparams(P,R,N_c)
 %GETLAPLACE2DPARAMS Default parameters for scalar Laplace MFS in 2D.
 %
 % Input: P - number of particles.
 %        R - physical particle radius
+%        N_c - Number of proxy points per particle
 %
 % See also: solve_cap_1B, solve_cap_2B, solve_cap_peanut.
 %
@@ -11,7 +12,9 @@ function opt = getLaplace2Dparams(P,R)
 % Discretisation parameters, basic discretisation:
 opt.rad = R;
 opt.P = P; 
-N_c = 80;
+if nargin<3
+    N_c = 80;
+end
 opt.N_c = N_c;
 opt.a_c = 1.2;
 tol = 1e-12;
@@ -38,6 +41,8 @@ opt.show_counter = 1; % show progress for pre-computation step for all pairs
 opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
+opt.reuse_pair_basis_by_sep = false; % build one canonical x-axis pair basis per repeated separation
+opt.shared_sep_tol = 1e-12*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 
 % Solver and postprocessing control fields:
 opt.use_fmm = true;

@@ -83,6 +83,7 @@ opt.gmres_verbose = gmres_verbose;
 N_c = getOptField(opt,'N_c',80); %coarse proxy sources per body
 N_f = getOptField(opt,'N_f',150); %fine proxy sources per body (used to construct pair corrections only)
 a_c = getOptField(opt,'a_c',1.2); %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
+a_f = getOptField(opt,'a_f',1.2);
 
 % Set radii for proxy points (see Stein & Barnett 2022 for discussion on how to choose these)
 tol_c = 1e-10;
@@ -107,6 +108,10 @@ tin_f = linspace(0,2*pi,N_f+1)';
 tin_f = tin_f(1:end-1);
 rbase_in_f = Rp_f*(cos(tin_f)+1i*sin(tin_f));
 
+tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1)';
+tout_f = tout_f(1:end-1);
+rout_base_f = rad*(cos(tout_f)+1i*sin(tout_f));
+
 rvec_in_c = zeros(P*N_c,1);
 rout = zeros(P*nout,1);
 coarse_source_ind = cell(P,1);
@@ -120,7 +125,7 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Get 1- and 2-body basis functions
-[UB_all,YB_all,UC_all,YC_all,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout],true);
 
 geom = struct();
@@ -134,6 +139,7 @@ geom.q = q;
 geom.pairs = pairs;
 geom.rimage_vec = rimage_vec;
 geom.rvec_in = rvec_in_c;
+geom.pair_cache = pair_cache;
 
 basis = struct();
 basis.U = UU;
@@ -143,6 +149,7 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
+basis.pair_cache = pair_cache;
 
 %% Get rhs based on "completion flow"
 [lambda0_c,u_rhs] = getChargeCompletionFlowLaplace(rvec_in_c,rout,coarse_source_ind,Q_body,use_fmm);
@@ -259,7 +266,7 @@ opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
 opt.N_peanut = 400; % nodes on peanut separation surface
 opt.gmres_tol = 1e-10;
 opt.compress_cmap = 1; %use low rank approximation of coarse-coarse map
-opt.cmap_tol = 1e-8; 
+opt.cmap_tol = 1e-6; 
 
 %% Solve
 [vp,solp] = solve_elast_peanut(q,Q_body,opt);

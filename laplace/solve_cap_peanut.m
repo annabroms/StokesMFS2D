@@ -84,6 +84,7 @@ opt.gmres_verbose = gmres_verbose;
 N_c = getOptField(opt,'N_c',80);
 N_f = getOptField(opt,'N_f',150);
 a_c = getOptField(opt,'a_c',1.2);
+a_f = getOptField(opt,'a_f',1.2);
 
 tol_c = 1e-10;
 sep_c = (1/N_c)*log(1/tol_c);
@@ -105,6 +106,10 @@ tin_f = linspace(0,2*pi,N_f+1)';
 tin_f = tin_f(1:end-1);
 rbase_in_f = Rp_f*(cos(tin_f)+1i*sin(tin_f));
 
+tout_f = linspace(0,2*pi,ceil(a_f*N_f)+1)';
+tout_f = tout_f(1:end-1);
+rout_base_f = R*(cos(tout_f)+1i*sin(tout_f));
+
 rvec_in_c = zeros(P*N_c,1);
 rout = zeros(P*nout,1);
 for k = 1:P
@@ -115,7 +120,7 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Basis factors
-[UB_all,YB_all,UC_all,YC_all,Cmap] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout]);
 
 geom = struct();
@@ -129,6 +134,7 @@ geom.q = q;
 geom.pairs = pairs;
 geom.rimage_vec = rimage_vec;
 geom.rvec_in = rvec_in_c;
+geom.pair_cache = pair_cache;
 
 basis = struct();
 basis.U = UU;
@@ -138,6 +144,7 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
+basis.pair_cache = pair_cache;
 
 %% RHS
 fout = zeros(P*nout,1);
@@ -236,32 +243,45 @@ close all;
 % Set geometry and data
 R = 2;
 P = 2;
-delta = 1e-2;
+delta = 1e-3;
 %q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
 mode = 10; 
-mode = 2; 
+%mode = 2; 
 q = hexagonal_lattice(delta,mode,R);
 P = length(q); 
 v_body = -1+2*rand(P,1);
+check_multi_compress = 0; 
 
 % Set parameters and settings
-opt = getLaplace2Dparams(P,R);
-delta_pair = 0.2;
-N_peanut = 400;
-opt.delta_pair = delta_pair;
-opt.N_peanut = N_peanut;
+N_c = 60; 
+opt = getLaplace2Dparams(P,R,N_c);
+opt.delta_pair = 0.2;
+opt.N_peanut = 400;
 opt.visualise_sol = 1;
+opt.visualise_grid = 1; 
 opt.gmres_tol = 1e-10;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
-opt.compress_cmap = 1; %use low rank approximation of coarse-coarse map
+opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-8; 
-
+opt.reuse_pair_basis_by_sep = 1; 
+tic
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
+t_one = toc;
 opt.visualise_sol = 0;
+opt.reuse_pair_basis_by_sep = 0; 
+if check_multi_compress
+  %  tic 
+    [Qp2,solp2] = solve_cap_peanut(q,v_body,opt);
+   % t_recomp = toc;
+    fprintf('Peanut solution times: one pair=%1.2d s, multipair=%1.2d s, iters: %u vs %u, soldiff: %1.2d\n',t_one,...
+        t_recomp,solp.it,solp2.it,norm(norm(Qp-Qp2)/max(1,norm(Qp2))));
+else
+%    fprintf('Solved and postprocessed in %1.2d s\n',t_one);
+end
 [Q2,sol2] = solve_cap_2B(q,v_body,opt);
 itp = solp.it;
 resp = solp.maxres;

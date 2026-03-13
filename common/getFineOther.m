@@ -32,8 +32,13 @@ t = linspace(0,2*pi,nout+1);
 t = t(1:end-1)';
 rout_base = rad*(cos(t)+1i*sin(t));
 
-t2 = refine{p2,i}; %get parameterisation of the clustered points close to contact
-fine_2 = q(p2)+rad*(cos(t2)+1i*sin(t2));
+t2 = refine{p2,i}; % clustered points or their angular parameterisation
+if ~isreal(t2)
+    fine_2 = t2(:);
+    t2 = angle(fine_2-q(p2));
+else
+    fine_2 = q(p2)+rad*(cos(t2)+1i*sin(t2));
+end
 
 rout_fine_other = [q(p2)+rout_base; fine_2];
 
