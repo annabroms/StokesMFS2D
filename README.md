@@ -27,7 +27,7 @@ Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary
   - `test_mob_res.m`: compares Stokes mobility/resistance solver families (1B, 2B, peanut), including two-way checks.
   - `test_cap_elast.m`: compares Laplace capacitance/elastance solver families (1B, 2B, peanut), including two-way checks.
 - `experiments/`
-  Some research experiments on long-range preconditioning.
+  Some research experiments, e.g. on long-range preconditioning.
 - `tools/`
   Plotting and helper routines.
 
@@ -50,10 +50,18 @@ Run the function with no input arguments, for example:
   - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
   - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
 
+### Capacitance example
+![Capacitance example on a hexagonal disk geometry](hexagonal_volt_charge.png)
+
+The figure shows prescribed body voltages and the corresponding recovered net charges for a peanut-compressed capacitance solve on a 217-disk hexagonal geometry with 600 near-contact pairs. GMRES reaches the target tolerance $10^{-8}$ in 81 iterations, and the relative boundary residual on new check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, and the full system setup and solve takes 16 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS).
+
+For comparison, a one-body preconditioned solve using the same fine discretisation as for the pair solves needs 25,998 unknowns on a 61-disk geometry, versus 14,904 unknowns for the larger peanut-compressed example. The one-body solve converges in 378 iterations to a relative boundary residual of $5.3\times 10^{-3}$.
+
+The example may be recreated by running `demo/capacitance_on_hexagonal_pack.m`, which also visualises some additional diagnostics.
+
 ## Source-type note
 - The `dev_image_based/` folders under `mobility/`, `resistance/`, and `common/` contain older and not as polished helper functions for Stokes close interaction resolution based on multiple source types.
 - Outside these `dev_image_based/` paths, the Stokes solver paths used in the main comparisons are Stokeslet-only.
-
 
 ## Dependencies
 - [fmm2d](https://github.com/flatironinstitute/fmm2d) for fast 2D kernel summation.

@@ -22,6 +22,7 @@ rvec_out = geom.rvec_out;
 rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
+is_collocation = isequal(rcheck,rvec_out);
 if isfield(opt,'use_cached_pair_transform')
     use_cached_pair_transform = opt.use_cached_pair_transform;
 else
@@ -51,9 +52,14 @@ N_f = opt.N_f;
 
 res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y);
 
-if isequal(rcheck,rvec_out)
+% Away from the collocation grid we just evaluate the recovered source
+% representation directly. The boundary-only BK' and identity terms below
+% are part of the solve operator, not the field evaluation.
+if ~is_collocation
+    return
+end
 
-    rbase_out_rel = rvec_out(1:N_large)-q(1);
+rbase_out_rel = rvec_out(1:N_large)-q(1);
 
     
     %This part is already taken care of... 
@@ -63,60 +69,55 @@ if isequal(rcheck,rvec_out)
     %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
     % end
     
-    % Add action of Lr = BK' for fine sources 
+% Add action of Lr = BK' for fine sources 
 
-    has_neigh = sort(unique(pairs(:)));
-    for i = 1:length(has_neigh)
-        k = has_neigh(i); 
+has_neigh = sort(unique(pairs(:)));
+for i = 1:length(has_neigh)
+    k = has_neigh(i); 
 
-        % Add BK' part for the uniformly sampled sources...
-        fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-        fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-        
-        bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+    % Add BK' part for the uniformly sampled sources...
+    fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+    fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
     
-        %and for the enhancing extra sources
-        if isempty(rimage_k{k})
-            bcvec_f = zeros(2*N_large,1);
-        else    
-            bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
-                tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
-        end
-    
-        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
-        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
+    bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
 
+    %and for the enhancing extra sources
+    if isempty(rimage_k{k})
+        bcvec_f = zeros(2*N_large,1);
+    else    
+        bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
+            tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
     end
 
-
-    %% Correct idenity blocks 
-    rout = rvec_out(1:N_large)-q(1);
-    rin = rbase_in_c;
-    Nii = stokSLPmat(rin,rout,mu);
-    %Nii_fine = stokSLPmat(rbase_in_f,rout,mu);
-
-    for i = 1:P
-        % Get sources on this particle from single layer evaluation.
-        tau_xy = [tau_stokes_x(coarse_ind{i}); tau_stokes_y(coarse_ind{i})];
-        
-        %Not needed to redo for all! 
-        %rout = rvec_out((i-1)*N_large+1:i*N_large,:);
-        %rin = rbase_in_c+q(i);
-    
-        %Nii = stokSLPmat(rin,rout,mu);
-        uii = Nii*tau_xy;
-
-        %subract contribution in x
-        res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2)+tau((i-1)*N_large+1:i*N_large);
-
-        %subract contribution in y
-        res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-            uii(end/2+1:end)+tau((i-1)*N_large+PM+1:i*N_large+PM);
-  
-    end
-
+    res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
+    res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
 
 end
 
+
+%% Correct idenity blocks 
+rout = rvec_out(1:N_large)-q(1);
+rin = rbase_in_c;
+Nii = stokSLPmat(rin,rout,mu);
+%Nii_fine = stokSLPmat(rbase_in_f,rout,mu);
+
+for i = 1:P
+    % Get sources on this particle from single layer evaluation.
+    tau_xy = [tau_stokes_x(coarse_ind{i}); tau_stokes_y(coarse_ind{i})];
+    
+    %Not needed to redo for all! 
+    %rout = rvec_out((i-1)*N_large+1:i*N_large,:);
+    %rin = rbase_in_c+q(i);
+
+    %Nii = stokSLPmat(rin,rout,mu);
+    uii = Nii*tau_xy;
+
+    %subract contribution in x
+    res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2)+tau((i-1)*N_large+1:i*N_large);
+
+    %subract contribution in y
+    res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
+        uii(end/2+1:end)+tau((i-1)*N_large+PM+1:i*N_large+PM);
+end
 
 end

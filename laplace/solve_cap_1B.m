@@ -221,11 +221,19 @@ q = [0; 2*R+0.01*R; 6*R+1.5i*R];
 P = numel(q);
 v_body = [1; -0.7; 0.25];
 
+mode = 8; 
+delta = 1e-3; 
+q = hexagonal_lattice(delta,mode,R);
+P = length(q);
+v_body = buildAlternatingVoltages(q,R);
+
 opt = getLaplace2Dparams(P,R);
 opt.visualise_sol = 1;
-opt.gmres_tol = 1e-10;
+opt.visualise_grid = 1; 
+opt.gmres_tol = 1e-8;
 opt.debug = 0;
 opt.use_fmm = true;
+opt.N_c = 150; 
 opt.gmres_verbose = 0;
 % Solve 
 [Q_it,sol_it] = solve_cap_1B(q,v_body,opt);

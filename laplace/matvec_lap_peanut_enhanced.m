@@ -25,7 +25,7 @@ P = numel(q);
 N_large = length(rvec_out)/P;
 
 %%  Get source strengths from data on boundary
-[lam_c,lam_self,~,~,u_corr,~,~,lam_f_nonp,lam_e_nonp] = ...
+[lam_c,lam_self,~,~,u_corr,pair_qv_nonp] = ...
     transform_lap_peanut(tau,geom,basis);
 
 %% Evaluate field
@@ -41,8 +41,7 @@ if isequal(rcheck,rvec_out)
         for ii = 1:numel(has_neigh)
             k = has_neigh(ii);
             block = (k-1)*N_large+1:k*N_large;
-            lr_pair = sum(lam_f_nonp{k}) + sum(lam_e_nonp{k});
-            res(block) = res(block) + lr_pair;
+            res(block) = res(block) + pair_qv_nonp(k);
         end
     end
     

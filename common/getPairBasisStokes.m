@@ -79,7 +79,7 @@ if N_peanut
         Yp = [];
         Cmap = cell(P);
         Cmap_FU = cell(P);
-        if opt.bndry_vel
+        if opt.get_bndry_field
             Uf = cell(P); % with cmap only needed if we do postprocessing to evaluate flow field on boundaries 
             Yf = cell(P);
         end

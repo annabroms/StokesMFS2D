@@ -186,7 +186,7 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 tic;
-[UB_all,YB_all,UC_all,YC_all,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 setup_time = toc;
 
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout],false);
@@ -217,6 +217,7 @@ basisPeanut = basis2B;
 basisPeanut.DC_all = UC_all;
 basisPeanut.YC_all = YC_all;
 basisPeanut.Cmap = Cmap;
+basisPeanut.Cmap_QV = Cmap_QV;
 
 ctx = struct();
 ctx.geom2B = geom2B;

@@ -29,6 +29,11 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse to coarse map
 %       precomp       with cmap = 0, build in rhs into stored pair factors?
+%       get_bndry_field
+%                     if true, reconstruct boundary fields/residuals in
+%                     postprocessing
+%       body_plot_font_size
+%                     base font size used in the voltage/charge subplot figure
 %
 % Outputs:
 %   Q           - Per-body unweighted sums of source strengths.
@@ -37,6 +42,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                 it           : GMRES iteration count
 %                 gmres_tol    : GMRES tolerance used
 %                 maxres       : max relative residual on independent boundary points
+%                                (NaN if opt.get_bndry_field = 0)
 %                 resvec       : GMRES convergence history
 %
 % Notes:
@@ -64,6 +70,10 @@ gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
+get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
+opt_solve = opt;
+opt_solve.get_bndry_field = false;
 
 q = q(:);
 v_body = v_body(:);
@@ -120,14 +130,14 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Basis factors
-[UB_all,YB_all,UC_all,YC_all,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout]);
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
 geom.rbase_in_f = rbase_in_f;
 geom.refine = refine;
-geom.opt = opt;
+geom.opt = opt_solve;
 geom.rvec_out = rout;
 geom.rcheck = rout;
 geom.q = q;
@@ -144,6 +154,7 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
+basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
 
 %% RHS
@@ -184,46 +195,69 @@ title('GMRES convergence capacitance peanut','interpreter','latex')
 
 disp(' == Postprocessing == ');
 %% Postprocess
-n_bound = 803;
-tb = linspace(0,2*pi,n_bound+1)';
-tb = tb(1:end-1);
-rcheck_b = zeros(P*n_bound,1);
-for k = 1:P
-    rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
-end
-
 geom_eval = geom;
-geom_eval.rcheck = rcheck_b;
-[lam_c,~,~,~,u_corr,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
+[lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
     transform_lap_peanut(tau,geom_eval,basis);
 
-u_b = lapSLPfield(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
-
-g_true = zeros(P*n_bound,1);
-for k = 1:P
-    g_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
-end
-
-maxres = max(abs(u_b-g_true))/max(1,max(abs(g_true)));
-fprintf('Max surface relative residual at new nodes %.3e\n',maxres);
-
 lambda_proxy = lam_c;
+
+if get_bndry_field
+    n_bound = 803;
+    tb = linspace(0,2*pi,n_bound+1)';
+    tb = tb(1:end-1);
+    rcheck_b = zeros(P*n_bound,1);
+    for k = 1:P
+        rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
+    end
+
+    geom_post = geom;
+    geom_post.opt = opt;
+    geom_post.rcheck = rcheck_b;
+    [lam_c,~,~,~,u_corr,~,~,~,~] = transform_lap_peanut(tau,geom_post,basis);
+
+    u_b = lapSLPfield(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
+
+    g_true = zeros(P*n_bound,1);
+    for k = 1:P
+        g_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
+    end
+
+    maxres = max(abs(u_b-g_true))/max(1,max(abs(g_true)));
+    fprintf('Max surface relative residual at new nodes %.3e\n',maxres);
+else
+    u_b = [];
+    g_true = [];
+    maxres = nan;
+    fprintf('Boundary field evaluation skipped (opt.get_bndry_field=0)\n');
+end
 
 Q = zeros(P,1);
 for k = 1:P
     idx = (k-1)*N_c+1:k*N_c;
-    Q(k) = sum(lam_self_nonp(idx)) + sum(lam_f_nonp{k}) + sum(lam_e_nonp{k});
+    if opt.cmap
+        Q(k) = sum(lam_self_nonp(idx)) + pair_qv_nonp(k);
+    else
+        Q(k) = sum(lam_self_nonp(idx)) + sum(lam_f_nonp{k}) + sum(lam_e_nonp{k});
+    end
 end
 
 if visualise_sol
-    figure();
-    plot(u_b); hold on; plot(g_true)
-    title('Boundary values: lhs vs rhs (capacitance peanut)')
+    if get_bndry_field
+        figure();
+        plot(u_b); hold on; plot(g_true)
+        title('Boundary values: lhs vs rhs (capacitance peanut)', ...
+            'Interpreter','latex')
+        set(gca,'TickLabelInterpreter','latex')
+    end
 
     figure();
     semilogy(abs(lambda_proxy))
-    title('Compressed source strengths (capacitance peanut)')
+    title('Compressed source strengths (capacitance peanut)', ...
+        'Interpreter','latex')
+    set(gca,'TickLabelInterpreter','latex')
     axis tight
+
+    plotBodyScalars(q,R,v_body,Q,body_plot_font_size);
 end
 
 sol = struct();
@@ -239,6 +273,7 @@ function test_solve_cap_peanut
 fprintf('--- solve_cap_peanut self-test ---\n');
 
 close all; 
+rng(8);
 
 % Set geometry and data
 R = 2;
@@ -247,30 +282,32 @@ delta = 1e-3;
 %q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
-mode = 10; 
+mode = 16; 
 %mode = 2; 
 q = hexagonal_lattice(delta,mode,R);
 P = length(q); 
-v_body = -1+2*rand(P,1);
+v_body = buildAlternatingVoltages(q,R);
 check_multi_compress = 0; 
 
 % Set parameters and settings
 N_c = 60; 
 opt = getLaplace2Dparams(P,R,N_c);
 opt.delta_pair = 0.2;
+opt.Nclust = 100;
 opt.N_peanut = 400;
 opt.visualise_sol = 1;
-opt.visualise_grid = 1; 
-opt.gmres_tol = 1e-10;
+opt.visualise_grid =0; 
+opt.gmres_tol = 1e-8;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-8; 
 opt.reuse_pair_basis_by_sep = 1; 
-tic
+%tic
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
-t_one = toc;
+%t_one = toc;
+
 opt.visualise_sol = 0;
 opt.reuse_pair_basis_by_sep = 0; 
 if check_multi_compress
@@ -292,4 +329,99 @@ fprintf('Peanut: it=%d, maxres=%.3e\n',itp,resp);
 fprintf('2B    : it=%d, maxres=%.3e\n',it2,res2);
 fprintf('Rel diff in Q (peanut vs 2B): %.3e\n',norm(Qp-Q2)/max(1,norm(Q2)));
 
+end
+
+function plotBodyScalars(q,R,v_body,Q,font_size)
+q = q(:);
+v_body = v_body(:);
+Q = Q(:);
+P = numel(q);
+
+if nargin < 5 || isempty(font_size)
+    font_size = 14;
+end
+
+if isscalar(R)
+    rad = repmat(R,P,1);
+else
+    rad = R(:);
+end
+
+theta = linspace(0,2*pi,200);
+xmin = min(real(q)-rad);
+xmax = max(real(q)+rad);
+ymin = min(imag(q)-rad);
+ymax = max(imag(q)+rad);
+pad = 0.1*max(rad);
+
+figure();
+tiledlayout(1,2,'TileSpacing','compact','Padding','compact');
+
+vals = {v_body,Q};
+titles = {'Given body voltages','Computed net charges'};
+cbar_labels = {'Voltage','Net charge'};
+cmaps = {parula(256),blueWhiteRedMap(256)};
+
+for it = 1:2
+    ax = nexttile;
+    hold(ax,'on');
+
+    for k = 1:P
+        zk = q(k) + rad(k)*(cos(theta)+1i*sin(theta));
+        fill(ax,real(zk),imag(zk),vals{it}(k), ...
+            'EdgeColor',[0.2 0.2 0.2],'LineWidth',0.75);
+    end
+
+    axis(ax,'equal');
+    xlim(ax,[xmin-pad xmax+pad]);
+    ylim(ax,[ymin-pad ymax+pad]);
+    xlabel(ax,'$x$','Interpreter','latex');
+    ylabel(ax,'$y$','Interpreter','latex');
+    title(ax,titles{it},'Interpreter','latex');
+    box(ax,'on');
+    colormap(ax,cmaps{it});
+    ax.FontSize = font_size;
+    ax.TitleFontSizeMultiplier = 1.0;
+    ax.LabelFontSizeMultiplier = 1.0;
+    ax.TickLabelInterpreter = 'latex';
+
+    if min(vals{it}) < 0 && max(vals{it}) > 0
+        vmax = max(abs(vals{it}));
+        clim(ax,[-vmax vmax]);
+    end
+
+    c = colorbar(ax);
+    c.Label.String = cbar_labels{it};
+    c.FontSize = font_size;
+    c.Label.FontSize = font_size;
+    c.TickLabelInterpreter = 'latex';
+    c.Label.Interpreter = 'latex';
+end
+
+sgtitle('Bodywise voltages and net charges', ...
+    'FontSize',font_size,'Interpreter','latex');
+end
+
+function cmap = blueWhiteRedMap(n)
+if nargin < 1 || isempty(n)
+    n = 256;
+end
+
+x = linspace(0,1,n)';
+cmap = zeros(n,3);
+
+mid = 0.5;
+left = x <= mid;
+right = x > mid;
+
+tleft = x(left)/mid;
+tright = (x(right)-mid)/(1-mid);
+
+cmap(left,1) = tleft;
+cmap(left,2) = tleft;
+cmap(left,3) = 0.3 + 0.7*tleft;
+
+cmap(right,1) = 1.0;
+cmap(right,2) = 1.0 - 0.8*tright;
+cmap(right,3) = 1.0 - tright;
 end

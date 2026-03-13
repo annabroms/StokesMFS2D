@@ -30,8 +30,8 @@ U = basis.U;
 Y = basis.Y;
 Upf = basis.Upf;
 Ypf = basis.Ypf;
-pair_cache = get_pair_cache(geom,basis);
-use_pair_cache = ~isempty(pair_cache) && isfield(pair_cache,'enabled') && pair_cache.enabled;
+pair_cache = basis.pair_cache;
+use_pair_cache = pair_cache.enabled;
 
 if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
     project_charge = logical(opt.project_charge);
@@ -217,14 +217,4 @@ rvec_in = vertcat(r_chunks{:});
 lam_all = vertcat(l_chunks{:});
 lam_all_nonp = vertcat(l_chunks_nonp{:});
 
-end
-
-function pair_cache = get_pair_cache(geom,basis)
-if isfield(basis,'pair_cache') && ~isempty(basis.pair_cache)
-    pair_cache = basis.pair_cache;
-elseif isfield(geom,'pair_cache') && ~isempty(geom.pair_cache)
-    pair_cache = geom.pair_cache;
-else
-    pair_cache = [];
-end
 end

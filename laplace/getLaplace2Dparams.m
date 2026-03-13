@@ -42,7 +42,7 @@ opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
 opt.reuse_pair_basis_by_sep = false; % build one canonical x-axis pair basis per repeated separation
-opt.shared_sep_tol = 1e-12*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
+opt.shared_sep_tol = 1e-7*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 
 % Solver and postprocessing control fields:
 opt.use_fmm = true;
@@ -52,5 +52,6 @@ opt.project_charge = false; % false for capacitance problems, true for elastance
 opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 opt.visualise_sol = 0; % draw solution/postprocessing quantities after solve
 opt.visualise_grid = 0; % draw source and collocation points at setup stage
+opt.get_bndry_field = 1; % reconstruct/evaluate boundary fields in postprocessing?
 
 end

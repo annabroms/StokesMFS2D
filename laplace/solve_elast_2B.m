@@ -120,7 +120,7 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Get 1- and 2-body basis 
-[Upf,Ypf,~,~,~,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[Upf,Ypf,~,~,~,~,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout],true);
 
 geom = struct();
@@ -252,6 +252,8 @@ opt.delta_pair = 0.2;
 opt.gmres_tol = 1e-7;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
+opt.reuse_pair_basis_by_sep=true;
+opt.shared_sep_tol = 1e-2*delta*max(1,opt.rad);
 
 % Solve
 [v2,sol2] = solve_elast_2B(q,Q_body,opt);

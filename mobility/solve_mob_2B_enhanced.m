@@ -62,6 +62,14 @@ debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','abs');
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
+rad = getOptField(opt,'rad',1);
+if isscalar(rad)
+    rad = repmat(rad,P,1);
+else
+    rad = rad(:);
+    assert(numel(rad)==P,'opt.rad must be scalar or have one entry per particle.');
+end
+rad0 = rad(1);
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -84,15 +92,16 @@ tol_c = getOptField(opt,'tol_c',1e-12);
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = getOptField(opt,'Rp_c',max([1-sep_c,0.01]));
-Rp_f = getOptField(opt,'Rp_f',max([1-sep_f,0.01]));
+Rp_c = getOptField(opt,'Rp_c',rad0*max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',rad0*max([1-sep_f,0.01]));
+opt.rad = rad;
 
 %% CREATE GRID
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
 
-rbase_out_c = cos(tout_c)+1i*sin(tout_c);
+rbase_out_c = rad0*(cos(tout_c)+1i*sin(tout_c));
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
@@ -193,7 +202,7 @@ rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+cos(t)+1i*sin(t)];
+    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
 end
 
 %% SOLVE SYSTEM
@@ -364,19 +373,18 @@ end
 
 disp(' == Postprocessing == ');
 %% POSTPROCESS
-%[rvec_in,rimage_in,nimage_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
- %   tau_stokes_nonpx, tau_stokes_nonpy,tau_stress_x,tau_stress_y,tau_stress_all_x,tau_stress_all_y,tau_stress_all_px,tau_stress_all_py,...
- %   tau_pot_x,tau_pot_y,tau_pot_all_x,tau_pot_all_y,tau_pot_all_px,tau_pot_all_py,u_corr]
+% Recover the projected source representation and the nonprojected
+% strengths needed for rigid-body postprocessing.
 
 %warning('work to be done for postprocessing here!')
 
 if isfield(opt,'use_cached_pair_transform') && opt.use_cached_pair_transform
-    [~,~,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
+    [rvec_in,~,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
         getMobPairTransformationStokesCached(tau,geom,basis);
 else
-    [~,~,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k, u_corr] = ...
+    [rvec_in,~,tau_stokes_x,tau_stokes_y, ...
+        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
         getMobPairTransformationStokes(tau,geom,basis);
 end
 
@@ -421,9 +429,8 @@ for k = 1:P
     u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
 end
 
-%Using representation
-geom.rcheck = rcheck_b;
-u_rhs = matvec_mob_2B_enhanced(tau,geom,basis);
+% Using the recovered fine/coarse source representation directly.
+u_rhs = getVelocityField(rvec_in,rcheck_b,tau_stokes_x,tau_stokes_y);
 
 S_0 = getRecompletionFlow(rin,rcheck_b,q,F,T); 
 u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
@@ -441,7 +448,7 @@ u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion f
 
 disp('Surface residual')
 diff_vec = u_rhs-u_lhs;
-max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
+max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
 res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
 abs_res = max(res);
 if max_abs > 0
@@ -551,128 +558,6 @@ sol.resvec = resvec;
 end
 
 
-%Old stuff from resistance
-
-
-function doPairBasisTest(Upf,Ypf,i,p2,q,U,Y,rbase_in_c,rbase_out_f,rpair_fine)
-%Test pair basis with a smooth coarse density
-warning('Check consistency with the matvec! NOT in use')
-        mu = 1; 
-
-        %generate density
-        t = linspace(0,2*pi,ceil(1.2*size(rbase_in_c,1))+1);
-        t = t(1:end-1)';
-        tau_1 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
-        tau_2 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
-
-        tau_p1_x = real(tau_1);
-        tau_p1_y = imag(tau_1); 
-        tau_p2_x = real(tau_2);
-        tau_p2_y = imag(tau_2);
-
-        figure()
-        plot(tau_p1_x);
-        hold on
-        plot(tau_p1_y);
-        plot(tau_p2_x);
-        plot(tau_p2_y);
-
-        %Get A1:
-        step1 = U{i}'*[tau_p1_x;tau_p1_y]; %here I assume x and y follow each other?
-        tau_mapped = Y{i}*step1;
-        Nother = stokSLPmat(rbase_in_c+q(i),rbase_out_f+q(p2),mu);
-        R1 = -Nother*tau_mapped; %not correct. Should read off on particle 2
-        block = R1(1:end/2);
-    
-        A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)]; 
-        %A1 = [tau_particle_x; zeros(size(tau_particle_x)); tau_particle_y; zeros(size(tau_particle_x))];
-        pair_mapped = Upf{i,p2}'*A2;
-
-        %pair_mapped2 = Upf{i,p2}'*A2;
-        tau_mapped = Ypf{i,p2}*pair_mapped;
-
-        %Get A2
-        step1 = U{p2}'*[tau_p2_x;tau_p2_y]; %here I assume x and y follow each other?
-        mapped = Y{p2}*step1;
-        Nother = stokSLPmat(rbase_in_c+q(p2),rbase_out_f+q(i),mu);
-        R1 = -Nother*mapped;
-        block = R1(1:end/2);
-        A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
-        %A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)];            
-        %A2 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
-        pair_mapped = Upf{i,p2}'*A1;
-        tau_mapped2 = Ypf{i,p2}*pair_mapped;
-
-        tau_tot = tau_mapped+tau_mapped2; 
-
-        %Now apply. Want to compute what this is exterior to the two
-        %particles in the pair
-        x = linspace(-2,5);
-        y = linspace(-2,5);
-        [X,Y] = meshgrid(x,y); 
-        rcheck = X(:)+1i*Y(:);
-        ind1 = find(abs(rcheck-q(i))<1);
-        ind2 = find(abs(rcheck-q(p2))<1);
-        ind_keep_1 = setdiff(1:size(rcheck,1),ind1);
-        ind_keep_2 = setdiff(ind_keep_1,ind2);
-        %rcheck = rcheck(ind_keep_2);
-
-        Npair = stokSLPmat(rpair_fine,rcheck,mu);
-        ucheck = Npair*tau_tot;
-      %  ucheck(ind1) =  nan;
-      %  ucheck(ind2) = nan; 
-        ucheck = ucheck(1:end/2)+1i*ucheck(end/2+1:end);
-        ucheck(ind1) = nan;
-        ucheck(ind2) = nan;
-
-
-        figure()
-        surfir(real(rcheck),imag(rcheck),abs(ucheck));
-        colorbar
-        axis equal
-        hold on
-        plot(real(q),imag(q),'k+')
-        view(0,90);
-
-        figure()
-        surfir(real(rcheck),imag(rcheck),log10(abs(ucheck)));
-        colorbar
-        axis equal
-        hold on
-        plot(real(q),imag(q),'k+')
-        view(0,90);
-
-        %Also, compute residuals from the solve steps above.
-        %ucheck is the velocity computed with the pair basis?
-        Npair = stokSLPmat(rpair_fine,[rbase_out_f+q(i); rbase_out_f+q(p2)],mu);
-        ulhs = Npair*tau_mapped;
-        urhs = A2;
-
-        ulhs2 = Npair*tau_mapped2;
-        urhs2 = A1;
-
-        norm(ulhs-A2,inf) %seems pretty accurate... 
-        norm(ulhs2-A1,inf)
-
-%         figure(10)
-%         clf;
-%         plot((A1(1:end/4)-ulhs2(1:end/4))./A1(1:end/4))
-%         hold on
-%         plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4))./A1(end/2+1:3*end/4))
-%         plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2))./A2(end/4+1:end/2))
-%         plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end))./A2(3*end/4+1:end))
-
-        figure(10)
-        clf;
-        plot((A1(1:end/4)-ulhs2(1:end/4)))
-        hold on
-        plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4)))
-        plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2)))
-        plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end)))
-
-
-end
-
 function test_solve_mob
 
 close all;
@@ -714,6 +599,11 @@ opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
+
+% is this a way to debug?
+% opt.N_peanut = 0;%  
+% opt.cmap = 0; 
+% [UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt);
 [UW2,sol2] = solve_mob_2B_enhanced(q,F,T,opt);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp %u iterations', ...

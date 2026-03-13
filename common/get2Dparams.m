@@ -39,6 +39,6 @@ opt.precomp = 1; % Store evaluation of onebody field from precomputation
 opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 opt.visualise_sol = 0; % plot postprocessing diagnostics
 opt.visualise_grid = 0; % plot source/collocation grids during setup
-opt.bndry_vel = 1; % determine velocity on the boundary in post-processing?
+opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing?
 
 end

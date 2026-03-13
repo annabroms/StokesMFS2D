@@ -8,14 +8,15 @@ function u = lapSLPfield(rsrc,rtar,sigma,use_fmm)
 %   rsrc    - Complex valued array of source locations.
 %   rtar    - Complex valued array of target locations.
 %   sigma   - Source strengths, size numel(rsrc) x nd.
-%   use_fmm - Logical flag. If true, use fmm2d (of flatiron) when available, otherwise fall back to direct summation.
+%   use_fmm - Logical flag. If true, use fmm2d (of flatiron) when available,
+%             otherwise use the compiled direct evaluator r2ddir.
 %
 % Output:
 %   u       - Potential values at targets, size numel(rtar) x nd.
 %
 % Self-test:
 %   lapSLPfield()
-%   Compares fmm2d output to loop-based direct summation.
+%   Compares fmm2d output to compiled direct summation.
 %
 % See also: lapSLPdirect, lapSLPmat.
 %
@@ -42,7 +43,15 @@ end
 assert(size(sigma,1)==ns,'sigma must have one row per source location.');
 
 if ~use_fmm
-    u = lapSLPdirect(rsrc,rtar,sigma);
+    srcinfo = struct();
+    srcinfo.sources = [real(rsrc)'; imag(rsrc)'];
+    srcinfo.nd = size(sigma,2);
+    srcinfo.charges = (-sigma.')/(2*pi);
+
+    targ = [real(rtar)'; imag(rtar)'];
+    U = r2ddir(srcinfo,targ,1);
+    u = U.pottarg.';
+    % u = lapSLPdirect(rsrc,rtar,sigma); % direct summation, for testing
     return
 end
 

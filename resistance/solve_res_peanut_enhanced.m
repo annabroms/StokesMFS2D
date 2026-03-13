@@ -36,7 +36,8 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       visualise_sol show diagnostic plots in postprocessing
 %       use_fmm       use FMM-accelerated Stokeslet evaluation in field
 %                     evaluation paths that support it
-%       bndry_vel     if true, evaluate and report boundary velocity residuals
+%       get_bndry_field
+%                     if true, evaluate and report boundary velocity residuals
 %       cmap          if true, use coarse-to-coarse pair map for FT updates
 %
 % Outputs:
@@ -222,7 +223,7 @@ end
 disp(' == Postprocessing == ');
 %% Reconstruct sources. If the boundary velocities on each disc is sought, the fine sources are needed
 
-if opt.bndry_vel
+if opt.get_bndry_field
     % Create new grid points, for which the accuracy of the solution is
     % to be evaluated. 
     rcheck_b = [];
@@ -306,7 +307,7 @@ end
 
 if visualise_sol
 
-    if opt.bndry_vel
+    if opt.get_bndry_field
         figure()
         plot(ftest_b)
         hold on

@@ -1,8 +1,8 @@
-function [Uf,Yf,Up,Yp,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
 %GETPAIRBASISLAPLACE Build pair-basis pseudoinverse factors for Laplace.
 %
 % Syntax:
-%   [Uf,Yf,Up,Yp,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
 %
 % See also: getPairBlockLaplace, getPeanutBlockLaplace, ...
 %   evaluateCoarseOnPairLaplace, getPairTransformationLaplace.
@@ -36,18 +36,28 @@ if reuse_pair_basis
     Up = [];
     Yp = [];
     Cmap = [];
+    Cmap_QV = [];
 else
     Uf = cell(P);
     Yf = cell(P);
 
     if N_peanut
-        Up = cell(P);
-        Yp = cell(P);
-        Cmap = cell(P);
+        if isfield(opt,'cmap') && opt.cmap
+            Up = [];
+            Yp = [];
+            Cmap = cell(P);
+            Cmap_QV = cell(P);
+        else
+            Up = cell(P);
+            Yp = cell(P);
+            Cmap = [];
+            Cmap_QV = [];
+        end
     else
         Up = [];
         Yp = [];
         Cmap = [];
+        Cmap_QV = [];
     end
 end
 
@@ -105,6 +115,7 @@ if ~reuse_pair_basis
 
             if isfield(opt,'cmap') && opt.cmap
                 C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
+                QV = getPairChargeSumMap(nsrc_f_i,nsrc_f_p2)*Yf_pair*Uf{i,p2};
                 if opt.compress_cmap
                     [U,S,V] = svd(C);
                     S = diag(S);
@@ -114,6 +125,7 @@ if ~reuse_pair_basis
                     C = U(:,1:ra)*diag(S)*V(:,1:ra)';
                 end
                 Cmap{i,p2} = C;
+                Cmap_QV{i,p2} = QV;
             else
                 Up{i,p2} = DC;
                 Yp{i,p2} = YC;
@@ -173,6 +185,7 @@ end
 function group = init_pair_group()
 group = struct('group_id',[],'sep',[],'q_pair',[],'rimage_canon',{{}}, ...
     'refine_canon',{{}},'Upf',[],'Ypf',[],'DC',[],'YC',[],'Cmap',[], ...
+    'Cmap_QV',[], ...
     'nout_f',[],'nsrc_f',[],'ntar_f',[],'rep_pair',[]);
 end
 
@@ -269,6 +282,7 @@ Ypf = Yf_pair;
 DC = [];
 YC = [];
 C = [];
+QV = [];
 if opt.N_peanut
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0,R);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
@@ -279,6 +293,7 @@ if opt.N_peanut
 
     if isfield(opt,'cmap') && opt.cmap
         C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
+        QV = getPairChargeSumMap(nsrc_f_i,nsrc_f_j)*Ypf*Upf;
         if opt.compress_cmap
             [U,S,V] = svd(C);
             S = diag(S);
@@ -301,10 +316,15 @@ group.Ypf = Ypf;
 group.DC = DC;
 group.YC = YC;
 group.Cmap = C;
+group.Cmap_QV = QV;
 group.nout_f = numel(rout_base_f);
 group.nsrc_f = [nsrc_f_i nsrc_f_j];
 group.ntar_f = [ntar_i ntar_j];
 group.rep_pair = [i j];
+end
+
+function Kq_pair = getPairChargeSumMap(n1,n2)
+Kq_pair = [ones(1,n1) zeros(1,n2); zeros(1,n1) ones(1,n2)];
 end
 
 function z_canon = map_points_to_canonical(z,mid,rot)

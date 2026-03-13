@@ -370,126 +370,6 @@ sol.resvec = resvec;
 end
 
 
-%OLD... ignore
-
-function doPairBasisTest(Upf,Ypf,i,p2,q,U,Y,rbase_in_c,rbase_out_f,rpair_fine)
-%Test pair basis with a smooth coarse density
-        mu = 1; 
-
-        %generate density
-        t = linspace(0,2*pi,ceil(1.2*size(rbase_in_c,1))+1);
-        t = t(1:end-1)';
-        tau_1 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
-        tau_2 = sum([exp(1i*t),exp(2*1i*t),exp(3*1i*t),exp(4*1i*t),exp(4*1i*t)]*rand(5),2);
-
-        tau_p1_x = real(tau_1);
-        tau_p1_y = imag(tau_1); 
-        tau_p2_x = real(tau_2);
-        tau_p2_y = imag(tau_2);
-
-        figure()
-        plot(tau_p1_x);
-        hold on
-        plot(tau_p1_y);
-        plot(tau_p2_x);
-        plot(tau_p2_y);
-
-        %Get A1:
-        step1 = U'*[tau_p1_x;tau_p1_y]; %here I assume x and y follow each other?
-        tau_mapped = Y*step1;
-        Nother = stokSLPmat(rbase_in_c+q(i),rbase_out_f+q(p2),mu);
-        R1 = -Nother*tau_mapped; %not correct. Should read off on particle 2
-        block = R1(1:end/2);
-    
-        A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)]; 
-        %A1 = [tau_particle_x; zeros(size(tau_particle_x)); tau_particle_y; zeros(size(tau_particle_x))];
-        pair_mapped = Upf{i,p2}'*A2;
-
-        %pair_mapped2 = Upf{i,p2}'*A2;
-        tau_mapped = Ypf{i,p2}*pair_mapped;
-
-        %Get A2
-        step1 = U{p2}'*[tau_p2_x;tau_p2_y]; %here I assume x and y follow each other?
-        mapped = Y{p2}*step1;
-        Nother = stokSLPmat(rbase_in_c+q(p2),rbase_out_f+q(i),mu);
-        R1 = -Nother*mapped;
-        block = R1(1:end/2);
-        A1 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
-        %A2 = [zeros(size(block)); block; zeros(size(block)); R1(end/2+1:end)];            
-        %A2 = [R1(1:end/2); zeros(size(block)); R1(end/2+1:end); zeros(size(block))];
-        pair_mapped = Upf{i,p2}'*A1;
-        tau_mapped2 = Ypf{i,p2}*pair_mapped;
-
-        tau_tot = tau_mapped+tau_mapped2; 
-
-        %Now apply. Want to compute what this is exterior to the two
-        %particles in the pair
-        x = linspace(-2,5);
-        y = linspace(-2,5);
-        [X,Y] = meshgrid(x,y); 
-        rcheck = X(:)+1i*Y(:);
-        ind1 = find(abs(rcheck-q(i))<1);
-        ind2 = find(abs(rcheck-q(p2))<1);
-        ind_keep_1 = setdiff(1:size(rcheck,1),ind1);
-        ind_keep_2 = setdiff(ind_keep_1,ind2);
-        %rcheck = rcheck(ind_keep_2);
-
-        Npair = stokSLPmat(rpair_fine,rcheck,mu);
-        ucheck = Npair*tau_tot;
-      %  ucheck(ind1) =  nan;
-      %  ucheck(ind2) = nan; 
-        ucheck = ucheck(1:end/2)+1i*ucheck(end/2+1:end);
-        ucheck(ind1) = nan;
-        ucheck(ind2) = nan;
-
-
-        figure()
-        surfir(real(rcheck),imag(rcheck),abs(ucheck));
-        colorbar
-        axis equal
-        hold on
-        plot(real(q),imag(q),'k+')
-        view(0,90);
-
-        figure()
-        surfir(real(rcheck),imag(rcheck),log10(abs(ucheck)));
-        colorbar
-        axis equal
-        hold on
-        plot(real(q),imag(q),'k+')
-        view(0,90);
-
-        %Also, compute residuals from the solve steps above.
-        %ucheck is the velocity computed with the pair basis?
-        Npair = stokSLPmat(rpair_fine,[rbase_out_f+q(i); rbase_out_f+q(p2)],mu);
-        ulhs = Npair*tau_mapped;
-        urhs = A2;
-
-        ulhs2 = Npair*tau_mapped2;
-        urhs2 = A1;
-
-        norm(ulhs-A2,inf) %seems pretty accurate... 
-        norm(ulhs2-A1,inf)
-
-%         figure(10)
-%         clf;
-%         plot((A1(1:end/4)-ulhs2(1:end/4))./A1(1:end/4))
-%         hold on
-%         plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4))./A1(end/2+1:3*end/4))
-%         plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2))./A2(end/4+1:end/2))
-%         plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end))./A2(3*end/4+1:end))
-
-        figure(10)
-        clf;
-        plot((A1(1:end/4)-ulhs2(1:end/4)))
-        hold on
-        plot((A1(end/2+1:3*end/4)-ulhs2(end/2+1:3*end/4)))
-        plot((A2(end/4+1:end/2)-ulhs(end/4+1:end/2)))
-        plot((A2(3*end/4+1:end)-ulhs(3*end/4+1:end)))
-
-
-end
-
 function test_solve_mob
 
 close all; 
@@ -546,6 +426,7 @@ opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
+%opt.Npeanut = 0; 
 
 [UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt); 
 % [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);

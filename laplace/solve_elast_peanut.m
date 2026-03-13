@@ -28,7 +28,10 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       precomp       pair-block precomputation mode
-%       cmap          use compressed coarse-to-coarse map    
+%       cmap          use compressed coarse-to-coarse map
+%       get_bndry_field
+%                     if true, reconstruct boundary fields/residuals in
+%                     postprocessing
 %
 % Outputs:
 %   v_body      - Recovered constant voltage values per body (P x 1).
@@ -37,6 +40,7 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                 it           : GMRES iteration count
 %                 gmres_tol    : GMRES tolerance used
 %                 maxres       : max relative equipotential residual
+%                                (NaN if opt.get_bndry_field = 0)
 %                 resvec       : GMRES convergence history
 %
 % Notes:
@@ -64,6 +68,7 @@ gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
+get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 
 q = q(:);
 Q_body = Q_body(:);
@@ -93,6 +98,8 @@ Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
 opt.project_charge = true; % always true for elastance, false for capacitance
+opt_solve = opt;
+opt_solve.get_bndry_field = false;
 
 %% Discretize
 nout = ceil(a_c*N_c);
@@ -125,14 +132,14 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Get 1- and 2-body basis functions
-[UB_all,YB_all,UC_all,YC_all,Cmap,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout],true);
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
 geom.rbase_in_f = rbase_in_f;
 geom.refine = refine;
-geom.opt = opt;
+geom.opt = opt_solve;
 geom.rvec_out = rout;
 geom.rcheck = rout;
 geom.q = q;
@@ -149,6 +156,7 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
+basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
 
 %% Get rhs based on "completion flow"
@@ -188,44 +196,58 @@ title('GMRES convergence elastance peanut','interpreter','latex')
 
 disp(' == Postprocessing == ');
 %% Postprocess 
-n_bound = 803;
-tb = linspace(0,2*pi,n_bound+1)';
-tb = tb(1:end-1);
-rcheck_b = zeros(P*n_bound,1);
-for k = 1:P
-    rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
-end
-
-%get source strenghts, given data on boundary
 geom_eval = geom;
-geom_eval.rcheck = rcheck_b;
-[lam_c,~,~,~,u_corr,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
+[lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
     transform_lap_peanut(tau,geom_eval,basis);
-
-u_b = lapSLPfield(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
-u_b = u_b+u_corr;
+lambda_proxy = lambda0_c+lam_c;
 
 v_body = zeros(P,1);
 for k = 1:P
     idx = (k-1)*N_c+1:k*N_c;
-    lambda_tot_k = [-lam_self_nonp(idx); -lam_f_nonp{k}; -lam_e_nonp{k}];
-    v_body(k) = sum(lambda_tot_k);
+    if opt.cmap
+        v_body(k) = -sum(lam_self_nonp(idx)) - pair_qv_nonp(k);
+    else
+        lambda_tot_k = [-lam_self_nonp(idx); -lam_f_nonp{k}; -lam_e_nonp{k}];
+        v_body(k) = sum(lambda_tot_k);
+    end
 end
-v_true = zeros(P*n_bound,1);
-for k = 1:P
-    v_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
+if get_bndry_field
+    n_bound = 803;
+    tb = linspace(0,2*pi,n_bound+1)';
+    tb = tb(1:end-1);
+    rcheck_b = zeros(P*n_bound,1);
+    for k = 1:P
+        rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
+    end
+
+    geom_post = geom;
+    geom_post.opt = opt;
+    geom_post.rcheck = rcheck_b;
+    [lam_c,~,~,~,u_corr,~,~,~,~] = transform_lap_peanut(tau,geom_post,basis);
+
+    u_b = lapSLPfield(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
+    u_b = u_b+u_corr;
+
+    v_true = zeros(P*n_bound,1);
+    for k = 1:P
+        v_true((k-1)*n_bound+1:k*n_bound) = v_body(k);
+    end
+    maxres = max(abs(u_b-v_true))/max(1,max(abs(v_true)));
+    fprintf('Max relative equipotential residual at new nodes %.3e\n',maxres);
+else
+    u_b = [];
+    v_true = [];
+    maxres = nan;
+    fprintf('Boundary field evaluation skipped (opt.get_bndry_field=0)\n');
 end
-maxres = max(abs(u_b-v_true))/max(1,max(abs(v_true)));
-fprintf('Max relative equipotential residual at new nodes %.3e\n',maxres);
-
-lambda_proxy = lambda0_c+lam_c;
-
 
 if visualise_sol
-    figure();
-    plot(u_b); hold on;
-    plot(v_true);
-    title('Boundary potential and per-body means (Laplace elastance peanut)')
+    if get_bndry_field
+        figure();
+        plot(u_b); hold on;
+        plot(v_true);
+        title('Boundary potential and per-body means (Laplace elastance peanut)')
+    end
 
     figure();
     semilogy(abs(lambda_proxy))

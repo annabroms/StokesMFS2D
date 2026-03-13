@@ -22,7 +22,7 @@ clc;
 rng(8);
 
 %% Configuration
-P = 20;
+P = 4;
 delta = 1e-3;                 % geometric spacing parameter
 geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
 delta_pair = 0.2;             % near-pair threshold for 2B/peanut
@@ -74,7 +74,7 @@ opt_mob.debug = debug;
 opt_mob.surface_error_mode = surface_error_mode;
 opt_mob.gmres_verbose = gmres_verbose;
 opt_mob.rad = rad(1);
-
+opt_mob.visualise_grid = 1; 
 [UW_2B,sol_mob_2B] = solve_mob_2B_enhanced(q,F_ref,T_ref,opt_mob);
 [UW_peanut,sol_mob_peanut] = solve_mob_peanut_enhanced(q,F_ref,T_ref,opt_mob);
 gmres_iter_mob_2B = sol_mob_2B.it;
@@ -116,7 +116,7 @@ printDivider('Resistance comparison (input U,W -> output F,T)');
 U_ref = randn(P,2);
 W_ref = randn(P,1);
 
-opt_res = get2Dparams();
+opt_res = get2Dparams(P);
 opt_res.rad = rad;
 opt_res.delta_pair = delta_pair;
 opt_res.N_peanut = N_peanut;
