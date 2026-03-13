@@ -51,9 +51,9 @@ Run the function with no input arguments, for example:
   - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
 
 ### Capacitance example
-![Capacitance example on a hexagonal disk geometry](hexagonal_volt_charge.png)
+![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
 
-The figure shows prescribed body voltages and the corresponding recovered net charges for a peanut-compressed capacitance solve on a 217-disk hexagonal geometry with 600 near-contact pairs. GMRES reaches the target tolerance $10^{-8}$ in 81 iterations, and the relative boundary residual on new check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, and the full system setup and solve takes 16 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS).
+The figure shows prescribed body voltages and the corresponding net charges recovered by a peanut-compressed capacitance solve on a 217-disk hexagonal geometry with 600 near-contact pairs at separation $10^{-3}$. GMRES converges to the target tolerance $10^{-8}$ in 81 iterations, and the relative boundary residual on new check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, and the combined setup and solve time is 16 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $3.7\times 10^{-7}$.
 
 For comparison, a one-body preconditioned solve using the same fine discretisation as for the pair solves needs 25,998 unknowns on a 61-disk geometry, versus 14,904 unknowns for the larger peanut-compressed example. The one-body solve converges in 378 iterations to a relative boundary residual of $5.3\times 10^{-3}$.
 

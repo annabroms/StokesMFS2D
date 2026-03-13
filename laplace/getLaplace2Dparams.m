@@ -41,8 +41,8 @@ opt.show_counter = 1; % show progress for pre-computation step for all pairs
 opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
-opt.reuse_pair_basis_by_sep = false; % build one canonical x-axis pair basis per repeated separation
-opt.shared_sep_tol = 1e-7*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
+opt.reuse_pair_basis_by_sep = true; % build one canonical x-axis pair basis per repeated separation
+opt.shared_sep_tol = 1e-2*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 
 % Solver and postprocessing control fields:
 opt.use_fmm = true;
