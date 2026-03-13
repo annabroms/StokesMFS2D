@@ -313,14 +313,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 
     num_eigs = 5; 
     [ss,I] = maxk(abs(D),num_eigs);
@@ -427,14 +427,14 @@ if debug && lr
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC| (LR)'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix| (LR)'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
-    title([solver_name ': eigenvalues of CC (LR)'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix (LR)'],'interpreter','none')
 
     num_eigs = 5; 
     [ss,I] = maxk(abs(D),num_eigs);

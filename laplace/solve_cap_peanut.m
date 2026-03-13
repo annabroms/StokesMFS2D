@@ -7,7 +7,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   v_body     - Constant boundary values per body (P x 1).
-%   opt        - Options struct.
+%   opt        - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius
 %       N_c,N_f       coarse/fine proxy point counts
@@ -25,7 +25,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     plot postprocessing diagnostics
+%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse to coarse map
 %       precomp       with cmap = 0, build in rhs into stored pair factors?
@@ -59,7 +59,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_cap_peanut requires q, v_body, and an options struct opt.');
 end
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
@@ -90,12 +90,6 @@ sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
 Rp_c = getOptField(opt,'Rp_c',R*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',R*max([1-sep_f,0.01]));
-
-if visualise
-    opt.visualise_grid = true; 
-else
-    opt.visualise_grid = false;
-end
 
 %% Build grids
 nout = ceil(a_c*N_c);
@@ -164,14 +158,14 @@ if debug
         CC(:,k) = matvec_lap_peanut_enhanced(x,geom,basis);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
-    title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
     [V,D] = eig(CC);
     D = diag(D);
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -214,7 +208,7 @@ for k = 1:P
     Q(k) = sum(lam_self_nonp(idx)) + sum(lam_f_nonp{k}) + sum(lam_e_nonp{k});
 end
 
-if visualise
+if visualise_sol
     figure();
     plot(u_b); hold on; plot(g_true)
     title('Boundary values: lhs vs rhs (capacitance peanut)')
@@ -242,12 +236,13 @@ close all;
 % Set geometry and data
 R = 2;
 P = 2;
-delta = 1e-3;
+delta = 1e-2;
 %q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
-q = hexagonal_lattice(delta,2,R);
-%q = q(1:3); %triangle
+mode = 10; 
+mode = 2; 
+q = hexagonal_lattice(delta,mode,R);
 P = length(q); 
 v_body = -1+2*rand(P,1);
 
@@ -257,14 +252,16 @@ delta_pair = 0.2;
 N_peanut = 400;
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
-opt.visualise = 1;
-opt.gmres_tol = 1e-7;
+opt.visualise_sol = 1;
+opt.gmres_tol = 1e-10;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
+opt.compress_cmap = 1; %use low rank approximation of coarse-coarse map
+opt.cmap_tol = 1e-8; 
 
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
-opt.visualise = 0;
+opt.visualise_sol = 0;
 [Q2,sol2] = solve_cap_2B(q,v_body,opt);
 itp = solp.it;
 resp = solp.maxres;

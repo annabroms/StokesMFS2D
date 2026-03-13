@@ -14,7 +14,7 @@ function [FT,sol] = solve_res_2B_enhanced(q,U,W,opt)
 %   U          - Px2 matrix of translational velocities (columns: x and y components)
 %   W          - Px1 column vector of angular velocities
 %   opt        - Options struct. Common fields:
-%                rad, delta_pair, lr, visualise, gmres_tol,opt.gmres_verbose,
+%                rad, delta_pair, lr, visualise_sol, gmres_tol,opt.gmres_verbose,
 %                use_fmm, N_c, N_f, a_c, a_f, tol_c.
 %       debug    build/plot/investigate system matrix corresponding to
 %                matvec.
@@ -59,7 +59,7 @@ assert(size(U,1)==P,'U must have one row per particle.');
 assert(size(U,2)==2,'U must have two columns [Ux, Uy].');
 assert(numel(W)==P,'W must have one entry per particle.');
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-10);
 debug = logical(getOptField(opt,'debug',false));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
@@ -79,7 +79,6 @@ fprintf('==== START: %s ====\n', solver_name);
 
 opt.P = P;
 opt.gmres_verbose = gmres_verbose;
-opt.visualise = visualise;
 opt.use_fmm = use_fmm;
 
 
@@ -215,7 +214,7 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
 
@@ -223,7 +222,7 @@ if debug
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 
     [s,I] = mink(abs(D),3);
     Vsmall = V(:,I).*s';
@@ -412,7 +411,7 @@ rel_res = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_
 fprintf('Max surface rel residual at new nodes is %.3e\n', rel_res);
 
 %Some visualisation stuff... 
-if visualise
+if visualise_sol
 
     figure()
     plot(ftest_b)
@@ -702,7 +701,7 @@ if test == 1
     opt.rad = rad;
     opt.delta_pair = delta_pair;
     opt.lr = lr;
-    opt.visualise = visualise;
+    opt.visualise_sol = visualise;
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
     [FT2,sol2] = solve_res_2B_enhanced(q,U,W,opt);

@@ -1,0 +1,5 @@
+* Improve distribution of particle centers via tree-based code
+* Implement Cmap route for all peanut solvers (mob/res/cap/elast)
+* Look at eivenvalues for the laplace solves. CONCLUSION: small eigvals still exist but their magnitude is larger and their effect smaller than for Stokes.
+* Does Cmap matrix have any low rank structure?
+* Implement rotations to avoid computing essentially the same compression multiple times. 

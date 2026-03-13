@@ -30,7 +30,7 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       maxit         maximum GMRES iterations
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     show diagnostic plots in postprocessing
+%       visualise_sol show diagnostic plots in postprocessing
 %       surface_error_mode
 %                     'rel' plots relative boundary errors, 'abs' plots
 %                     absolute boundary errors
@@ -65,7 +65,7 @@ assert(size(F,1)==P,'F must have one row per particle.');
 assert(size(F,2)==2,'F must have two columns [Fx, Fy].');
 assert(numel(T)==P,'T must have one entry per particle.');
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-10);
 debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','rel');
@@ -197,7 +197,7 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     [V,D] = eig(CC);
@@ -206,7 +206,7 @@ if debug
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -218,7 +218,7 @@ semilogy(resvec);
 title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
 
 
-if visualise
+if visualise_sol
     %check residual
     restot = (matvec_mob_peanut_enhanced(tau,geom_solve,basis_mob)-urhs)./urhs;
     figure()
@@ -316,7 +316,7 @@ fprintf('Relative boundary error: %1.3e \n', rel_res);
 fprintf('Absolute boundary error: %1.3e \n', abs_res);
 
  
-if visualise
+if visualise_sol
     
     % visualise boundary velocities with some offset from boundary so that particles
     % visually don't overlap
@@ -521,6 +521,9 @@ T = zeros(size(q));
 %F = [1 0; 0 0; 0 1; -1 0]; %forces on the particles
 %T = [1; 1; 1; -1]; %torques on the particles
 %rad = [1; 1; 1; 1]; 
+
+%F = F-mean(F); %zero total force
+
 visualise = 1; 
 delta_pair = 0.5;
 
@@ -539,7 +542,7 @@ debug = 0;
 opt = get2Dparams(P);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
-opt.visualise = visualise;
+opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';

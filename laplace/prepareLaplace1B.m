@@ -15,7 +15,7 @@ function [geom,basis,opt,rad] = prepareLaplace1B(q,opt)
 %       Nclust        controls the number of shieldning nodes for close-to-touching geometries 
 %     Control fields:
 %       use_fmm       evaluate fields with fmm2d/direct
-%       visualise     visualize enhanced-grid construction
+%       visualise_grid visualize enhanced-grid construction
 %       project_charge build elastance-style projected 1B blocks when true
 %     Optional:
 %       delta_pair, precomp

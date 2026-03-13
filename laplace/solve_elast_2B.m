@@ -7,7 +7,7 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   Q_body     - Prescribed net charge per body (P x 1).
-%   opt        - Options struct.
+%   opt        - Options struct (see getLaplace2Dparams.m)
 %     Required fields:
 %       rad           physical particle radius
 %       N_c,N_f       coarse/fine proxy point counts
@@ -24,7 +24,7 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     plot postprocessing diagnostics
+%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       precomp       sets what is stored for each pair
 %        
@@ -58,7 +58,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_elast_2B requires q, Q_body, and an options struct opt.');
 end
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
@@ -87,9 +87,6 @@ Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
 opt.project_charge = true;
-if visualise
-    opt.visualise_grid = true;
-end
 
 %% Discretize
 nout = ceil(a_c*N_c);
@@ -152,14 +149,14 @@ if debug
         CC(:,k) = matvec_lap_2B_enhanced(x,geom,basis,rout);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
-    title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
     [V,D] = eig(CC);
     D = diag(D);
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -200,7 +197,7 @@ end
 maxres = max(abs(u_b-v_true))/max(1,max(abs(v_true)));
 fprintf('Max relative equipotential residual at new nodes %.3e\n',maxres);
 
-if visualise
+if visualise_sol
     figure();
     plot(u_b); hold on;
     plot(v_true);
@@ -224,16 +221,25 @@ run_two_way = false;
 
 % Set geometry and data
 rng(8);
-rad = 2;
+R = 2;
 delta = 1e-3;
-P = 30;
-q = grow_cluster(P,delta,2,rad);
+P = 200;
+q = grow_cluster(P,delta,2,R);
+%hexagonal lattice
+% x = R+R*delta/2;
+% y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
+% q = [0; 2*R+delta*R; x+1i*y];
+% mode = 6; 
+% q = hexagonal_lattice(delta,mode,R);
+% P = length(q); 
 Q_body = randn(P,1);
+Q_body = Q_body-mean(Q_body); %zero total charge
 
 % Set params
-opt = getLaplace2Dparams(P,rad);
-opt.rad = rad;
-opt.visualise = 1;
+opt = getLaplace2Dparams(P,R);
+opt.rad = R;
+opt.visualise_sol = 1;
+opt.visualise_grid = 1; 
 opt.debug = 0;
 opt.delta_pair = 0.2;
 opt.gmres_tol = 1e-7;
@@ -243,7 +249,7 @@ opt.gmres_verbose = 0;
 % Solve
 [v2,sol2] = solve_elast_2B(q,Q_body,opt);
 opt_1B = opt;
-opt_1B.visualise = 0;
+opt_1B.visualise_sol = 0;
 [v1,sol1] = solve_elast_1B(q,Q_body,opt_1B);
 it2 = sol2.it;
 res2 = sol2.maxres;
@@ -257,7 +263,7 @@ fprintf('Rel diff in v_body (2B vs 1B): %.3e\n',norm(v2-v1)/max(1,norm(v1)));
 if run_two_way
     v_ref = randn(P,1);
     opt_tw = opt;
-    opt_tw.visualise = 0;
+    opt_tw.visualise_sol = 0;
     opt_tw.debug = 0;
     opt_tw.gmres_tol = 1e-10;
     [Q_cap,~] = solve_cap_2B(q,v_ref,opt_tw);

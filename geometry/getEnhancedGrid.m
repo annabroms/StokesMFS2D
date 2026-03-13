@@ -61,8 +61,6 @@ end
 
 if isfield(opt,'visualise_grid')
     visualise_grid = logical(opt.visualise_grid);
-elseif isfield(opt,'visualize_grid')
-    visualise_grid = logical(opt.visualize_grid);
 else
     visualise_grid = false;
 end

@@ -37,6 +37,8 @@ opt.beta = 0.3; %determines distance between focus and tip of ellipse for enhanc
 opt.cmap = 1; %use coarse-to-coarse mapping. Only applicable with peanut compression.
 opt.precomp = 1; % Store evaluation of onebody field from precomputation
 opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
+opt.visualise_sol = 0; % plot postprocessing diagnostics
+opt.visualise_grid = 0; % plot source/collocation grids during setup
 opt.bndry_vel = 1; % determine velocity on the boundary in post-processing?
 
 end

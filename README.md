@@ -27,7 +27,7 @@ Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary
   - `test_mob_res.m`: compares Stokes mobility/resistance solver families (1B, 2B, peanut), including two-way checks.
   - `test_cap_elast.m`: compares Laplace capacitance/elastance solver families (1B, 2B, peanut), including two-way checks.
 - `experiments/`
-  Some research experiments long-range preconditioning.
+  Some research experiments on long-range preconditioning.
 - `tools/`
   Plotting and helper routines.
 
@@ -43,7 +43,7 @@ Run the function with no input arguments, for example:
 - `demo/test_mob_res.m`
   - Stokeslet-only enhanced comparisons (`solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`).
   - Optional 1B image-based comparisons (`solve_mob_1B`, `solve_res_1B`) that still use mixed source types.
-  - Demos support line, dumbbell, and cluster particle layouts.
+  - Demos support line, dumbbell, and cluster particle layouts. Hexagonal packing is also available.
   - Two-way check means: solve mobility from `(F,T)` to get `(U,W)`, then solve resistance using that `(U,W)` and compare recovered `(F,T)` to the original input (and vice versa).
 - `demo/test_cap_elast.m`
   - Capacitance: prescribed `v_body`, solve for net charge `Q_body`.
@@ -60,9 +60,7 @@ Run the function with no input arguments, for example:
 
 
 [^stein-barnett-2022]:
-  Stein, D. B., and Barnett, A. H. (2022).  
-  *Quadrature by fundamental solutions: kernel-independent layer potential evaluation for large collections of simple objects.*  
-  Advances in Computational Mathematics (ACOM). The capacitance formulation here follows the lemma introducing the modified Laplace exterior 2D BVP.
+  Stein, D. B., and Barnett, A. H. (2022). *Quadrature by fundamental solutions: kernel-independent layer potential evaluation for large collections of simple objects.* Advances in Computational Mathematics (ACOM). The capacitance formulation here follows the lemma introducing the modified Laplace exterior 2D BVP.
 
 
 <!--

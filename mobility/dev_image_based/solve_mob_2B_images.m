@@ -246,7 +246,7 @@ if debug
     figure()
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     get_nullspace = 0;
@@ -260,7 +260,7 @@ if debug
         plot(real(D),imag(D),'+')
         xlabel('Re \lambda')
         ylabel('Im \lambda')
-        title([solver_name ': eigenvalues of CC'],'interpreter','none')
+        title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
             
         [s,I] = mink(abs(D),3);
 
@@ -704,6 +704,7 @@ q = grow_cluster(P,delta,2);
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
 rad = [1; 1; 1]; 
+%F = F-mean(F); %zero total force
 
 %If only two particles
 % q = [0; 2+delta];

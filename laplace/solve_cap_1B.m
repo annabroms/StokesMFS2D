@@ -8,7 +8,7 @@ function [Q,sol] = solve_cap_1B(q,v_body,opt)
 % Inputs:
 %   q         - Complex particle centers (P x 1).
 %   v_body    - Constant boundary values per body (P x 1).
-%   opt       - Options struct.
+%   opt       - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius 
 %       N_c           proxy point count
@@ -24,7 +24,7 @@ function [Q,sol] = solve_cap_1B(q,v_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     plot postprocessing quantities
+%       visualise_sol plot after postprocessing (boundary values, proxy strengths) 
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       
 % Outputs:
@@ -57,12 +57,11 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_cap_1B requires q, v_body, and an options struct opt.');
 end
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
-opt.visualise = visualise;
 opt.use_fmm = use_fmm;
 opt.gmres_verbose = gmres_verbose;
 opt.project_charge = false;
@@ -101,14 +100,14 @@ if debug
         CC(:,k) = matvec_laplace_1B(x,geom,basis);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
-    title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
     [V,D] = eig(CC);
     D = diag(D);
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -143,7 +142,7 @@ for k = 1:P
     Q(k) = sum(lambda_body{k});
 end
 
-if visualise
+if visualise_sol
     figure();
     plot(u_b); hold on; plot(b_true)
     title('Boundary values: lhs vs rhs (Laplace 1B)')
@@ -223,13 +222,11 @@ P = numel(q);
 v_body = [1; -0.7; 0.25];
 
 opt = getLaplace2Dparams(P,R);
-opt.visualise = 1;
+opt.visualise_sol = 1;
 opt.gmres_tol = 1e-10;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
-opt.visualise_grid = 1; 
-
 % Solve 
 [Q_it,sol_it] = solve_cap_1B(q,v_body,opt);
 lam_it = sol_it.lambda_all;

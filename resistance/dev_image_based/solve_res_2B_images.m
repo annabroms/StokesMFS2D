@@ -259,14 +259,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure(5)
     [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'ro')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 
     [s,I] = mink(abs(D),3);
     Vsmall = V(:,I).*s';

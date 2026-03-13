@@ -7,7 +7,7 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   Q_body     - Prescribed net charge per body (P x 1).
-%   opt        - Options struct.
+%   opt        - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius
 %       N_c,N_f       coarse/fine proxy point counts
@@ -25,7 +25,7 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     plot postprocessing diagnostics
+%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       precomp       pair-block precomputation mode
 %       cmap          use compressed coarse-to-coarse map    
@@ -59,7 +59,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_elast_peanut requires q, Q_body, and an options struct opt.');
 end
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
@@ -92,11 +92,6 @@ Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
 opt.project_charge = true; % always true for elastance, false for capacitance
-if visualise %of discretisation and computed sources
-    opt.visualise_grid = true;
-else
-    opt.visualise_grid = false;
-end
 
 %% Discretize
 nout = ceil(a_c*N_c);
@@ -167,14 +162,14 @@ if debug
         CC(:,k) = matvec_lap_peanut_enhanced(x,geom,basis);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
-    title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
     [V,D] = eig(CC);
     D = diag(D);
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -219,7 +214,7 @@ fprintf('Max relative equipotential residual at new nodes %.3e\n',maxres);
 lambda_proxy = lambda0_c+lam_c;
 
 
-if visualise
+if visualise_sol
     figure();
     plot(u_b); hold on;
     plot(v_true);
@@ -252,21 +247,24 @@ delta = 1e-3;
 P = 20; 
 q = grow_cluster(P,delta,2,R);
 Q_body = randn(P,1);
+Q_body = Q_body-mean(Q_body); %zero total charge
 
 %% Tune parameters
 opt = getLaplace2Dparams(P,R);
-opt.visualise = 1;
+opt.visualise_sol = 1;
 opt.debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
 opt.use_fmm = true;
 opt.gmres_verbose = 0; %no output from gmres
 opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
 opt.N_peanut = 400; % nodes on peanut separation surface
 opt.gmres_tol = 1e-10;
+opt.compress_cmap = 1; %use low rank approximation of coarse-coarse map
+opt.cmap_tol = 1e-8; 
 
 %% Solve
 [vp,solp] = solve_elast_peanut(q,Q_body,opt);
 opt_2B = opt;
-opt_2B.visualise = 0;
+opt_2B.visualise_sol = 0;
 [v2,sol2] = solve_elast_2B(q,Q_body,opt_2B);
 itp = solp.it;
 resp = solp.maxres;
@@ -278,13 +276,13 @@ fprintf('2B    : it=%d, maxres=%.3e\n',it2,res2);
 fprintf('Rel diff in v_body (peanut vs 2B): %.3e\n',norm(vp-v2)/max(1,norm(v2)));
 
 if run_two_way
-    if opt.visualise
+    if opt.visualise_sol
         disp('Press any key to continue')
         pause();
     end
     v_ref = randn(P,1);
     opt_tw = opt;
-    opt_tw.visualise = 0;
+    opt_tw.visualise_sol = 0;
     opt_tw.debug = 0;
     [Q_cap,~] = solve_cap_peanut(q,v_ref,opt_tw);
     [v_back,~] = solve_elast_peanut(q,Q_cap,opt_tw);

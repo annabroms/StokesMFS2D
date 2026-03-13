@@ -81,7 +81,21 @@ for ii = 1:total_pairs
         [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj_peanut);
 
         if isfield(opt,'cmap') && opt.cmap
-            Cmap{i,p2} = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
+            C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
+            if opt.compress_cmap                 
+                [U,S,V] = svd(C);
+                S = diag(S);
+                %use relative tolerance 
+                ra = sum(S>max(S)*opt.cmap_tol); 
+                fprintf('Rank of coarse-coarse map is chosen to %u\n',ra);
+                S = S(1:ra); 
+                C = U(:,1:ra)*diag(S)*V(:,1:ra)';
+                % Remember it's still the actual fine grid that is used to
+                % determine net charges / voltages... need to do something
+                % similar to this for the effective Cmap_QV (that has a
+                % similar role as Cmap_FU for Stokes). 
+            end
+            Cmap{i,p2} = C;
         else
             Up{i,p2} = DC;
             Yp{i,p2} = YC;

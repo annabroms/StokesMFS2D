@@ -8,7 +8,7 @@ function [Q,sol] = solve_cap_2B(q,v_body,opt)
 % Inputs:
 %   q          - Complex particle centers (P x 1).
 %   v_body     - Constant boundary values per body (P x 1).
-%   opt        - Options struct.
+%   opt        - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius
 %       N_c,N_f       coarse/fine proxy point counts
@@ -25,7 +25,7 @@ function [Q,sol] = solve_cap_2B(q,v_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     plot postprocessing diagnostics
+%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       precomp       determines form of precomputed blocks for pairs
 %
@@ -58,7 +58,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_cap_2B requires q, v_body, and an options struct opt.');
 end
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
@@ -90,11 +90,6 @@ sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c);
 Rp_c = getOptField(opt,'Rp_c',R*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',R*max([1-sep_f,0.01]));
-
-if visualise
-    opt.visualise_grid = true;
-end
-
 
 %% Build grids
 nout = ceil(a_c*N_c);
@@ -156,14 +151,14 @@ if debug
         CC(:,k) = matvec_lap_2B_enhanced(x,geom,basis,rout);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
-    title([solver_name ': log_{10}|CC|'],'interpreter','none')
+    title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
     [V,D] = eig(CC);
     D = diag(D);
     figure()
     plot(real(D),imag(D),'+')
     xlabel('Re \lambda')
     ylabel('Im \lambda')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -201,7 +196,7 @@ for k = 1:P
     Q(k) = sum(lam_c(idx)) + sum(lam_f{k}) + sum(lam_e{k});
 end
 
-if visualise
+if visualise_sol
     figure();
     plot(u_b); hold on; plot(g_true)
     title('Boundary values: lhs vs rhs (Laplace 2B)')
@@ -224,19 +219,31 @@ close all;
 
 %% Set geometry and data
 rng(8);
-delta = 0.001; 
+delta = 1e-4; 
 R = 2; 
 P = 40;
-q = grow_cluster(P,delta,2,R);
+%q = grow_cluster(P,delta,2,R);
+
+%hexagonal lattice
+%x = R+R*delta/2;
+%y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
+%q = [0; 2*R+delta*R; x+1i*y];
+mode = 10; 
+mode = 2;
+q = hexagonal_lattice(delta,mode,R);
+
+P = length(q); 
 v_body = rand(P,1); 
 
 %% Set params and settings
 opt = getLaplace2Dparams(P,R);
-opt.visualise = 1;
-opt.gmres_tol = 1e-10;
+opt.visualise_sol = 1;
+opt.visualise_grid = 1; 
+opt.gmres_tol = 1e-12;
 opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
+opt.Nclust = 100;
 
 [Q2,sol2] = solve_cap_2B(q,v_body,opt);
 [Q1,sol1] = solve_cap_1B(q,v_body,opt);

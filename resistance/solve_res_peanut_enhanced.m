@@ -33,7 +33,7 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       maxit         maximum GMRES iterations
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise     show diagnostic plots in postprocessing
+%       visualise_sol show diagnostic plots in postprocessing
 %       use_fmm       use FMM-accelerated Stokeslet evaluation in field
 %                     evaluation paths that support it
 %       bndry_vel     if true, evaluate and report boundary velocity residuals
@@ -76,7 +76,7 @@ assert(size(U,1)==P,'U must have one row per particle.');
 assert(size(U,2)==2,'U must have two columns [Ux, Uy].');
 assert(numel(W)==P,'W must have one entry per particle.');
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-10);
 debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
@@ -192,14 +192,14 @@ if debug
     clf; 
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure();
     [~,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'b+')
-    title([solver_name ': eigenvalues of CC'],'interpreter','none')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
 disp(' == Solving... == ');
@@ -211,7 +211,7 @@ figure()
 semilogy(resvec); 
 title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
 
-if visualise
+if visualise_sol
     %check residual
     restot = matvec_res_peanut_enhanced(tau,geom,basis)-fout;
     figure()
@@ -304,7 +304,7 @@ else
 end
 
 
-if visualise
+if visualise_sol
 
     if opt.bndry_vel
         figure()
@@ -392,7 +392,7 @@ if test == 1
     opt.rad = rad;
     opt.delta_pair = delta_pair;
     opt.N_peanut = N_peanut;
-    opt.visualise = visualise;
+    opt.visualise_sol = visualise;
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
     [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
@@ -441,7 +441,7 @@ else
     opt = get2Dparams(P);
     opt.delta_pair = delta_pair;
     opt.N_peanut = N_peanut;
-    opt.visualise = visualise;
+    opt.visualise_sol = visualise;
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
     [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);

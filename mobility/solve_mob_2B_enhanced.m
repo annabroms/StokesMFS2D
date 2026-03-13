@@ -13,7 +13,7 @@ function [UW,sol] = solve_mob_2B_enhanced(q,F,T,opt)
 %   F          - Px2 matrix of net force vectors (columns: x and y components)
 %   T          - Px1 column vector of torques acting on the particles
 %   opt        - Options struct. Common fields:
-%                delta_pair, visualise, gmres_tol,opt.gmres_verbose,
+%                delta_pair, visualise_sol, gmres_tol,opt.gmres_verbose,
 %                surface_error_mode, use_fmm, N_c, N_f, a_c, a_f, tol_c.
 %       debug    build/plot/investigate system matrix corresponding to
 %                matvec.
@@ -56,7 +56,7 @@ assert(size(F,1)==P,'F must have one row per particle.');
 assert(size(F,2)==2,'F must have two columns [Fx, Fy].');
 assert(numel(T)==P,'T must have one entry per particle.');
 
-visualise = logical(getOptField(opt,'visualise',0));
+visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-10);
 debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','abs');
@@ -75,9 +75,6 @@ fprintf('==== START: %s ====\n', solver_name);
 
 opt.P = P;
 opt.gmres_verbose = gmres_verbose;
-opt.visualise = visualise;
-
-
 %Params for coarse and fine grid. 
 N_c = getOptField(opt,'N_c',150);
 N_f = getOptField(opt,'N_f',150);
@@ -119,7 +116,7 @@ end
 %     rin_f = [rin_f; q(k)+rbase_in_f]; %just for visuals
 %     rout_f = [rout_f; q(k)+rbase_out_f]; %just for visuals
 % end
-% if visualise
+% if visualise_sol
 %     %Visualise the compression between coarse and fine grid
 %     figure()
 %     fill(real(rout_f(1:end/2)),imag(rout_f(1:end/2)),[0 0 0],'FaceAlpha',0.1,'EdgeColor','none')
@@ -216,7 +213,7 @@ if debug
     figure()
     imagesc(log10(abs(CC)))
     colorbar
-    title([solver_name ': log_{10} |CC|'],'interpreter','none')
+    title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     get_nullspace = 0;
@@ -230,7 +227,7 @@ if debug
         plot(real(D),imag(D),'+')
         xlabel('Re \lambda')
         ylabel('Im \lambda')
-        title([solver_name ': eigenvalues of CC'],'interpreter','none')
+        title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
             
         [s,I] = mink(abs(D),3);
 
@@ -458,7 +455,7 @@ fprintf('Absolute boundary error: %.3e\n', abs_res);
 
 
 %Some visualisation stuff... 
-if visualise
+if visualise_sol
 % Visualise each component?
 %     figure(9)
 %     subplot(2,2,1)
@@ -700,6 +697,8 @@ rad = [1; 1; 1];
 % T = T(1:2); 
 % rad = [1;1]; 
 
+%F = F-mean(F); %zero total force
+
 visualise = 1; 
 images = 1; 
 delta_pair = 0.5; 
@@ -711,7 +710,7 @@ gmres_tol = 1e-8;
 debug = 0; 
 opt = get2Dparams(length(q));
 opt.delta_pair = delta_pair;
-opt.visualise = visualise;
+opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
