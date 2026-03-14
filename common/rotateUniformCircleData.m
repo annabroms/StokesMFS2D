@@ -22,7 +22,7 @@ if nargin < 2 || isempty(rot) || isempty(values)
     return
 end
 
-theta = angle(rot);
+theta = atan2(imag(rot), real(rot)); %angle(rot);
 if abs(theta) < 10*eps
     values_rot = values;
     return
@@ -34,8 +34,15 @@ if n == 0
     return
 end
 
-modes = get_fourier_modes(n);
-phase = exp(1i*theta*modes(:));
+% Get Fourier mode numbers matching MATLAB's fft ordering.
+if mod(n,2) == 0
+    modes = [0:n/2 -n/2+1:-1];
+else
+    modes = [0:(n-1)/2 -(n-1)/2:-1];
+end
+modes = modes(:);
+
+phase = exp(1i*theta*modes);
 
 F = fft(values,[],1);
 values_rot = ifft(F.*phase,[],1);
@@ -46,15 +53,3 @@ end
 
 end
 
-function modes = get_fourier_modes(n)
-% Return Fourier mode numbers matching MATLAB's fft ordering.
-
-if mod(n,2) == 0
-    modes = [0:n/2 -n/2+1:-1];
-else
-    modes = [0:(n-1)/2 -(n-1)/2:-1];
-end
-
-modes = modes(:);
-
-end

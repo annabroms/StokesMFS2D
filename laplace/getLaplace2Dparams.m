@@ -36,7 +36,6 @@ opt.Rp_f = opt.rad*max([1-sep,0.01]);
 % Only relevant with pair corrections (2B/peanut)
 opt.N_peanut = 400; %Number of nodes on peanut separation surface
 opt.cmap = 1; % use compressed coarse to coarse map for pair compression? Only relevant with peanut compression.
-opt.precomp = 1; % Determines form of precomputed blocks for pairs. Only relevant with cmap = 0
 opt.show_counter = 1; % show progress for pre-computation step for all pairs
 opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap

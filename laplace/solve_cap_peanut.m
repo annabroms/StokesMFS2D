@@ -28,7 +28,6 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse to coarse map
-%       precomp       with cmap = 0, build in rhs into stored pair factors?
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
@@ -156,6 +155,7 @@ basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
+basis.Nii = lapSLPmat(rbase_in_c,rbase_out_c);
 
 %% RHS
 fout = zeros(P*nout,1);
@@ -195,12 +195,6 @@ title('GMRES convergence capacitance peanut','interpreter','latex')
 
 disp(' == Postprocessing == ');
 %% Postprocess
-geom_eval = geom;
-[lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
-    transform_lap_peanut(tau,geom_eval,basis);
-
-lambda_proxy = lam_c;
-
 if get_bndry_field
     n_bound = 803;
     tb = linspace(0,2*pi,n_bound+1)';
@@ -210,11 +204,19 @@ if get_bndry_field
         rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+R*(cos(tb)+1i*sin(tb));
     end
 
-    geom_post = geom;
-    geom_post.opt = opt;
-    geom_post.rcheck = rcheck_b;
-    [lam_c,~,~,~,u_corr,~,~,~,~] = transform_lap_peanut(tau,geom_post,basis);
+    geom_eval = geom;
+    geom_eval.opt = opt;
+    geom_eval.rcheck = rcheck_b;
+else
+    geom_eval = geom;
+end
 
+[lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
+    transform_lap_peanut(tau,geom_eval,basis);
+
+lambda_proxy = lam_c;
+
+if get_bndry_field
     u_b = lapSLPfield(rvec_in_c,rcheck_b,lam_c,use_fmm) + u_corr;
 
     g_true = zeros(P*n_bound,1);
@@ -277,14 +279,14 @@ rng(8);
 
 % Set geometry and data
 R = 2;
-P = 2;
+P = 10;
 delta = 1e-3;
-%q = grow_cluster(P,delta,2,R);
+q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
-mode = 8; 
-%mode = 2; 
-q = hexagonal_lattice(delta,mode,R);
+%rings = 8; 
+%rings = 2; 
+%q = hexagonal_lattice(delta,rings,R);
 P = length(q); 
 v_body = buildAlternatingVoltages(q,R);
 check_multi_compress = 0; 
@@ -302,8 +304,8 @@ opt.debug = 0;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
-opt.cmap_tol = 1e-8; 
-opt.reuse_pair_basis_by_sep = 1; 
+opt.cmap_tol = 1e-8; % tolerance used in the low-rank compression
+opt.reuse_pair_basis_by_sep = 0; 
 %tic
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
 %t_one = toc;

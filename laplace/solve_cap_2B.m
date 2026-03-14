@@ -27,7 +27,6 @@ function [Q,sol] = solve_cap_2B(q,v_body,opt)
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
-%       precomp       determines form of precomputed blocks for pairs
 %
 % Outputs:
 %   Q          - Net charges per body, computed as per-body unweighted sums of source strengths.
@@ -228,18 +227,18 @@ close all;
 rng(8);
 delta = 1e-4; 
 R = 2; 
-P = 40;
-%q = grow_cluster(P,delta,2,R);
+P = 10;
+q = grow_cluster(P,delta,2,R);
 
 %hexagonal lattice
 %x = R+R*delta/2;
 %y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
 %q = [0; 2*R+delta*R; x+1i*y];
-mode = 5; 
-mode = 1;
-q = hexagonal_lattice(delta,mode,R);
-
-P = length(q); 
+% mode = 5; 
+% mode = 1;
+% q = hexagonal_lattice(delta,mode,R);
+% 
+% P = length(q); 
 v_body = rand(P,1); 
 
 %% Set params and settings

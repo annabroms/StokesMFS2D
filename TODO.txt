@@ -2,4 +2,6 @@
 * Implement Cmap route for all peanut solvers (mob/res/cap/elast) -> mob to be updated!
 * Look at eivenvalues for the laplace solves. CONCLUSION: small eigvals still exist but their magnitude is larger and their effect smaller than for Stokes. How do the few large eigvals affect convergence?
 * Does Cmap matrix have any low rank structure? -> Sort of! To be investigated more. The tricky bit is that the same compression would be needed for the Cmap_QV and Cmap_FU mappings.
-* Implement rotations to avoid computing essentially the same compression multiple times. -> Done for Laplace. Check if it can be optimized. To be done for Stokes. 
+* Implement rotations to avoid computing essentially the same compression multiple times. -> Done for Laplace. To be implemented for Stokes. 
+* Test 1-body left-precond
+* Speed up mobility solve by checking if direct eval can be made faster

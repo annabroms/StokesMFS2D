@@ -18,7 +18,7 @@ function [geom,basis,opt,rad] = prepareLaplace1B(q,opt)
 %       visualise_grid visualize enhanced-grid construction
 %       project_charge build elastance-style projected 1B blocks when true
 %     Optional:
-%       delta_pair, precomp
+%       delta_pair
 %
 % Outputs:
 %   geom, basis - One-body geometry and pseudo-inverse data.

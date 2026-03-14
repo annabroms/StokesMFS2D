@@ -46,8 +46,12 @@ if isequal(rcheck,rvec_out)
     end
     
     %% Correct identity diagonal blocks
-    rout = rvec_out(1:N_large)-q(1);
-    Nii = lapSLPmat(rbase_in_c,rout);
+    if isfield(basis,'Nii') && ~isempty(basis.Nii)
+        Nii = basis.Nii;
+    else
+        rout = rvec_out(1:N_large)-q(1);
+        Nii = lapSLPmat(rbase_in_c,rout);
+    end
 
     for i = 1:P
         idx = (i-1)*opt.N_c+1:i*opt.N_c;

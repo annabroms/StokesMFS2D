@@ -28,15 +28,13 @@ opt.show_counter = 0;
 opt.N_peanut = 200;
 opt.delta_pair = 0.2;
 
-configs = [ ...
-    struct('precomp',1,'cmap',0), ...
-    struct('precomp',0,'cmap',0), ...
-    struct('precomp',1,'cmap',1)];
+    configs = [ ...
+        struct('cmap',0), ...
+        struct('cmap',1)];
 
-for kk = 1:numel(configs)
-    cfg = configs(kk);
-    opt.precomp = cfg.precomp;
-    opt.cmap = cfg.cmap;
+    for kk = 1:numel(configs)
+        cfg = configs(kk);
+        opt.cmap = cfg.cmap;
 
     opt_base = opt;
     opt_base.reuse_pair_basis_by_sep = false;
@@ -56,11 +54,11 @@ for kk = 1:numel(configs)
     u_peanut_rot = matvec_lap_peanut_enhanced(tau,ctx_rot.geomPeanut,ctx_rot.basisPeanut);
     err_peanut = relerr(u_peanut_rot,u_peanut_base);
 
-    fprintf(['  precomp=%d cmap=%d: pairs=%d unique_seps=%d', ...
-        ' setup %.3fs -> %.3fs, 2B matvec err %.3e, peanut matvec err %.3e\n'], ...
-        cfg.precomp,cfg.cmap,size(ctx_base.geom2B.pairs,1),ctx_rot.basis2B.pair_cache.n_groups, ...
-        t_base,t_rot,err_2b,err_peanut);
-end
+        fprintf(['  cmap=%d: pairs=%d unique_seps=%d', ...
+            ' setup %.3fs -> %.3fs, 2B matvec err %.3e, peanut matvec err %.3e\n'], ...
+            cfg.cmap,size(ctx_base.geom2B.pairs,1),ctx_rot.basis2B.pair_cache.n_groups, ...
+            t_base,t_rot,err_2b,err_peanut);
+    end
 end
 
 function run_solver_checks(q,R)
@@ -76,8 +74,7 @@ opt.delta_pair = 0.2;
 opt.gmres_tol = 1e-10;
 opt.N_peanut = 100;
 
-opt_2b = opt;
-opt_2b.precomp = 1;
+    opt_2b = opt;
 
 opt_2b_base = opt_2b;
 opt_2b_base.reuse_pair_basis_by_sep = false;
@@ -99,11 +96,10 @@ fprintf('  solve_cap_2B: relQ %.3e, relRes %.3e, time %.3fs -> %.3fs (x%.2f)\n',
 total_base = t_2b_base;
 total_rot = t_2b_rot;
 
-for cmap = 0:1
-    opt_peanut = opt;
-    opt_peanut.precomp = 1;
-    opt_peanut.cmap = cmap;
-    opt_peanut.compress_cmap = 0;
+    for cmap = 0:1
+        opt_peanut = opt;
+        opt_peanut.cmap = cmap;
+        opt_peanut.compress_cmap = 0;
 
     opt_peanut_base = opt_peanut;
     opt_peanut_base.reuse_pair_basis_by_sep = false;

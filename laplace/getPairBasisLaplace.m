@@ -16,7 +16,6 @@ N_peanut = opt.N_peanut;
 R = opt.rad;
 reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
 shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-12*max(1,R));
-precomp = getOptField(opt,'precomp',true);
 
 if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
     project_charge = logical(opt.project_charge);
@@ -98,11 +97,7 @@ if ~reuse_pair_basis
         [Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f,proj_pair);
 
         Npair = evaluateCoarseOnPairLaplace([q(i);q(p2)],rbase_in_c,rout_f);
-        if precomp
-            Uf{i,p2} = -Uf_pair'*Npair;
-        else
-            Uf{i,p2} = Uf_pair';
-        end
+        Uf{i,p2} = -Uf_pair'*Npair;
         Yf{i,p2} = Yf_pair;
 
         if N_peanut
@@ -152,7 +147,7 @@ pair_cache.groups = repmat(init_pair_group(),n_groups,1);
 
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
-        q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f,project_charge,precomp);
+        q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f,project_charge);
 end
 
 for row = 1:size(pairs,1)
@@ -246,7 +241,7 @@ group_id = zeros(size(sep));
 group_id(order) = group_id_sorted;
 end
 
-function group = build_pair_group(group_id,row,sep,q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,rout_base_f,project_charge,precomp)
+function group = build_pair_group(group_id,row,sep,q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,rout_base_f,project_charge)
 i = pairs(row,1);
 j = pairs(row,2);
 mid = 0.5*(q(i)+q(j));
@@ -272,11 +267,7 @@ proj_pair = struct('project_charge',project_charge, ...
 [Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f,proj_pair);
 
 Npair = evaluateCoarseOnPairLaplace(q_pair,rbase_in_c,rout_f);
-if precomp
-    Upf = -Uf_pair'*Npair;
-else
-    Upf = Uf_pair';
-end
+Upf = -Uf_pair'*Npair;
 Ypf = Yf_pair;
 
 DC = [];

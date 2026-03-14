@@ -26,8 +26,6 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
-%       precomp       sets what is stored for each pair
-%        
 %
 % Outputs:
 %   v_body    - Recovered constant boundary values per body (P x 1).

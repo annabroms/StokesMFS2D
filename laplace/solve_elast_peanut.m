@@ -27,7 +27,6 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
-%       precomp       pair-block precomputation mode
 %       cmap          use compressed coarse-to-coarse map
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
@@ -158,6 +157,7 @@ basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
+basis.Nii = lapSLPmat(rbase_in_c,rbase_out_c);
 
 %% Get rhs based on "completion flow"
 [lambda0_c,u_rhs] = getChargeCompletionFlowLaplace(rvec_in_c,rout,coarse_source_ind,Q_body,use_fmm);
@@ -196,7 +196,22 @@ title('GMRES convergence elastance peanut','interpreter','latex')
 
 disp(' == Postprocessing == ');
 %% Postprocess 
-geom_eval = geom;
+if get_bndry_field
+    n_bound = 803;
+    tb = linspace(0,2*pi,n_bound+1)';
+    tb = tb(1:end-1);
+    rcheck_b = zeros(P*n_bound,1);
+    for k = 1:P
+        rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
+    end
+
+    geom_eval = geom;
+    geom_eval.opt = opt;
+    geom_eval.rcheck = rcheck_b;
+else
+    geom_eval = geom;
+end
+
 [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
     transform_lap_peanut(tau,geom_eval,basis);
 lambda_proxy = lambda0_c+lam_c;
@@ -211,20 +226,8 @@ for k = 1:P
         v_body(k) = sum(lambda_tot_k);
     end
 end
+
 if get_bndry_field
-    n_bound = 803;
-    tb = linspace(0,2*pi,n_bound+1)';
-    tb = tb(1:end-1);
-    rcheck_b = zeros(P*n_bound,1);
-    for k = 1:P
-        rcheck_b((k-1)*n_bound+1:k*n_bound) = q(k)+rad*(cos(tb)+1i*sin(tb));
-    end
-
-    geom_post = geom;
-    geom_post.opt = opt;
-    geom_post.rcheck = rcheck_b;
-    [lam_c,~,~,~,u_corr,~,~,~,~] = transform_lap_peanut(tau,geom_post,basis);
-
     u_b = lapSLPfield(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
     u_b = u_b+u_corr;
 

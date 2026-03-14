@@ -23,7 +23,6 @@ pairs = geom.pairs;
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
 rimage_vec = geom.rimage_vec;
-refine = geom.refine;
 opt = geom.opt;
 
 U = basis.U;
@@ -43,7 +42,6 @@ P = numel(q);
 N_c = opt.N_c;
 N_f = opt.N_f;
 N_large = length(rvec_out)/P;
-precomp = opt.precomp;
 
 lam_c = zeros(P*N_c,1);
 lam_c_nonp = zeros(P*N_c,1);
@@ -98,21 +96,8 @@ for row = 1:size(pairs,1)
         rot = pair.meta.rot;
         group = pair.group;
 
-        lam_i_local = rotateUniformCircleData(lam_i,rot);
-        lam_p2_local = rotateUniformCircleData(lam_p2,rot);
-
-        if precomp
-            rhs_pair = [lam_i_local; lam_p2_local];
-        else
-            q_pair = group.q_pair;
-            rout_fine_other2 = [q_pair(2)+pair_cache.rout_base_f; group.refine_canon{2}];
-            R2 = -lapSLPmat(q_pair(1)+rbase_in_c,rout_fine_other2)*lam_i_local;
-
-            rout_fine_other1 = [q_pair(1)+pair_cache.rout_base_f; group.refine_canon{1}];
-            R1 = -lapSLPmat(q_pair(2)+rbase_in_c,rout_fine_other1)*lam_p2_local;
-
-            rhs_pair = [R1; R2];
-        end
+        rhs_pair = rotateUniformCircleData([lam_i lam_p2],rot);
+        rhs_pair = rhs_pair(:);
 
         pair_mapped = group.Upf*rhs_pair;
         beta_tot_nonp_local = group.Ypf*pair_mapped;
@@ -122,18 +107,7 @@ for row = 1:size(pairs,1)
         im_i = numel(group.rimage_canon{1});
         im_p2 = numel(group.rimage_canon{2});
     else
-        if precomp
-            rhs_pair = [lam_i; lam_p2];
-        else
-            rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2,opt.rad);
-            R2 = -lapSLPmat(rbase_in_c+q(i),rout_fine_other2)*lam_i;
-
-            rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i,opt.rad);
-            R1 = -lapSLPmat(rbase_in_c+q(p2),rout_fine_other1)*lam_p2;
-
-            rhs_pair = [R1; R2];
-        end
-
+        rhs_pair = [lam_i; lam_p2];
         pair_mapped = Upf{i,p2}*rhs_pair;
         beta_tot_nonp_local = Ypf{i,p2}*pair_mapped;
 
@@ -159,17 +133,15 @@ for row = 1:size(pairs,1)
         beta_p2_local = beta_p2_nonp_local;
     end
 
+    beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
+        beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
     if use_pair_cache
-        beta_i_fine = rotateUniformCircleData(beta_i_local(1:N_f),conj(rot));
-        beta_p2_fine = rotateUniformCircleData(beta_p2_local(1:N_f),conj(rot));
-        beta_i_fine_nonp = rotateUniformCircleData(beta_i_nonp_local(1:N_f),conj(rot));
-        beta_p2_fine_nonp = rotateUniformCircleData(beta_p2_nonp_local(1:N_f),conj(rot));
-    else
-        beta_i_fine = beta_i_local(1:N_f);
-        beta_p2_fine = beta_p2_local(1:N_f);
-        beta_i_fine_nonp = beta_i_nonp_local(1:N_f);
-        beta_p2_fine_nonp = beta_p2_nonp_local(1:N_f);
+        beta_fine_pair = rotateUniformCircleData(beta_fine_pair,conj(rot));
     end
+    beta_i_fine = beta_fine_pair(:,1);
+    beta_p2_fine = beta_fine_pair(:,2);
+    beta_i_fine_nonp = beta_fine_pair(:,3);
+    beta_p2_fine_nonp = beta_fine_pair(:,4);
 
     lam_f{i} = lam_f{i} + beta_i_fine;
     lam_f{p2} = lam_f{p2} + beta_p2_fine;

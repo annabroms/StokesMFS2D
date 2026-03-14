@@ -13,6 +13,8 @@ function [lam_c,lam_self,lam_f,lam_e,u_corr,pair_qv_nonp,lam_c_nonp,lam_self_non
 %              - Per-body sums of the non-projected pair-induced fine/image
 %                sources. For cmap=1 this is recovered via basis.Cmap_QV.
 %   lam_*_nonp - Non-projected source strengths (used for Lr/voltage terms).
+%                Fine/image outputs are returned empty when explicit pair
+%                sources are not needed.
 %
 % See also: getPairBasisLaplace, getPeanutBlockLaplace, ...
 %   matvec_lap_peanut_enhanced.
@@ -22,7 +24,6 @@ function [lam_c,lam_self,lam_f,lam_e,u_corr,pair_qv_nonp,lam_c_nonp,lam_self_non
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
 rimage_vec = geom.rimage_vec;
-refine = geom.refine;
 opt = geom.opt;
 rvec_out = geom.rvec_out;
 q = geom.q;
@@ -59,22 +60,27 @@ else
     project_charge = false;
 end
 
-precomp = opt.precomp;
-
 lam_c = zeros(N_c*P,1);
 lam_c_nonp = zeros(N_c*P,1);
-lam_f = cell(P,1);
-lam_e = cell(P,1);
-lam_f_nonp = cell(P,1);
-lam_e_nonp = cell(P,1);
-lam_e_chunks = repmat({cell(0,1)},P,1);
-lam_e_nonp_chunks = repmat({cell(0,1)},P,1);
 pair_qv_nonp = zeros(P,1);
-for k = 1:P
-    lam_f{k} = zeros(N_f,1);
-    lam_e{k} = zeros(0,1);
-    lam_f_nonp{k} = zeros(N_f,1);
-    lam_e_nonp{k} = zeros(0,1);
+if need_explicit_pair_sources
+    lam_f = cell(P,1);
+    lam_e = cell(P,1);
+    lam_f_nonp = cell(P,1);
+    lam_e_nonp = cell(P,1);
+    lam_e_chunks = repmat({cell(0,1)},P,1);
+    lam_e_nonp_chunks = repmat({cell(0,1)},P,1);
+    for k = 1:P
+        lam_f{k} = zeros(N_f,1);
+        lam_e{k} = zeros(0,1);
+        lam_f_nonp{k} = zeros(N_f,1);
+        lam_e_nonp{k} = zeros(0,1);
+    end
+else
+    lam_f = [];
+    lam_e = [];
+    lam_f_nonp = [];
+    lam_e_nonp = [];
 end
 
 u_corr = zeros(P*N_check,1);
@@ -106,27 +112,12 @@ for row = 1:size(pairs,1)
     lam_i = lam_self(idx_i);
     lam_p2 = lam_self(idx_p2);
 
-    if use_pair_cache %if distances are shared for more than one pair
-        pair = getLaplacePairInstance(pair_cache,row);
-        rot = pair.meta.rot;
-        group = pair.group;
-
-        lam_i_local = rotateUniformCircleData(lam_i,rot);
-        lam_p2_local = rotateUniformCircleData(lam_p2,rot);
-
-        if precomp
-            rhs_pair = [lam_i_local; lam_p2_local];
-        else
-            q_pair = group.q_pair;
-            rout_fine_other2 = [q_pair(2)+pair_cache.rout_base_f; group.refine_canon{2}];
-            R2 = -lapSLPmat(q_pair(1)+rbase_in_c,rout_fine_other2)*lam_i_local;
-
-            rout_fine_other1 = [q_pair(1)+pair_cache.rout_base_f; group.refine_canon{1}];
-            R1 = -lapSLPmat(q_pair(2)+rbase_in_c,rout_fine_other1)*lam_p2_local;
-
-            rhs_pair = [R1; R2];
-        end
-
+    if use_pair_cache % if distances are shared for more than one pair
+        meta = pair_cache.meta(row);
+        group = pair_cache.groups(meta.group_id);
+        rot = meta.rot;
+        rhs_pair = rotateUniformCircleData([lam_i lam_p2],rot);
+        rhs_pair = rhs_pair(:);
         pair_mapped = group.Upf*rhs_pair;
         if need_explicit_pair_sources
             beta_tot_nonp_local = group.Ypf*pair_mapped;
@@ -140,24 +131,8 @@ for row = 1:size(pairs,1)
             tau_peanut_nonp_local = group.YC*(group.DC*beta_tot_nonp_local);
             pair_qv_local = [];
         end
-
-        rimage_i = pair.rimage_i;
-        rimage_p2 = pair.rimage_j;
-        im_i = numel(group.rimage_canon{1});
-        im_p2 = numel(group.rimage_canon{2});
     else
-        if precomp
-            rhs_pair = [lam_i; lam_p2];
-        else
-            rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2,opt.rad);
-            R2 = -lapSLPmat(rbase_in_c+q(i),rout_fine_other2)*lam_i;
-
-            rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i,opt.rad);
-            R1 = -lapSLPmat(rbase_in_c+q(p2),rout_fine_other1)*lam_p2;
-
-            rhs_pair = [R1; R2];
-        end
-
+        rhs_pair = [lam_i; lam_p2];
         pair_mapped = Upf{i,p2}*rhs_pair;
         if need_explicit_pair_sources
             beta_tot_nonp_local = Ypf{i,p2}*pair_mapped;
@@ -172,38 +147,22 @@ for row = 1:size(pairs,1)
             tau_peanut_nonp_local = YC_all{i,p2}*(DC_all{i,p2}*beta_tot_nonp_local);
             pair_qv_local = [];
         end
-
-        rimage_i = rimage_vec{i,p2};
-        rimage_p2 = rimage_vec{p2,i};
-        im_i = length(rimage_i);
-        im_p2 = length(rimage_p2);
     end
 
-    s_i = 1:N_f;
-    e_i = N_f+1:N_f+im_i;
-    s_p2 = N_f+im_i+1:2*N_f+im_i;
-    e_p2 = 2*N_f+im_i+1:2*N_f+im_i+im_p2;
-    tau_peanut_local = [projectChargeMode(tau_peanut_nonp_local(1:N_c),project_charge); ...
-        projectChargeMode(tau_peanut_nonp_local(N_c+1:2*N_c),project_charge)];
+    tau_peanut_nonp_pair = reshape(tau_peanut_nonp_local,N_c,2);
+    tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
+        projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
     if use_pair_cache
-        tau_peanut_i = rotateUniformCircleData(tau_peanut_local(1:N_c),conj(rot));
-        tau_peanut_p2 = rotateUniformCircleData(tau_peanut_local(N_c+1:2*N_c),conj(rot));
-        tau_peanut_i_nonp = rotateUniformCircleData(tau_peanut_nonp_local(1:N_c),conj(rot));
-        tau_peanut_p2_nonp = rotateUniformCircleData(tau_peanut_nonp_local(N_c+1:2*N_c),conj(rot));
-    else
-        tau_peanut_i = tau_peanut_local(1:N_c);
-        tau_peanut_p2 = tau_peanut_local(N_c+1:2*N_c);
-        tau_peanut_i_nonp = tau_peanut_nonp_local(1:N_c);
-        tau_peanut_p2_nonp = tau_peanut_nonp_local(N_c+1:2*N_c);
+        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],conj(rot));
+        tau_peanut_pair = tau_pair_rot(:,1:2);
+        tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
     end
 
-    tau_peanut_actual = [tau_peanut_i; tau_peanut_p2];
-
-    lam_c(idx_i) = lam_c(idx_i) + tau_peanut_i;
-    lam_c(idx_p2) = lam_c(idx_p2) + tau_peanut_p2;
-    lam_c_nonp(idx_i) = lam_c_nonp(idx_i) + tau_peanut_i_nonp;
-    lam_c_nonp(idx_p2) = lam_c_nonp(idx_p2) + tau_peanut_p2_nonp;
+    lam_c(idx_i) = lam_c(idx_i) + tau_peanut_pair(:,1);
+    lam_c(idx_p2) = lam_c(idx_p2) + tau_peanut_pair(:,2);
+    lam_c_nonp(idx_i) = lam_c_nonp(idx_i) + tau_peanut_nonp_pair(:,1);
+    lam_c_nonp(idx_p2) = lam_c_nonp(idx_p2) + tau_peanut_nonp_pair(:,2);
     if use_cmap
         pair_qv_nonp(i) = pair_qv_nonp(i) + pair_qv_local(1);
         pair_qv_nonp(p2) = pair_qv_nonp(p2) + pair_qv_local(2);
@@ -214,6 +173,19 @@ for row = 1:size(pairs,1)
     rout_pair = [rcheck_out(block_i); rcheck_out(block_p2)];
     rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
     if need_explicit_pair_sources
+        if use_pair_cache
+            rimage_i = meta.mid + meta.rot*group.rimage_canon{1};
+            rimage_p2 = meta.mid + meta.rot*group.rimage_canon{2};
+        else
+            rimage_i = rimage_vec{i,p2};
+            rimage_p2 = rimage_vec{p2,i};
+        end
+        im_i = numel(rimage_i);
+        im_p2 = numel(rimage_p2);
+        s_i = 1:N_f;
+        e_i = N_f+1:N_f+im_i;
+        s_p2 = N_f+im_i+1:2*N_f+im_i;
+        e_p2 = 2*N_f+im_i+1:2*N_f+im_i+im_p2;
         beta_i_nonp_local = [beta_tot_nonp_local(s_i); beta_tot_nonp_local(e_i)];
         beta_p2_nonp_local = [beta_tot_nonp_local(s_p2); beta_tot_nonp_local(e_p2)];
         beta_i_local = projectChargeMode(beta_i_nonp_local,project_charge);
@@ -225,17 +197,15 @@ for row = 1:size(pairs,1)
             pair_qv_nonp(p2) = pair_qv_nonp(p2) + pair_qv_local(2);
         end
 
+        beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
+            beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
         if use_pair_cache
-            beta_i_fine = rotateUniformCircleData(beta_i_local(1:N_f),conj(rot));
-            beta_p2_fine = rotateUniformCircleData(beta_p2_local(1:N_f),conj(rot));
-            beta_i_fine_nonp = rotateUniformCircleData(beta_i_nonp_local(1:N_f),conj(rot));
-            beta_p2_fine_nonp = rotateUniformCircleData(beta_p2_nonp_local(1:N_f),conj(rot));
-        else
-            beta_i_fine = beta_i_local(1:N_f);
-            beta_p2_fine = beta_p2_local(1:N_f);
-            beta_i_fine_nonp = beta_i_nonp_local(1:N_f);
-            beta_p2_fine_nonp = beta_p2_nonp_local(1:N_f);
+            beta_fine_pair = rotateUniformCircleData(beta_fine_pair,conj(rot));
         end
+        beta_i_fine = beta_fine_pair(:,1);
+        beta_p2_fine = beta_fine_pair(:,2);
+        beta_i_fine_nonp = beta_fine_pair(:,3);
+        beta_p2_fine_nonp = beta_fine_pair(:,4);
 
         lam_f{i} = lam_f{i} + beta_i_fine;
         lam_f{p2} = lam_f{p2} + beta_p2_fine;
@@ -246,7 +216,8 @@ for row = 1:size(pairs,1)
         lam_e_nonp_chunks{i}{end+1,1} = beta_i_nonp_local(N_f+1:end);
         lam_e_nonp_chunks{p2}{end+1,1} = beta_p2_nonp_local(N_f+1:end);
 
-        beta_tot_actual = [beta_i_fine; beta_i_local(N_f+1:end); beta_p2_fine; beta_p2_local(N_f+1:end)];
+        beta_tot_actual = [beta_i_fine; beta_i_local(N_f+1:end); ...
+            beta_p2_fine; beta_p2_local(N_f+1:end)];
         rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
         u_fine = lapSLPfield(rin_pair_f,rout_pair,beta_tot_actual,false);
     else
@@ -258,18 +229,20 @@ for row = 1:size(pairs,1)
         end
         u_fine = [u_fine_i; u_fine_p2];
     end
-    u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_actual,false);
+    u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_pair(:),false);
 
     pair_idx = [block_i block_p2]';
     u_corr(pair_idx) = u_corr(pair_idx) + u_fine - u_peanut;
 end
 
-for k = 1:P
-    if ~isempty(lam_e_chunks{k})
-        lam_e{k} = vertcat(lam_e_chunks{k}{:});
-    end
-    if ~isempty(lam_e_nonp_chunks{k})
-        lam_e_nonp{k} = vertcat(lam_e_nonp_chunks{k}{:});
+if need_explicit_pair_sources
+    for k = 1:P
+        if ~isempty(lam_e_chunks{k})
+            lam_e{k} = vertcat(lam_e_chunks{k}{:});
+        end
+        if ~isempty(lam_e_nonp_chunks{k})
+            lam_e_nonp{k} = vertcat(lam_e_nonp_chunks{k}{:});
+        end
     end
 end
 
