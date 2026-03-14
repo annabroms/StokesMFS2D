@@ -1,6 +1,7 @@
 function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
     tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = getMobPairTransformationStokes(tau,geom,basis)
 %GETMOBPAIRTRANSFORMATIONSTOKES Map coarse boundary data to coarse and fine Stokes source strengths.
+% This implementation caches coarse lambda for all particles first, then loops over pairs.
 %
 % Syntax:
 %   [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,...
@@ -32,15 +33,13 @@ Ypf = basis.Ypf;
 
 P = length(q);
 N_coarse = opt.N_c;
-N_large = length(rvec_out)/P; 
-PM = length(rvec_out); 
+N_large = length(rvec_out)/P;
+PM = length(rvec_out);
 
-precomp = opt.precomp; 
+precomp = opt.precomp;
 use_matrix_free_projection = true; % set false to use the original K-based projector
 
-
-%map densities back
-%Bookkeeping stuff
+% Map densities back.
 
 % Preallocate coarse contributions (same size for all particles).
 n_coarse_tot = P*N_coarse;
@@ -49,8 +48,8 @@ tau_stokes_y_coarse = zeros(n_coarse_tot,1);
 tau_stokes_nonpx_coarse = zeros(n_coarse_tot,1);
 tau_stokes_nonpy_coarse = zeros(n_coarse_tot,1);
 rvec_in_coarse = zeros(n_coarse_tot,1);
- 
-coarse_ind = cell(P,1); 
+
+coarse_ind = cell(P,1);
 tau_stokes_f_x = cell(P,1);
 tau_stokes_f_y = cell(P,1);
 tau_stokes_e_x = cell(P,1);
@@ -60,7 +59,7 @@ tau_stokes_f_nonpy = cell(P,1);
 
 tau_stokes_e_nonpx = cell(P,1);
 tau_stokes_e_nonpy = cell(P,1);
- 
+
 rimage_k = cell(P,1);
 rimage_k_chunks = repmat({cell(0,1)},P,1);
 tau_stokes_e_x_chunks = repmat({cell(0,1)},P,1);
@@ -68,212 +67,145 @@ tau_stokes_e_y_chunks = repmat({cell(0,1)},P,1);
 tau_stokes_e_nonpx_chunks = repmat({cell(0,1)},P,1);
 tau_stokes_e_nonpy_chunks = repmat({cell(0,1)},P,1);
 
-
+%% Phase 1: map all bodies once on the coarse grid to recover proxy source
+% strengths from data at the boundary.
 for i = 1:P
-    %% %%% Apply one-body pseudo-inverse to get the coarse source strenghts of this particle.
-    % Retrieve self evaluation blocks
-    
     tau_particle_x = tau((i-1)*N_large+1:N_large*i);
     tau_particle_y = tau(PM+(i-1)*N_large+1:PM+N_large*i);
 
-    %if isempty(neigh) %has no neighbours 
-    step1 = U{1}*[tau_particle_x;tau_particle_y]; %here I assume x and y follow each other?
-    tau_mapped = Y{1}*step1; %this is the mapped density for this particle to throw in to the kernel
-    
-    %check residual for the self-interaction only
-    %NN = stokSLPmat(rbase_in_c+q(i),rvec_out((i-1)*N_large+1:i*N_large,:),mu);
-    %disp('Self-interaction error')
-    %norm(NN*tau_mapped-[tau_particle_x;tau_particle_y],inf)
-    %norm((NN*tau_mapped-[tau_particle_x;tau_particle_y])./[tau_particle_x;tau_particle_y],inf)
-    %norm(tau_mapped,inf) %large magnitude?
+    step1 = U{1}*[tau_particle_x; tau_particle_y];
+    lambda_coarse_nonproj_i = Y{1}*step1;
+
+    tau_i_x = lambda_coarse_nonproj_i(1:N_coarse);
+    tau_i_y = lambda_coarse_nonproj_i(N_coarse+1:end);
+    lambda_coarse_i = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y];
 
     coarse_ind_i = (i-1)*N_coarse+1:i*N_coarse;
-    tau_stokes_nonpx_coarse(coarse_ind_i) = tau_mapped(1:N_coarse);
-    tau_stokes_nonpy_coarse(coarse_ind_i) = tau_mapped(N_coarse+1:end);
-    
-    %% Project to remove force/torque-producing modes. 
-    tau_i_x = tau_mapped(1:N_coarse);
-    tau_i_y = tau_mapped(N_coarse+1:end);
-    tau_mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y]; 
-    
-    %% Store the coarse grid contribution for this particle. 
-    % store x and y components separately for later use
-    tau_stokes_x_coarse(coarse_ind_i) = tau_mapped(1:N_coarse);
-    tau_stokes_y_coarse(coarse_ind_i) = tau_mapped(N_coarse+1:end);
+    coarse_ind{i} = coarse_ind_i;
 
-    %store indices of the coarse modes to later subtract self-interaction blocks in the matvec
-    coarse_ind{i} = coarse_ind_i; 
-    rvec_in_coarse(coarse_ind_i) = q(i)+rbase_in_c; %Keep track of coarse source points
-    
-    %% %%%% Apply pair corrections if this particle has any close neighbours.
-    
-    %check if particle is in any pair.
-    if ~isempty(pairs)
-        %neigh = find(pairs(:,1)==i);
-        [I,J] = find(pairs==i);
-        neigh = [I J];
-    else
-        neigh = [];
-    end
-    
-    if ~isempty(neigh)
-        
-        for k = 1:size(neigh,1)
-
-            if neigh(k,2) == 2 %has already been counted in 
-                break
-            end
-            %send in two particles with the fine grid 
-            p2 = pairs(neigh(k),2); %get neighbour
-
-            rimage_k_chunks{i}{end+1,1} = rimage_vec{i,p2};
-            rimage_k_chunks{p2}{end+1,1} = rimage_vec{p2,i};
-
-            % get mu (surface data) for the neighbour particle
-            tau_particle_x2 = tau((p2-1)*N_large+1:N_large*p2);
-            tau_particle_y2 = tau(PM+(p2-1)*N_large+1:PM+N_large*p2);
-
-            %Keep track of local ordering of source vector for the pair.
-            im_nr = length(rimage_vec{i,p2});
-            s_ind1_x = 1:opt.N_f; 
-            s_ind2_x = opt.N_f+im_nr+1:2*opt.N_f+im_nr;
-            s_ind1_y = 2*opt.N_f+2*im_nr+1:3*opt.N_f+2*im_nr;
-            s_ind2_y = 3*opt.N_f+3*im_nr+1:4*opt.N_f+3*im_nr;
-            e_ind1_x = opt.N_f+1:opt.N_f+im_nr; 
-            e_ind2_x = 2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr;
-            e_ind1_y = 3*opt.N_f+2*im_nr+1:3*opt.N_f+3*im_nr;
-            e_ind2_y = 4*opt.N_f+3*im_nr+1:4*opt.N_f+4*im_nr;
-
-            % Fine source locations for the pair
-            rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
-
-            % Build \chi 1,2 and \chi 2,1 jointly
-            % Same thing with different orders for the particles in the pair.
-            step1 = U{1}*[tau_particle_x2; tau_particle_y2]; 
-            mapped = Y{1}*step1;
-            %project
-            tau_i_x = mapped(1:N_coarse);
-            tau_i_y = mapped(N_coarse+1:end);
-            mapped = [tau_i_x; tau_i_y]-Lc*[tau_i_x; tau_i_y];
-
-
-            if ~precomp
-                %Read off coarse grid contribution on other particle fine
-                %grid
-                rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);            
-%               Nother2 = stokSLPmat(rbase_in_c+q(i),rout_fine_other2,mu);
-%               R2 = -Nother2*tau_mapped; 
-            
-                [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
-                    real(rout_fine_other2),imag(rout_fine_other2),tau_mapped(1:end/2),...
-                    tau_mapped(end/2+1:end),opt.N_c);
-                R2 = -[udirect; vdirect];
-    
-                rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);            
-%                 Nother1 = stokSLPmat(rbase_in_c+q(p2),rout_fine_other1,mu);               
-%                 R1 = -Nother1*mapped;
-
-                [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
-                    real(rout_fine_other1),imag(rout_fine_other1),mapped(1:end/2),...
-                    mapped(end/2+1:end),opt.N_c);
-                R1 = -[udirect; vdirect];
-
-                coarse_to_fine_tot = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)]; 
-            else
-                coarse_to_fine_tot = [tau_mapped(1:end/2); mapped(1:end/2); 
-                    tau_mapped(end/2+1:end); mapped(end/2+1:end)];
-            end
-            %store as x x y y 
-
-            %Take pseudoinverse of the fine representation to determine
-            %fine sources beta for BOTH \chi 1,2 and \chi 2,1.
-            pair_mapped = Upf{i,p2}*coarse_to_fine_tot; 
-            beta_tot = Ypf{i,p2}*pair_mapped; 
-
-
-            %% Project to remove force/torque-producing modes
-
-            tau_mapped_f_xi = beta_tot(s_ind1_x);
-            tau_mapped_f_yi = beta_tot(s_ind1_y);    
-            tau_mapped_f_xp2 = beta_tot(s_ind2_x);
-            tau_mapped_f_yp2 = beta_tot(s_ind2_y);
-            
-            tau_mapped_e_xi = beta_tot(e_ind1_x);
-            tau_mapped_e_yi = beta_tot(e_ind1_y);
-            tau_mapped_e_xp2 = beta_tot(e_ind2_x);
-            tau_mapped_e_yp2 = beta_tot(e_ind2_y);
-            tau_fine_i = [tau_mapped_f_xi; tau_mapped_e_xi; tau_mapped_f_yi; tau_mapped_e_yi];
-            tau_fine_p2 = [tau_mapped_f_xp2; tau_mapped_e_xp2; tau_mapped_f_yp2; tau_mapped_e_yp2];
-
-            % Fast matrix-free projector (with original K-based fallback).
-            if use_matrix_free_projection
-
-                tau_mapped_proj_i = projectOutRigid2D( ...
-                    tau_fine_i, rin_pair(1:end/2), q(i));
-                tau_mapped_proj_p2 = projectOutRigid2D( ...
-                    tau_fine_p2, rin_pair(end/2+1:end), q(p2));   
-            else      
-                % Original fallback: explicit dense projector.
-                Kf1 = getKmat2D(rin_pair(1:end/2),q(i));
-                Kf2 = getKmat2D(rin_pair(end/2+1:end),q(p2));  
-                Lf1 = Kf1*((Kf1'*Kf1)\Kf1');
-                Lf2 = Kf2*((Kf2'*Kf2)\Kf2');
-                tau_mapped_proj_i = tau_fine_i-Lf1*tau_fine_i;
-                tau_mapped_proj_p2 = tau_fine_p2-Lf2*tau_fine_p2;
-            end
-
-            %% Store fine source strengths for later evaluation. 
-            % Here, "fine" refers to a set of proxy nodes that are the same for
-            %multiple contacts and should therefore not be done as multiple copies,
-            %while "extra" refers to nodes that are specific for a
-            %certain pair interaction. All Stokeslet sources are to be
-            %projected in the matvec, but the unprojected sources are
-            %needed too!
-            
-            pair_idx = [i; p2];          
-            pair_proj = {tau_mapped_proj_i, tau_mapped_proj_p2};
-            pair_f_nonpx = {tau_mapped_f_xi, tau_mapped_f_xp2};
-            pair_f_nonpy = {tau_mapped_f_yi, tau_mapped_f_yp2};
-            pair_e_nonpx = {tau_mapped_e_xi, tau_mapped_e_xp2};
-            pair_e_nonpy = {tau_mapped_e_yi, tau_mapped_e_yp2};
-
-            for pair_it = 1:2
-                idx = pair_idx(pair_it);
-                tau_proj = pair_proj{pair_it};
-
-                tau_f_x = tau_proj(s_ind1_x);
-                tau_f_y = tau_proj(opt.N_f+im_nr+1:2*opt.N_f+im_nr);
-                tau_e_x = tau_proj(e_ind1_x);
-                tau_e_y = tau_proj(2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr);
-
-                if isempty(tau_stokes_f_x{idx})
-                    tau_stokes_f_x{idx} = tau_f_x;
-                    tau_stokes_f_y{idx} = tau_f_y;
-                    tau_stokes_f_nonpx{idx} = pair_f_nonpx{pair_it};
-                    tau_stokes_f_nonpy{idx} = pair_f_nonpy{pair_it};
-                else
-                    tau_stokes_f_x{idx} = tau_stokes_f_x{idx} + tau_f_x;
-                    tau_stokes_f_y{idx} = tau_stokes_f_y{idx} + tau_f_y;
-                    tau_stokes_f_nonpx{idx} = tau_stokes_f_nonpx{idx} + pair_f_nonpx{pair_it};
-                    tau_stokes_f_nonpy{idx} = tau_stokes_f_nonpy{idx} + pair_f_nonpy{pair_it};
-                end
-
-                tau_stokes_e_x_chunks{idx}{end+1,1} = tau_e_x;
-                tau_stokes_e_y_chunks{idx}{end+1,1} = tau_e_y;
-                tau_stokes_e_nonpx_chunks{idx}{end+1,1} = pair_e_nonpx{pair_it};
-                tau_stokes_e_nonpy_chunks{idx}{end+1,1} = pair_e_nonpy{pair_it};
-
-            end
-
-
-        end
-        
-    end
-       
+    tau_stokes_nonpx_coarse(coarse_ind_i) = lambda_coarse_nonproj_i(1:N_coarse);
+    tau_stokes_nonpy_coarse(coarse_ind_i) = lambda_coarse_nonproj_i(N_coarse+1:end);
+    tau_stokes_x_coarse(coarse_ind_i) = lambda_coarse_i(1:N_coarse);
+    tau_stokes_y_coarse(coarse_ind_i) = lambda_coarse_i(N_coarse+1:end);
+    rvec_in_coarse(coarse_ind_i) = q(i)+rbase_in_c;
 end
 
-%% Recover arrays of all Stokeslet source locations and their strenghts
+%% Phase 2: loop over close pairs and build fine-grid corrections.
+for pair_row = 1:size(pairs,1)
+    i = pairs(pair_row,1);
+    p2 = pairs(pair_row,2);
 
+    lambda_coarse_i = [tau_stokes_x_coarse(coarse_ind{i}); tau_stokes_y_coarse(coarse_ind{i})];
+    lambda_coarse_p2 = [tau_stokes_x_coarse(coarse_ind{p2}); tau_stokes_y_coarse(coarse_ind{p2})];
+
+    rimage_k_chunks{i}{end+1,1} = rimage_vec{i,p2};
+    rimage_k_chunks{p2}{end+1,1} = rimage_vec{p2,i};
+
+    % Keep track of local ordering of source vector for the pair.
+    im_nr = length(rimage_vec{i,p2});
+    s_ind1_x = 1:opt.N_f;
+    s_ind2_x = opt.N_f+im_nr+1:2*opt.N_f+im_nr;
+    s_ind1_y = 2*opt.N_f+2*im_nr+1:3*opt.N_f+2*im_nr;
+    s_ind2_y = 3*opt.N_f+3*im_nr+1:4*opt.N_f+3*im_nr;
+    e_ind1_x = opt.N_f+1:opt.N_f+im_nr;
+    e_ind2_x = 2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr;
+    e_ind1_y = 3*opt.N_f+2*im_nr+1:3*opt.N_f+3*im_nr;
+    e_ind2_y = 4*opt.N_f+3*im_nr+1:4*opt.N_f+4*im_nr;
+
+    % Fine source locations for the pair.
+    rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
+
+    if ~precomp
+        % Read off coarse grid contribution on the other particle's fine grid.
+        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);
+        [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
+            real(rout_fine_other2),imag(rout_fine_other2),lambda_coarse_i(1:end/2),...
+            lambda_coarse_i(end/2+1:end),opt.N_c);
+        R2 = -[udirect; vdirect];
+
+        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);
+        [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
+            real(rout_fine_other1),imag(rout_fine_other1),lambda_coarse_p2(1:end/2),...
+            lambda_coarse_p2(end/2+1:end),opt.N_c);
+        R1 = -[udirect; vdirect];
+
+        coarse_to_fine_tot = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];
+    else
+        coarse_to_fine_tot = [lambda_coarse_i(1:end/2); lambda_coarse_p2(1:end/2); ...
+            lambda_coarse_i(end/2+1:end); lambda_coarse_p2(end/2+1:end)];
+    end
+
+    % Take pseudoinverse of the fine representation to determine fine sources
+    % for BOTH chi_1,2 and chi_2,1.
+    pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
+    beta_tot = Ypf{i,p2}*pair_mapped;
+
+    %% Project to remove force/torque-producing modes.
+    tau_mapped_f_xi = beta_tot(s_ind1_x);
+    tau_mapped_f_yi = beta_tot(s_ind1_y);
+    tau_mapped_f_xp2 = beta_tot(s_ind2_x);
+    tau_mapped_f_yp2 = beta_tot(s_ind2_y);
+
+    tau_mapped_e_xi = beta_tot(e_ind1_x);
+    tau_mapped_e_yi = beta_tot(e_ind1_y);
+    tau_mapped_e_xp2 = beta_tot(e_ind2_x);
+    tau_mapped_e_yp2 = beta_tot(e_ind2_y);
+    tau_fine_i = [tau_mapped_f_xi; tau_mapped_e_xi; tau_mapped_f_yi; tau_mapped_e_yi];
+    tau_fine_p2 = [tau_mapped_f_xp2; tau_mapped_e_xp2; tau_mapped_f_yp2; tau_mapped_e_yp2];
+
+    % Fast matrix-free projector (with original K-based fallback).
+    if use_matrix_free_projection
+        tau_mapped_proj_i = projectOutRigid2D( ...
+            tau_fine_i, rin_pair(1:end/2), q(i));
+        tau_mapped_proj_p2 = projectOutRigid2D( ...
+            tau_fine_p2, rin_pair(end/2+1:end), q(p2));
+    else
+        % Original fallback: explicit dense projector.
+        Kf1 = getKmat2D(rin_pair(1:end/2),q(i));
+        Kf2 = getKmat2D(rin_pair(end/2+1:end),q(p2));
+        Lf1 = Kf1*((Kf1'*Kf1)\Kf1');
+        Lf2 = Kf2*((Kf2'*Kf2)\Kf2');
+        tau_mapped_proj_i = tau_fine_i-Lf1*tau_fine_i;
+        tau_mapped_proj_p2 = tau_fine_p2-Lf2*tau_fine_p2;
+    end
+
+    %% Store fine source strengths for later evaluation.
+    pair_idx = [i; p2];
+    pair_proj = {tau_mapped_proj_i, tau_mapped_proj_p2};
+    pair_f_nonpx = {tau_mapped_f_xi, tau_mapped_f_xp2};
+    pair_f_nonpy = {tau_mapped_f_yi, tau_mapped_f_yp2};
+    pair_e_nonpx = {tau_mapped_e_xi, tau_mapped_e_xp2};
+    pair_e_nonpy = {tau_mapped_e_yi, tau_mapped_e_yp2};
+
+    for pair_it = 1:2
+        idx = pair_idx(pair_it);
+        tau_proj = pair_proj{pair_it};
+
+        tau_f_x = tau_proj(s_ind1_x);
+        tau_f_y = tau_proj(opt.N_f+im_nr+1:2*opt.N_f+im_nr);
+        tau_e_x = tau_proj(e_ind1_x);
+        tau_e_y = tau_proj(2*opt.N_f+im_nr+1:2*opt.N_f+2*im_nr);
+
+        if isempty(tau_stokes_f_x{idx})
+            tau_stokes_f_x{idx} = tau_f_x;
+            tau_stokes_f_y{idx} = tau_f_y;
+            tau_stokes_f_nonpx{idx} = pair_f_nonpx{pair_it};
+            tau_stokes_f_nonpy{idx} = pair_f_nonpy{pair_it};
+        else
+            tau_stokes_f_x{idx} = tau_stokes_f_x{idx} + tau_f_x;
+            tau_stokes_f_y{idx} = tau_stokes_f_y{idx} + tau_f_y;
+            tau_stokes_f_nonpx{idx} = tau_stokes_f_nonpx{idx} + pair_f_nonpx{pair_it};
+            tau_stokes_f_nonpy{idx} = tau_stokes_f_nonpy{idx} + pair_f_nonpy{pair_it};
+        end
+
+        tau_stokes_e_x_chunks{idx}{end+1,1} = tau_e_x;
+        tau_stokes_e_y_chunks{idx}{end+1,1} = tau_e_y;
+        tau_stokes_e_nonpx_chunks{idx}{end+1,1} = pair_e_nonpx{pair_it};
+        tau_stokes_e_nonpy_chunks{idx}{end+1,1} = pair_e_nonpy{pair_it};
+    end
+end
+
+%% Recover arrays of all Stokeslet source locations and their strengths.
 for k = 1:P
     if isempty(rimage_k_chunks{k})
         rimage_k{k} = zeros(0,1);

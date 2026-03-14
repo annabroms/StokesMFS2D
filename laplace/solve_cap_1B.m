@@ -221,7 +221,7 @@ q = [0; 2*R+0.01*R; 6*R+1.5i*R];
 P = numel(q);
 v_body = [1; -0.7; 0.25];
 
-mode = 8; 
+mode = 4; 
 delta = 1e-3; 
 q = hexagonal_lattice(delta,mode,R);
 P = length(q);

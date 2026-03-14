@@ -9,22 +9,20 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
 %
 % Inputs:
-%   q            - P-by-1 complex particle centers. rbase_in_c   - Coarse
-%   proxy source nodes for one body at the origin. rbase_in_f   - Fine
-%   proxy source nodes for one body at the origin. rimage_pairs - Cell
-%   array; rimage_pairs{i,j} are extra enhancing source points
+%   q            - P-by-1 complex particle centers. 
+%   rbase_in_c   - Coarse proxy source nodes for one body at the origin. 
+%   rbase_in_f   - Fine proxy source nodes for one body at the origin. 
+%   rimage_pairs - Cell array; rimage_pairs{i,j} are extra enhancing source points
 %                  used for pair (i,j).
 %   refine       - Cell array; refine{i,j} stores near-contact collocation
 %                  parameter values for pair (i,j).
-%   pairs        - Npair-by-2 list of close pairs [i, j]. opt          -
-%   Options struct. Uses fields such as N_f, a_f, precomp,
+%   pairs        - Npair-by-2 list of close pairs [i, j]. 
+%   opt          - Options struct. Uses fields such as N_f, a_f, precomp,
 %                  N_peanut, and optional fields:
-%                  project_pair    (logical, default false)
 %                  pair_basis_debug (logical, default false)
-%                  show_counter    (logical, default false)
-%   Lc_pair_basis - Optional coarse one-body projector used when
-%                   project_pair = true. Default [].
-%
+%                  show_counter    (shows progress of pair compressions, logical, default false)
+%   Lc           - Optional coarse one-body projector needed for mobility.
+%                   
 % Outputs:
 %   Uf, Yf  - Cell arrays with fine pair pseudoinverse factors. For each
 %             close pair (i,j), beta_pair = Yf{i,j}*(Uf{i,j}*rhs_pair).
@@ -68,7 +66,6 @@ else
 end
 
 P = opt.P;  
-
 N_peanut = opt.N_peanut; 
 
 
@@ -109,7 +106,6 @@ if ~isempty(Lc)
     Lc_pair = getILpair(Lc);
 else
     Lc_pair = [];
-    Lf_pair = [];
 end
 
 a_f = opt.a_f;

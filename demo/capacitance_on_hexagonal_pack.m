@@ -24,8 +24,8 @@ R = 2;
 delta = 1e-3;
 
 % Solve capacitance for hexagonal lattice
-mode = 16;
-q = hexagonal_lattice(delta,mode,R);
+rings = 8; %8 rings around the center disk 
+q = hexagonal_lattice(delta,rings,R);
 P = length(q);
 v_body = buildAlternatingVoltages(q,R);
 
@@ -45,7 +45,7 @@ opt.compress_cmap = 0; % use low rank approximation of coarse-coarse map
 opt.reuse_pair_basis_by_sep = 1;
 
 fprintf('Peanut-compressed capacitance solve\n');
-fprintf('  hex mode=%d, P=%d, R=%.3f, delta=%.1e\n',mode,P,R,delta);
+fprintf('  hex rings=%d, P=%d, R=%.3f, delta=%.1e\n',rings,P,R,delta);
 tic;
 [Q_peanut,sol_peanut] = solve_cap_peanut(q,v_body,opt);
 t_peanut = toc;
@@ -68,23 +68,23 @@ fprintf('  two-way error ||v_back-v_body||_inf / max(1,||v_body||_inf) = %.3e\n\
 %% One-body capacitance solve on a smaller hexagonal packing
 R = 2;
 
-mode = 8;
+rings = 4; %four rings around the center disk 
 delta = 1e-3;
-q = hexagonal_lattice(delta,mode,R);
+q = hexagonal_lattice(delta,rings,R);
 P = length(q);
 v_body = buildAlternatingVoltages(q,R);
 
-opt = getLaplace2Dparams(P,R);
+N_c = 150; %use fine grid for more fair accuracy comparison
+opt = getLaplace2Dparams(P,R,N_c);
 opt.visualise_sol = 1;
 opt.visualise_grid = 1;
 opt.gmres_tol = 1e-8;
 opt.debug = 0;
 opt.use_fmm = true;
-opt.N_c = 150;
-opt.gmres_verbose = 0;
+opt.gmres_verbose = 2; %0: silent
 
 fprintf('1B capacitance solve\n');
-fprintf('  hex mode=%d, P=%d, R=%.3f, delta=%.1e\n',mode,P,R,delta);
+fprintf('  hex rings=%d, P=%d, R=%.3f, delta=%.1e\n',rings,P,R,delta);
 tic;
 [Q_1B,sol_1B] = solve_cap_1B(q,v_body,opt);
 t_1B = toc;

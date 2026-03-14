@@ -81,7 +81,7 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-opt.P = P;
+opt.project = 1; %project out contribution to force / torque
 opt.gmres_verbose = gmres_verbose;
 %Params for coarse and fine grid. 
 N_c = getOptField(opt,'N_c',150);
@@ -376,26 +376,11 @@ disp(' == Postprocessing == ');
 % Recover the projected source representation and the nonprojected
 % strengths needed for rigid-body postprocessing.
 
-%warning('work to be done for postprocessing here!')
+[rvec_in,~,tau_stokes_x,tau_stokes_y, ...
+    tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
+    getMobPairTransformationStokes(tau,geom,basis);
 
-if isfield(opt,'use_cached_pair_transform') && opt.use_cached_pair_transform
-    [rvec_in,~,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
-        getMobPairTransformationStokesCached(tau,geom,basis);
-else
-    [rvec_in,~,tau_stokes_x,tau_stokes_y, ...
-        tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
-        getMobPairTransformationStokes(tau,geom,basis);
-end
-
-lambda = [tau_stokes_x; tau_stokes_y]; %This is the fine density
-%tau_proxy = [tau_stokes_nonpx; tau_stokes_nonpy];
-%And evaluate in new points rcheck_dom and rcheck_b
-
-%The total source strengths are obtained by adding on lambda_x and lambda_y
-%here. 
-
-%lambdahat = [tau_proxy; tau_image]; %not just for other things than visualisation
+lambda = [tau_stokes_x; tau_stokes_y]; %This are the fine source strengths
 
 %% Get rigid body motion. 
 
@@ -417,7 +402,6 @@ for i = 1:length(has_neigh)
     % TODO: don't build K matrix
     UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kim'*[tau_stokes_e_nonpx{k}; tau_stokes_e_nonpy{k}];
 end
-
 
 %% CHECK RESIDUAL AT SURFACE
 %Compute velocity at surface
@@ -461,53 +445,11 @@ fprintf('Relative boundary error: %.3e\n', rel_res);
 fprintf('Absolute boundary error: %.3e\n', abs_res);
 
 
-%Some visualisation stuff... 
+%Some visualisations
 if visualise_sol
-% Visualise each component?
-%     figure(9)
-%     subplot(2,2,1)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(1:end/2))),30,log10(abs(diff_vec(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in x velocity')
-% 
-% 
-%     subplot(2,2,2)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(diff_vec(end/2+1:end))),30,log10(abs(diff_vec(end/2+1:end))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('error in y velocity')
-% 
-%     % Visualise the actual velocity in the rhs and lhs
-%     subplot(2,2,3)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_rhs(1:end/2))),30,log10(abs(u_rhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity rhs')
-% 
-%     subplot(2,2,4)
-%     scatter3(real(rcheck_b),imag(rcheck_b),log10(abs(u_lhs(1:end/2))),30,log10(abs(u_lhs(1:end/2))),'filled')
-%     colorbar
-%     axis equal
-%     view(0,90)
-%     grid off
-%     set(gca,'xtick',[])
-%     set(gca,'ytick',[])
-%     title('x velocity lhs')
-% sgtitle('Error on boundary mob pair corr','interpreter','latex')
 
+    % Visualise velocity error on different boundary to avoid that
+    % particles visually overlap
     rvis = [];
     aa = 0.9;
     for k = 1:P
@@ -561,14 +503,14 @@ end
 function test_solve_mob
 
 close all;
-delta = 0.01;
+delta = 0.001;
 q = [0; 2+delta; (2+delta)*1i]; %center coordinates
 q = [0; 2+delta; 4+4*delta];
 %or, instead, three cireles in triangle
 % delta = 0.001; 
-x = 1+delta/2;
-y = sqrt((2+delta)^2-(1+delta/2)^2);
-q = [0; 2+delta; x+1i*y];
+% x = 1+delta/2;
+% y = sqrt((2+delta)^2-(1+delta/2)^2);
+% q = [0; 2+delta; x+1i*y];
 
 F = [1 0; 0 0; 0 1]; %forces on the particles
 T = [1; 1; 1]; %torques on the particles
@@ -577,7 +519,7 @@ rad = [1; 1; 1];
 
 
 %If only two particles
-%q = [0; 2+delta; 6];
+% q = [0; 2+delta];
 % F = F(1:2,:); 
 % T = T(1:2); 
 % rad = [1;1]; 
@@ -592,18 +534,20 @@ lr= 0;
 
 %compare to a solution with image enhancement
 gmres_tol = 1e-8;
-debug = 0; 
+debug = 1; 
 opt = get2Dparams(length(q));
 opt.delta_pair = delta_pair;
 opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
+opt.visualise_grid = 1; 
 
 % is this a way to debug?
 % opt.N_peanut = 0;%  
 % opt.cmap = 0; 
 % [UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt);
+close all;
 [UW2,sol2] = solve_mob_2B_enhanced(q,F,T,opt);
 
 str = sprintf('Relative residual with 1-body precond: %1.2e vs 2-body: %1.2e\n Converging in %u resp %u iterations', ...

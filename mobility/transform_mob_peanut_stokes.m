@@ -26,7 +26,6 @@ function [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x, ...
 
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
-refine = geom.refine;
 rimage_vec = geom.rimage_vec;
 opt = geom.opt;
 rvec_out = geom.rvec_out;
@@ -207,7 +206,7 @@ for i = 1:P
             N_im = length(rin_pair_f);
 
             % Split beta into body-wise vectors and project each body separately
-            % (same strategy as getMobPairTransformationStokesCached).
+            % (same strategy as getMobPairTransformationStokes).
             tau_fine_i = [tau_mapped_tot(f_ind1_x); tau_mapped_tot(e_ind1_x); ...
                 tau_mapped_tot(f_ind1_y); tau_mapped_tot(e_ind1_y)];
             tau_fine_p2 = [tau_mapped_tot(f_ind2_x); tau_mapped_tot(e_ind2_x); ...

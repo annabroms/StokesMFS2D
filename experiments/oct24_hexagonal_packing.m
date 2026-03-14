@@ -4,7 +4,7 @@ delta = 0.1;
 rng(8); %reproducable
 
 % %% Hexagonal lattice
-q = hexagonal_lattice(delta, 16); %the second parameter sets radius of the packing, which determines the number of particles
+q = hexagonal_lattice(delta, 8); %8 rings gives a 217-particle geometry
 P = length(q); 
 U = rand(P,2); %translational velocities 
 W = rand(P,1); %angular velocities 

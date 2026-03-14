@@ -235,8 +235,8 @@ P = 40;
 %x = R+R*delta/2;
 %y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
 %q = [0; 2*R+delta*R; x+1i*y];
-mode = 10; 
-mode = 2;
+mode = 5; 
+mode = 1;
 q = hexagonal_lattice(delta,mode,R);
 
 P = length(q); 

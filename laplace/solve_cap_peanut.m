@@ -282,7 +282,7 @@ delta = 1e-3;
 %q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
-mode = 16; 
+mode = 8; 
 %mode = 2; 
 q = hexagonal_lattice(delta,mode,R);
 P = length(q); 

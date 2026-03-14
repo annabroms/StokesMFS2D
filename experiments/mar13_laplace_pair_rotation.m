@@ -6,7 +6,7 @@ rng(13);
 
 R = 2;
 delta = 1e-2;
-q_repeat = hexagonal_lattice(delta,2,R);
+q_repeat = hexagonal_lattice(delta,1,R);
 q_unique = [0:2*R+0.02:4*(2*R+0.02) (4*R+0.14)*1i]';
 
 fprintf('=== Laplace Pair-Rotation Reuse Experiment (Mar 13, 2026) ===\n');

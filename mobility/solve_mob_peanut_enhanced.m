@@ -154,7 +154,6 @@ geom_solve = struct();
 geom_solve.rbase_in_c = rbase_in_c;
 geom_solve.rbase_in_f = rbase_in_f;
 geom_solve.rvec_in = rvec_in_c;
-geom_solve.refine = refine;
 geom_solve.rimage_vec = rimage_vec;
 geom_solve.opt = opt;
 geom_solve.rvec_out = rout;
