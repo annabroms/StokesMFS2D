@@ -111,6 +111,10 @@ disp(' == Solving... == ');
     u_rhs,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
 
 figure(); semilogy(resvec)
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence elastance 1B','interpreter','latex')
 
 disp(' == Postprocessing == ');

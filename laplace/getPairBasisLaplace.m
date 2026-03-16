@@ -1,8 +1,10 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rout_base_c,rimage_vec,refine,pairs,opt)
 %GETPAIRBASISLAPLACE Build pair-basis pseudoinverse factors for Laplace.
 %
 % Syntax:
-%   [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_QV,pair_cache] = ...
+%       getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rout_base_c, ...
+%       rimage_vec,refine,pairs,opt)
 %
 % See also: getPairBlockLaplace, getPeanutBlockLaplace, ...
 %   evaluateCoarseOnPairLaplace, getPairTransformationLaplace.
@@ -69,7 +71,7 @@ if isempty(pairs)
     return
 end
 
-pair_cache.meta = build_pair_meta(q,pairs);
+pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),numel(rbase_in_f));
 
 if ~reuse_pair_basis
     total_pairs = size(pairs,1);
@@ -147,13 +149,21 @@ pair_cache.groups = repmat(init_pair_group(),n_groups,1);
 
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
-        q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f,project_charge);
+        q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
+        project_charge);
 end
 
 for row = 1:size(pairs,1)
     gid = group_id(row);
     pair_cache.meta(row).group_id = gid;
     pair_cache.meta(row).sep = group_sep(gid);
+    if logical(getOptField(opt,'cmap',false))
+        [Ucross_actual,Ec_actual,Lr_actual] = build_actual_pair_colloc_factors( ...
+            pair_cache.meta(row),q,rbase_in_c,rout_base_c);
+        pair_cache.meta(row).Ucross_colloc_actual = Ucross_actual;
+        pair_cache.meta(row).Ec_colloc_actual = Ec_actual;
+        pair_cache.meta(row).Lr_colloc_actual = Lr_actual;
+    end
 end
 
 if show_counter
@@ -169,7 +179,9 @@ pair_cache.enabled = false;
 pair_cache.shared_sep_tol = [];
 pair_cache.rout_base_f = [];
 pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[]),0,1);
+    'mid',[],'rot',[],'phase_c',[],'phase_f',[], ...
+    'Ucross_colloc_actual',[],'Ec_colloc_actual',[], ...
+    'Lr_colloc_actual',[]),0,1);
 pair_cache.groups = repmat(init_pair_group(),0,1);
 pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
@@ -184,10 +196,12 @@ group = struct('group_id',[],'sep',[],'q_pair',[],'rimage_canon',{{}}, ...
     'nout_f',[],'nsrc_f',[],'ntar_f',[],'rep_pair',[]);
 end
 
-function meta = build_pair_meta(q,pairs)
+function meta = build_pair_meta(q,pairs,nc,nf)
 total_pairs = size(pairs,1);
 meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[]),total_pairs,1);
+    'mid',[],'rot',[],'phase_c',[],'phase_f',[], ...
+    'Ucross_colloc_actual',[],'Ec_colloc_actual',[], ...
+    'Lr_colloc_actual',[]),total_pairs,1);
 
 for row = 1:total_pairs
     i = pairs(row,1);
@@ -205,6 +219,8 @@ for row = 1:total_pairs
     meta(row).sep = sep;
     meta(row).mid = 0.5*(q(i)+q(j));
     meta(row).rot = rot;
+    meta(row).phase_c = getUniformCircleRotationPhase(nc,rot);
+    meta(row).phase_f = getUniformCircleRotationPhase(nf,rot);
 end
 end
 
@@ -326,4 +342,23 @@ if isempty(z)
 end
 
 z_canon = conj(rot)*(z-mid);
+end
+
+function [Ucross,Ec,Lr] = build_actual_pair_colloc_factors(meta,q,rbase_in_c,rout_base_c)
+
+i = meta.i;
+j = meta.j;
+ntar_body = numel(rout_base_c);
+
+rout_pair = [q(i)+rout_base_c; q(j)+rout_base_c];
+rin_pair_c = [q(i)+rbase_in_c; q(j)+rbase_in_c];
+
+Ec = lapSLPmat(rin_pair_c,rout_pair);
+Ucross = -evaluateCoarseOnPairLaplace([q(i); q(j)],rbase_in_c,rout_pair);
+Lr = build_pair_target_closure(ntar_body,ntar_body);
+end
+
+function Lr = build_pair_target_closure(m1,m2)
+
+Lr = [ones(m1,1) zeros(m1,1); zeros(m2,1) ones(m2,1)];
 end

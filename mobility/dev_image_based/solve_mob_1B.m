@@ -244,7 +244,10 @@ end
 figure()
 semilogy(resvec)
 title('GMRES convergence mobility, 1-body precond', 'Interpreter','latex')
-xlabel('Iteration number','interpreter','latex')
+xlabel('iteration number','interpreter','latex')
+ylabel('Estimated relative residual');
+axis tight
+grid on
 
 disp(' == Postprocessing == ');
 %% GET LAMBDA

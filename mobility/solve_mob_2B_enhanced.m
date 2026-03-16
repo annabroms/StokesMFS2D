@@ -367,6 +367,10 @@ if plot_gmres
       figure()
 %     semilogy(e2);
       semilogy(resvec);
+      xlabel('iteration number','interpreter','latex');
+      ylabel('Estimated relative residual');
+      axis tight
+      grid on
       title('GMRES convergence mobility, pair corrections', 'Interpreter','latex')
       u2 = matvec_mob_2B_enhanced(tau,geom,basis);
 end 

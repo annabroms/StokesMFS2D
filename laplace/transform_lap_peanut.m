@@ -54,6 +54,7 @@ N_c = opt.N_c;
 N_f = opt.N_f;
 N_large = length(rvec_out)/P;
 N_check = length(rcheck_out)/P;
+use_ucorr_colloc = use_pair_cache && isequal(rcheck_out,rvec_out);
 if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
     project_charge = logical(opt.project_charge);
 else
@@ -116,7 +117,7 @@ for row = 1:size(pairs,1)
         meta = pair_cache.meta(row);
         group = pair_cache.groups(meta.group_id);
         rot = meta.rot;
-        rhs_pair = rotateUniformCircleData([lam_i lam_p2],rot);
+        rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],meta.phase_c);
         rhs_pair = rhs_pair(:);
         pair_mapped = group.Upf*rhs_pair;
         if need_explicit_pair_sources
@@ -154,7 +155,7 @@ for row = 1:size(pairs,1)
         projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
     if use_pair_cache
-        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],conj(rot));
+        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],conj(meta.phase_c));
         tau_peanut_pair = tau_pair_rot(:,1:2);
         tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
     end
@@ -172,7 +173,18 @@ for row = 1:size(pairs,1)
     block_p2 = (p2-1)*N_check+1:p2*N_check;
     rout_pair = [rcheck_out(block_i); rcheck_out(block_p2)];
     rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
-    if need_explicit_pair_sources
+    use_dense_u_pair = use_ucorr_colloc && use_pair_cache && ~need_explicit_pair_sources ...
+        && isfield(meta,'Ucross_colloc_actual') && ~isempty(meta.Ucross_colloc_actual) ...
+        && isfield(meta,'Ec_colloc_actual') && ~isempty(meta.Ec_colloc_actual);
+    if use_dense_u_pair
+        rhs_actual = [lam_i; lam_p2];
+        u_fine = meta.Ucross_colloc_actual*rhs_actual;
+        if project_charge
+            u_fine = u_fine - meta.Lr_colloc_actual*pair_qv_local;
+        end
+        u_peanut = meta.Ec_colloc_actual*tau_peanut_pair(:);
+        u_pair = u_fine - u_peanut;
+    elseif need_explicit_pair_sources
         if use_pair_cache
             rimage_i = meta.mid + meta.rot*group.rimage_canon{1};
             rimage_p2 = meta.mid + meta.rot*group.rimage_canon{2};
@@ -200,7 +212,7 @@ for row = 1:size(pairs,1)
         beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
             beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
         if use_pair_cache
-            beta_fine_pair = rotateUniformCircleData(beta_fine_pair,conj(rot));
+            beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],conj(meta.phase_f));
         end
         beta_i_fine = beta_fine_pair(:,1);
         beta_p2_fine = beta_fine_pair(:,2);
@@ -220,6 +232,8 @@ for row = 1:size(pairs,1)
             beta_p2_fine; beta_p2_local(N_f+1:end)];
         rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
         u_fine = lapSLPfield(rin_pair_f,rout_pair,beta_tot_actual,false);
+        u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_pair(:),false);
+        u_pair = u_fine - u_peanut;
     else
         u_fine_i = -lapSLPfield(q(p2)+rbase_in_c,rcheck_out(block_i),lam_p2,false);
         u_fine_p2 = -lapSLPfield(q(i)+rbase_in_c,rcheck_out(block_p2),lam_i,false);
@@ -228,11 +242,12 @@ for row = 1:size(pairs,1)
             u_fine_p2 = u_fine_p2 - pair_qv_local(2);
         end
         u_fine = [u_fine_i; u_fine_p2];
+        u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_pair(:),false);
+        u_pair = u_fine - u_peanut;
     end
-    u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_pair(:),false);
 
     pair_idx = [block_i block_p2]';
-    u_corr(pair_idx) = u_corr(pair_idx) + u_fine - u_peanut;
+    u_corr(pair_idx) = u_corr(pair_idx) + u_pair;
 end
 
 if need_explicit_pair_sources

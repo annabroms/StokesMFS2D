@@ -129,7 +129,9 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Basis factors
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
+    getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
+    rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout]);
 
 geom = struct();
@@ -191,6 +193,10 @@ disp(' == Solving... == ');
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure(); semilogy(resvec)
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence capacitance peanut','interpreter','latex')
 
 disp(' == Postprocessing == ');
@@ -284,9 +290,9 @@ delta = 1e-3;
 q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
-%rings = 8; 
-%rings = 2; 
-%q = hexagonal_lattice(delta,rings,R);
+rings = 8; 
+%rings = 3; 
+q = hexagonal_lattice(delta,rings,R);
 P = length(q); 
 v_body = buildAlternatingVoltages(q,R);
 check_multi_compress = 0; 
@@ -297,7 +303,7 @@ opt = getLaplace2Dparams(P,R,N_c);
 opt.delta_pair = 0.2;
 opt.Nclust = 100;
 opt.N_peanut = 400;
-opt.visualise_sol = 1;
+opt.visualise_sol = 0;
 opt.visualise_grid =0; 
 opt.gmres_tol = 1e-8;
 opt.debug = 0;
@@ -305,7 +311,9 @@ opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-8; % tolerance used in the low-rank compression
-opt.reuse_pair_basis_by_sep = 0; 
+opt.reuse_pair_basis_by_sep = 1;
+opt.get_bndry_field = 0; 
+
 %tic
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
 %t_one = toc;

@@ -118,7 +118,8 @@ end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
 %% Get 1- and 2-body basis 
-[Upf,Ypf,~,~,~,~,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rimage_vec,refine,pairs,opt);
+[Upf,Ypf,~,~,~,~,pair_cache] = getPairBasisLaplace(q,rbase_in_c,rbase_in_f, ...
+    rout_base_f,rbase_out_c,rimage_vec,refine,pairs,opt);
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout],true);
 
 geom = struct();
@@ -169,6 +170,10 @@ disp(' == Solving... == ');
     u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
 figure(); semilogy(resvec)
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence elastance 2B','interpreter','latex')
 
 disp(' == Postprocessing == ');

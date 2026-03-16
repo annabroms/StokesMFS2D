@@ -24,7 +24,7 @@ R = 2;
 delta = 1e-3;
 
 % Solve capacitance for hexagonal lattice
-rings = 8; %8 rings around the center disk 
+rings = 9; %8 rings around the center disk 
 q = hexagonal_lattice(delta,rings,R);
 P = length(q);
 v_body = buildAlternatingVoltages(q,R);
@@ -35,7 +35,7 @@ opt = getLaplace2Dparams(P,R,N_c);
 opt.delta_pair = 0.2;
 opt.Nclust = 100;
 opt.N_peanut = 400;
-opt.visualise_sol = 0;
+opt.visualise_sol = 1;
 opt.visualise_grid = 0;
 opt.gmres_tol = 1e-8;
 opt.debug = 0;

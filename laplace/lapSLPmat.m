@@ -12,6 +12,8 @@ function A = lapSLPmat(rsrc,rtar)
 %   A    - Dense matrix such that u = A*sigma corresponds to
 %          u(x) = -(1/(2*pi)) sum_j sigma_j log|x-x_j|.
 %
+% Note: Nothing is done to avoid singularities
+%
 % Self-test:
 %   lapSLPmat()
 %
@@ -29,7 +31,6 @@ rsrc = rsrc(:);
 rtar = rtar(:);
 
 R = abs(bsxfun(@minus,rtar,rsrc.'));
-R(R==0) = 1; % avoid log(0) in pathological self-eval calls
 A = -(1/(2*pi))*log(R);
 
 end

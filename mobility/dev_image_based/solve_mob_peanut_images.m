@@ -294,6 +294,10 @@ disp(' == Solving... == ');
 
 figure()
 semilogy(resvec); 
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
 
 
