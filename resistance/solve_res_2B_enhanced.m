@@ -144,7 +144,8 @@ end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 %Get pair basis
-[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
+[Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).
@@ -165,6 +166,8 @@ basis.U = UU;
 basis.Y = YY;
 basis.Upf = Upf;
 basis.Ypf = Ypf;
+basis.Cmap_FU = Cmap_FU;
+basis.pair_cache = pair_cache;
 
 
 %Visualise 1-body and pair-basis
@@ -311,6 +314,10 @@ if plot_gmres
       figure()
 %     semilogy(e2);
       semilogy(resvec);
+      xlabel('iteration number','interpreter','latex');
+      ylabel('Estimated relative residual');
+      axis tight
+      grid on
       title('Convergence resistance with pair corr','interpreter','latex')
 
       %what's the resiudal?
@@ -341,42 +348,62 @@ for k = 1:P
     FT(seg) = FT(seg) + Kc'*[tau_stokes_x(idx); tau_stokes_y(idx)];
 end
 
-% Fine and image-source contributions are stored particle-by-particle in
-% the same order as in getPairTransformationStokes.
-has_neigh = sort(unique(pairs(:)));
-Kf = getKmat2D(rbase_in_f,0);
-offset = P*N_c;
-
-% Number of (extra) sources per particle for index bookkeeping.
-n_im = zeros(P,1);
-for row = 1:size(pairs,1)
-    i1 = pairs(row,1);
-    i2 = pairs(row,2);
-    n_im(i1) = n_im(i1) + length(rimage_vec{i1,i2});
-    n_im(i2) = n_im(i2) + length(rimage_vec{i2,i1});
-end
-
-for i = 1:length(has_neigh)
-    k = has_neigh(i);
-    seg = (k-1)*3+1:3*k;
-
-    % Contribution from fine proxy ring (N_f points).
-    fine_idx = offset + (1:N_f);
-    offset = offset + N_f;
-    FT(seg) = FT(seg) + Kf'*[tau_stokes_x(fine_idx); tau_stokes_y(fine_idx)];
-
-    % Contribution from pair-specific extra/image points.
-    nimk = n_im(k);
-    if nimk > 0
-        extra_idx = offset + (1:nimk);
-        offset = offset + nimk;
-        Kim = getKmat2D(rvec_in(extra_idx),q(k));
-        FT(seg) = FT(seg) + Kim'*[tau_stokes_x(extra_idx); tau_stokes_y(extra_idx)];
+if logical(getOptField(opt,'cmap',false)) && (~isempty(basis.Cmap_FU) || basis.pair_cache.enabled)
+    for row = 1:size(pairs,1)
+        i1 = pairs(row,1);
+        i2 = pairs(row,2);
+        rhs_pair = [tau_stokes_x(coarse_ind{i1}); tau_stokes_x(coarse_ind{i2}); ...
+                    tau_stokes_y(coarse_ind{i1}); tau_stokes_y(coarse_ind{i2})];
+        if isfield(basis,'pair_cache') && basis.pair_cache.enabled
+            pair = getStokesPairInstance(basis.pair_cache,row);
+            rhs_pair = rotatePairOrderedStokesData(rhs_pair,opt.N_c,pair.meta.phase_c,conj(pair.meta.rot));
+            ft_pair = pair.group.Cmap_FU*rhs_pair;
+            fi = pair.meta.rot*(ft_pair(1) + 1i*ft_pair(2));
+            fj = pair.meta.rot*(ft_pair(4) + 1i*ft_pair(5));
+            ft_pair = [real(fi); imag(fi); ft_pair(3); ...
+                       real(fj); imag(fj); ft_pair(6)];
+        else
+            ft_pair = basis.Cmap_FU{i1,i2}*rhs_pair;
+        end
+        FT((i1-1)*3+1:3*i1) = FT((i1-1)*3+1:3*i1) + ft_pair(1:3);
+        FT((i2-1)*3+1:3*i2) = FT((i2-1)*3+1:3*i2) + ft_pair(4:6);
     end
-end
+else
+    % Fine and image-source contributions are stored particle-by-particle in
+    % the same order as in getPairTransformationStokes.
+    has_neigh = sort(unique(pairs(:)));
+    Kf = getKmat2D(rbase_in_f,0);
+    offset = P*N_c;
 
-if offset ~= length(tau_stokes_x)
-    error('Force postprocessing indexing mismatch in solve_res_2B_enhanced.');
+    % Number of (extra) sources per particle for index bookkeeping.
+    n_im = zeros(P,1);
+    for row = 1:size(pairs,1)
+        i1 = pairs(row,1);
+        i2 = pairs(row,2);
+        n_im(i1) = n_im(i1) + length(rimage_vec{i1,i2});
+        n_im(i2) = n_im(i2) + length(rimage_vec{i2,i1});
+    end
+
+    for i = 1:length(has_neigh)
+        k = has_neigh(i);
+        seg = (k-1)*3+1:3*k;
+
+        fine_idx = offset + (1:N_f);
+        offset = offset + N_f;
+        FT(seg) = FT(seg) + Kf'*[tau_stokes_x(fine_idx); tau_stokes_y(fine_idx)];
+
+        nimk = n_im(k);
+        if nimk > 0
+            extra_idx = offset + (1:nimk);
+            offset = offset + nimk;
+            Kim = getKmat2D(rvec_in(extra_idx),q(k));
+            FT(seg) = FT(seg) + Kim'*[tau_stokes_x(extra_idx); tau_stokes_y(extra_idx)];
+        end
+    end
+
+    if offset ~= length(tau_stokes_x)
+        error('Force postprocessing indexing mismatch in solve_res_2B_enhanced.');
+    end
 end
 
 
@@ -674,6 +701,7 @@ visualise = 1;
 images = 1; %only relevant for 1-body precond
 delta_pair = 0.2; 
 test = 1; % 1 or 2
+P = length(q); 
 %% compare to a solution with 1 body precond only
 if test == 1
     %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, visualise);
@@ -697,7 +725,7 @@ if test == 1
     [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, lr,visualise);
     gmres_tol = 1e-7;
     debug = 1; 
-    opt = get2Dparams();
+    opt = get2Dparams(P);
     opt.rad = rad;
     opt.delta_pair = delta_pair;
     opt.lr = lr;

@@ -1,31 +1,20 @@
-function [rout_fine_other,tout] = getFineOther(a,N_f,varargin)
-%Retrieve fine grid on circle p2 close to circle i
-
-if numel(varargin) < 4
-    error('getFineOther:BadInput','Expected at least 4 trailing inputs.');
-end
+function [rout_fine_other,tout] = getFineOther(q,refine,i,p2,a,N_f)
+%GETFINEOTHER Build the fine target grid on body p2 for the pair (i,p2).
+%
+% Syntax:
+%   [rout_fine_other,tout] = getFineOther(q,refine,i,p2,a,N_f)
+%
+% Inputs:
+%   q      - particle centers
+%   refine - pair-local clustered boundary nodes or their angular values
+%   i,p2   - pair indices; returns targets on body p2 associated with body i
+%   a,N_f  - fine-grid upsampling parameters
+%
+% Notes:
+%   This helper is currently used only in the Stokes circular-body code
+%   paths, where the body radius is normalized to 1.
 
 rad = 1;
-if iscell(varargin{1})
-    refine = varargin{1};
-    q = varargin{2};
-    i = varargin{3}; %#ok<NASGU>
-    p2 = varargin{4};
-    if numel(varargin) >= 5 && ~isempty(varargin{5})
-        rad = varargin{5};
-    end
-else
-    rad = varargin{1};
-    refine = varargin{2};
-    q = varargin{3};
-    i = varargin{4}; %#ok<NASGU>
-    p2 = varargin{5};
-    if isscalar(rad)
-        rad = rad;
-    else
-        rad = rad(p2);
-    end
-end
 
 nout = ceil(a*N_f); % number of uniformly distributed collocation points on fine grid.
 t = linspace(0,2*pi,nout+1);

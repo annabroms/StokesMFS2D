@@ -81,7 +81,7 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-opt.project = 1; %project out contribution to force / torque
+opt.project_force = true; % project out contribution to force / torque
 opt.gmres_verbose = gmres_verbose;
 %Params for coarse and fine grid. 
 N_c = getOptField(opt,'N_c',150);
@@ -169,7 +169,8 @@ rimage_in = [];
 %Get pair basis
 opt.project_pair = true;
 opt.N_peanut = 0; %no peanut compression here!
-[Upf,Ypf,~,~,~,~] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
+[Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -188,6 +189,8 @@ basis.Y = Y;
 basis.Lc = Lc{1};
 basis.Upf = Upf;
 basis.Ypf = Ypf;
+basis.Cmap_FU = Cmap_FU;
+basis.pair_cache = pair_cache;
 
 
 % Now, check pair basis up to the boundary. Is it nice and smooth?
@@ -380,7 +383,7 @@ disp(' == Postprocessing == ');
 % Recover the projected source representation and the nonprojected
 % strengths needed for rigid-body postprocessing.
 
-[rvec_in,~,tau_stokes_x,tau_stokes_y, ...
+[rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
     tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
     getMobPairTransformationStokes(tau,geom,basis);
 
@@ -395,16 +398,36 @@ for k= 1:P
     UW((k-1)*3+1:3*k) = -Kc'*[tau_stokes_nonpx((k-1)*N_c+1:k*N_c); tau_stokes_nonpy((k-1)*N_c+1:k*N_c)];
 end
 
-%Then, due to all fine sources.
-has_neigh = sort(unique(pairs(:)));
-Kf = getKmat2D(rbase_in_f,0); 
-for i = 1:length(has_neigh)
-    k = has_neigh(i); 
-    UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kf'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
-        tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
-    Kim = getKmat2D(rimage_k{k},q(k));
-    % TODO: don't build K matrix
-    UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kim'*[tau_stokes_e_nonpx{k}; tau_stokes_e_nonpy{k}];
+if logical(getOptField(opt,'cmap',false)) && (~isempty(basis.Cmap_FU) || basis.pair_cache.enabled)
+    for row = 1:size(pairs,1)
+        i = pairs(row,1);
+        p2 = pairs(row,2);
+        rhs_pair = [tau_stokes_x(coarse_ind{i}); tau_stokes_x(coarse_ind{p2}); ...
+                    tau_stokes_y(coarse_ind{i}); tau_stokes_y(coarse_ind{p2})];
+        if isfield(basis,'pair_cache') && basis.pair_cache.enabled
+            pair = getStokesPairInstance(basis.pair_cache,row);
+            rhs_pair = rotatePairOrderedStokesData(rhs_pair,opt.N_c,pair.meta.phase_c,conj(pair.meta.rot));
+            pair_vel = pair.group.Cmap_FU*rhs_pair;
+            vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
+            vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
+            pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
+                        real(vel_p2); imag(vel_p2); pair_vel(6)];
+        else
+            pair_vel = basis.Cmap_FU{i,p2}*rhs_pair;
+        end
+        UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i) + pair_vel(1:3);
+        UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2) + pair_vel(4:6);
+    end
+else
+    has_neigh = sort(unique(pairs(:)));
+    Kf = getKmat2D(rbase_in_f,0); 
+    for i = 1:length(has_neigh)
+        k = has_neigh(i); 
+        UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kf'*[tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c); 
+            tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c)];
+        Kim = getKmat2D(rimage_k{k},q(k));
+        UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-Kim'*[tau_stokes_e_nonpx{k}; tau_stokes_e_nonpy{k}];
+    end
 end
 
 %% CHECK RESIDUAL AT SURFACE
@@ -523,10 +546,10 @@ rad = [1; 1; 1];
 
 
 %If only two particles
-% q = [0; 2+delta];
-% F = F(1:2,:); 
-% T = T(1:2); 
-% rad = [1;1]; 
+q = [0; 2+delta];
+F = F(1:2,:); 
+T = T(1:2); 
+rad = [1;1]; 
 
 %F = F-mean(F); %zero total force
 
@@ -546,6 +569,7 @@ opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
 opt.visualise_grid = 1; 
+opt.cmap = 1;
 
 % is this a way to debug?
 % opt.N_peanut = 0;%  

@@ -243,6 +243,10 @@ end
 % Decay of residual with iteration number
 figure()
 semilogy(resvec)
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence mobility, 1-body precond', 'Interpreter','latex')
 xlabel('iteration number','interpreter','latex')
 ylabel('Estimated relative residual');

@@ -30,13 +30,19 @@ Y = basis.Y;
 Lc = basis.Lc;
 Upf = basis.Upf;
 Ypf = basis.Ypf;
+if isfield(basis,'pair_cache')
+    pair_cache = basis.pair_cache;
+else
+    pair_cache = struct('enabled',false);
+end
+use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 
 P = length(q);
 N_coarse = opt.N_c;
+N_f = opt.N_f;
 N_large = length(rvec_out)/P;
 PM = length(rvec_out);
 
-precomp = opt.precomp;
 use_matrix_free_projection = true; % set false to use the original K-based projector
 
 % Map densities back.
@@ -98,11 +104,20 @@ for pair_row = 1:size(pairs,1)
     lambda_coarse_i = [tau_stokes_x_coarse(coarse_ind{i}); tau_stokes_y_coarse(coarse_ind{i})];
     lambda_coarse_p2 = [tau_stokes_x_coarse(coarse_ind{p2}); tau_stokes_y_coarse(coarse_ind{p2})];
 
-    rimage_k_chunks{i}{end+1,1} = rimage_vec{i,p2};
-    rimage_k_chunks{p2}{end+1,1} = rimage_vec{p2,i};
+    if use_pair_cache
+        pair = getStokesPairInstance(pair_cache,pair_row);
+        rimage_i = pair.rimage_i;
+        rimage_p2 = pair.rimage_j;
+    else
+        rimage_i = rimage_vec{i,p2};
+        rimage_p2 = rimage_vec{p2,i};
+    end
+
+    rimage_k_chunks{i}{end+1,1} = rimage_i;
+    rimage_k_chunks{p2}{end+1,1} = rimage_p2;
 
     % Keep track of local ordering of source vector for the pair.
-    im_nr = length(rimage_vec{i,p2});
+    im_nr = length(rimage_i);
     s_ind1_x = 1:opt.N_f;
     s_ind2_x = opt.N_f+im_nr+1:2*opt.N_f+im_nr;
     s_ind1_y = 2*opt.N_f+2*im_nr+1:3*opt.N_f+2*im_nr;
@@ -113,17 +128,23 @@ for pair_row = 1:size(pairs,1)
     e_ind2_y = 4*opt.N_f+3*im_nr+1:4*opt.N_f+4*im_nr;
 
     % Fine source locations for the pair.
-    rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
+    rin_pair = [rbase_in_f+q(i); rimage_i; rbase_in_f+q(p2); rimage_p2];
 
-    if ~precomp
+    if use_pair_cache
+        coarse_to_fine_tot = rotatePairOrderedStokesData( ...
+            [lambda_coarse_i(1:N_coarse) lambda_coarse_p2(1:N_coarse) ...
+             lambda_coarse_i(N_coarse+1:end) lambda_coarse_p2(N_coarse+1:end)], ...
+            N_coarse,pair.meta.phase_c,conj(pair.meta.rot));
+        coarse_to_fine_tot = coarse_to_fine_tot(:);
+    elseif ~opt.precomp
         % Read off coarse grid contribution on the other particle's fine grid.
-        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);
+        rout_fine_other2 = getFineOther(q,refine,i,p2,opt.a_f,opt.N_f);
         [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
             real(rout_fine_other2),imag(rout_fine_other2),lambda_coarse_i(1:end/2),...
             lambda_coarse_i(end/2+1:end),opt.N_c);
         R2 = -[udirect; vdirect];
 
-        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);
+        rout_fine_other1 = getFineOther(q,refine,p2,i,opt.a_f,opt.N_f);
         [udirect,vdirect] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
             real(rout_fine_other1),imag(rout_fine_other1),lambda_coarse_p2(1:end/2),...
             lambda_coarse_p2(end/2+1:end),opt.N_c);
@@ -137,8 +158,15 @@ for pair_row = 1:size(pairs,1)
 
     % Take pseudoinverse of the fine representation to determine fine sources
     % for BOTH chi_1,2 and chi_2,1.
-    pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
-    beta_tot = Ypf{i,p2}*pair_mapped;
+    if use_pair_cache
+        pair_mapped = pair.group.Upf*coarse_to_fine_tot;
+        beta_tot = pair.group.Ypf*pair_mapped;
+        beta_tot = rotateStokesPairSourceVector(beta_tot,N_f,length(rimage_i),length(rimage_p2), ...
+            conj(pair.meta.phase_f),pair.meta.rot);
+    else
+        pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
+        beta_tot = Ypf{i,p2}*pair_mapped;
+    end
 
     %% Project to remove force/torque-producing modes.
     tau_mapped_f_xi = beta_tot(s_ind1_x);

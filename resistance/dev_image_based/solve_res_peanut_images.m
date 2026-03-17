@@ -271,6 +271,10 @@ end
 %[tau,flag,relres,iter,resvec2] = gmres(@(x) matvec_2D_pairprecond3(x,rbase_in_c,rbase_in_f,rbase_out_f,rvec_out,q,UU,YY,B,pairs,A,Uf,Yf,Ncf,Upf,Ypf),fout,[],gmres_tol,maxit);
 figure()
 semilogy(resvec); 
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
 
 if visualise

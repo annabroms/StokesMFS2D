@@ -129,9 +129,11 @@ end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 
-%Get pair basis                                               
+%Get pair basis 
+opt.project_force = false;
 opt.show_counter = true;
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
@@ -156,7 +158,8 @@ basis.Ypf = YB_all;
 basis.DC_all = UC_all;
 basis.YC_all = YC_all;
 basis.Cmap = Cmap;
-basis.Cmap_FU = Cmap_FU; 
+basis.Cmap_FU = Cmap_FU;
+basis.pair_cache = pair_cache;
 
 %% Construct rhs
 
@@ -210,6 +213,10 @@ disp(' == Solving... == ');
 
 figure()
 semilogy(resvec); 
+xlabel('iteration number','interpreter','latex');
+ylabel('Estimated relative residual');
+axis tight
+grid on
 title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
 
 if visualise_sol
@@ -261,8 +268,15 @@ if opt.get_bndry_field
     fprintf('Max surf rel res at new nodes %.3e\n', rel_res);
 else
     geom_eval = geom;
-    [lam_c_x, lam_self_x, ~,lam_c_y,lam_self_y,~,~,rimage_k] = ...
-        transform_peanut_stokes(tau,geom_eval,basis);
+    if opt.cmap
+        [lam_c_x, lam_self_x, ~,lam_c_y,lam_self_y,~,~,rimage_k] = ...
+            transform_peanut_stokes(tau,geom_eval,basis);
+        lam_f_x = [];
+        lam_f_y = [];
+    else
+        [lam_c_x, lam_self_x, lam_f_x,lam_c_y,lam_self_y,lam_f_y,~,rimage_k] = ...
+            transform_peanut_stokes(tau,geom_eval,basis);
+    end
     rel_res = nan; 
 end
 
@@ -290,7 +304,17 @@ if opt.cmap
                     lam_self_y(coarse_i); lam_self_y(coarse_p2)];
 
         % Sign matches the fine-source postprocessing path via lam_f_{x,y}.
-        FT_pair = Cmap_FU{i,p2}*rhs_pair; % [Fx_i; Fy_i; T_i; Fx_p2; Fy_p2; T_p2]
+        if basis.pair_cache.enabled
+            pair = getStokesPairInstance(basis.pair_cache,pair_it);
+            rhs_pair = rotatePairOrderedStokesData(rhs_pair,N_c,pair.meta.phase_c,conj(pair.meta.rot));
+            FT_pair = pair.group.Cmap_FU*rhs_pair;
+            fi = pair.meta.rot*(FT_pair(1) + 1i*FT_pair(2));
+            fj = pair.meta.rot*(FT_pair(4) + 1i*FT_pair(5));
+            FT_pair = [real(fi); imag(fi); FT_pair(3); ...
+                       real(fj); imag(fj); FT_pair(6)];
+        else
+            FT_pair = Cmap_FU{i,p2}*rhs_pair; % [Fx_i; Fy_i; T_i; Fx_p2; Fy_p2; T_p2]
+        end
         FT((i-1)*3+1:3*i) = FT((i-1)*3+1:3*i) + FT_pair(1:3);
         FT((p2-1)*3+1:3*p2) = FT((p2-1)*3+1:3*p2) + FT_pair(4:6);
     end
@@ -389,13 +413,15 @@ if test == 1
     gmres_tol = 1e-10;
     debug = 1; 
 
-    opt = get2Dparams();
+
+    opt = get2Dparams(P);
     opt.rad = rad;
     opt.delta_pair = delta_pair;
     opt.N_peanut = N_peanut;
     opt.visualise_sol = visualise;
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
+    opt.cmap = 0; 
     [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
     debug = 0; 
     [FT2,lambda2,it2,gmres_res2, err2] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
@@ -437,14 +463,17 @@ else
     U = rand(P,2); W = rand(P,1); 
     %W = zeros(P,1); 
     gmres_tol = 1e-7; 
-    debug = 0; 
+    debug = 1; 
 
-    opt = get2Dparams(P);
+    N_c = 100; 
+    opt = get2Dparams(P,N_c);
     opt.delta_pair = delta_pair;
     opt.N_peanut = N_peanut;
     opt.visualise_sol = visualise;
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
+    opt.cmap = 1; 
+    opt.reuse_pair_basis_by_sep = 1; 
     [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
     [FT2,sol2] = solve_res_2B_enhanced(q,U,W,opt);
     

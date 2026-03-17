@@ -33,14 +33,18 @@ U = basis.U;
 Y = basis.Y;
 Upf = basis.Upf;
 Ypf = basis.Ypf;
+if isfield(basis,'pair_cache')
+    pair_cache = basis.pair_cache;
+else
+    pair_cache = struct('enabled',false);
+end
+use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 
 P = length(q);
 N_coarse = opt.N_c;
 N_f = opt.N_f;
 N_large = length(rvec_out)/P;
 PM = length(rvec_out);
-precomp = opt.precomp;
-
 % Preallocate coarse contributions (same size for all particles).
 n_coarse_tot = P*N_coarse;
 tau_stokes_x_coarse = zeros(n_coarse_tot,1);
@@ -86,12 +90,21 @@ for pair_row = 1:size(pairs,1)
     lambda_i = [tau_stokes_x_coarse(coarse_ind{i}); tau_stokes_y_coarse(coarse_ind{i})];
     lambda_p2 = [tau_stokes_x_coarse(coarse_ind{p2}); tau_stokes_y_coarse(coarse_ind{p2})];
 
+    if use_pair_cache
+        pair = getStokesPairInstance(pair_cache,pair_row);
+        rimage_i = pair.rimage_i;
+        rimage_p2 = pair.rimage_j;
+    else
+        rimage_i = rimage_vec{i,p2};
+        rimage_p2 = rimage_vec{p2,i};
+    end
+
     % Keep per-particle image source locations for final assembly.
-    rimage_k_chunks{i}{end+1,1} = rimage_vec{i,p2};
-    rimage_k_chunks{p2}{end+1,1} = rimage_vec{p2,i};
+    rimage_k_chunks{i}{end+1,1} = rimage_i;
+    rimage_k_chunks{p2}{end+1,1} = rimage_p2;
 
     % Local ordering in pair source vector.
-    im_nr = length(rimage_vec{i,p2});
+    im_nr = length(rimage_i);
     s_ind1_x = 1:N_f;
     s_ind2_x = N_f+im_nr+1:2*N_f+im_nr;
     s_ind1_y = 2*N_f+2*im_nr+1:3*N_f+2*im_nr;
@@ -101,14 +114,20 @@ for pair_row = 1:size(pairs,1)
     e_ind1_y = 3*N_f+2*im_nr+1:3*N_f+3*im_nr;
     e_ind2_y = 4*N_f+3*im_nr+1:4*N_f+4*im_nr;
 
-    if ~precomp
-        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,i,p2);
+    if use_pair_cache
+        coarse_to_fine_tot = rotatePairOrderedStokesData( ...
+            [lambda_i(1:N_coarse) lambda_p2(1:N_coarse) ...
+             lambda_i(N_coarse+1:2*N_coarse) lambda_p2(N_coarse+1:2*N_coarse)], ...
+            N_coarse,pair.meta.phase_c,conj(pair.meta.rot));
+        coarse_to_fine_tot = coarse_to_fine_tot(:);
+    elseif ~opt.precomp
+        rout_fine_other2 = getFineOther(q,refine,i,p2,opt.a_f,opt.N_f);
         [u2,v2] = StokesletDirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
             real(rout_fine_other2),imag(rout_fine_other2),...
             lambda_i(1:N_coarse),lambda_i(N_coarse+1:2*N_coarse),N_coarse);
         R2 = -[u2; v2];
 
-        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,opt.rad,refine,q,p2,i);
+        rout_fine_other1 = getFineOther(q,refine,p2,i,opt.a_f,opt.N_f);
         [u1,v1] = StokesletDirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
             real(rout_fine_other1),imag(rout_fine_other1),...
             lambda_p2(1:N_coarse),lambda_p2(N_coarse+1:2*N_coarse),N_coarse);
@@ -120,13 +139,20 @@ for pair_row = 1:size(pairs,1)
             lambda_i(end/2+1:end); lambda_p2(end/2+1:end)];
     end
 
-    pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
-    beta_tot = Ypf{i,p2}*pair_mapped;
+    if use_pair_cache
+        pair_mapped = pair.group.Upf*coarse_to_fine_tot;
+        beta_tot = pair.group.Ypf*pair_mapped;
+        beta_tot = rotateStokesPairSourceVector(beta_tot,N_f,length(rimage_i),length(rimage_p2), ...
+            conj(pair.meta.phase_f),pair.meta.rot);
+    else
+        pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
+        beta_tot = Ypf{i,p2}*pair_mapped;
+    end
 
     %% Evaluate flow field on the pair itself.
     rout_pair = [rvec_out((i-1)*N_large+1:i*N_large,:); ...
         rvec_out((p2-1)*N_large+1:p2*N_large,:)];
-    rin_pair = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
+    rin_pair = [rbase_in_f+q(i); rimage_i; rbase_in_f+q(p2); rimage_p2];
     st_all = length(rin_pair);
     [u1,v1] = stokSLPdirect(real(rin_pair),imag(rin_pair),...
         real(rout_pair),imag(rout_pair),...

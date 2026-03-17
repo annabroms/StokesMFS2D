@@ -464,6 +464,10 @@ end
 if debug
     figure()
     semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
     title('GMRES convergence resistance, 1-body precond', 'Interpreter','latex')
     xlabel('Iteration number','interpreter','latex')
 end

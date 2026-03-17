@@ -90,8 +90,8 @@ tcoarse = tcoarse(1:end-1)';
 
 
 %these matrices do not change if density changes
-[rout_fine_other,tother] = getFineOther(a_f,Nf,rad,refine,q,i,p2);  
-rout_fine_self = getFineOther(a_f,Nf,rad,refine,q,p2,i); 
+[rout_fine_other,tother] = getFineOther(q,refine,i,p2,a_f,Nf);  
+rout_fine_self = getFineOther(q,refine,p2,i,a_f,Nf); 
 
 %Needed to determine pair-basis
 Nother = stokSLPmat(rbase_in_c+q(i),rout_fine_other,1);

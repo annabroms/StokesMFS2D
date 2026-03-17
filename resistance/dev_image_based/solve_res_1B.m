@@ -66,7 +66,7 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 % Params to determine grid
-opt = get2Dparams(); 
+opt = get2Dparams(P); 
 opt.gmres_verbose = gmres_verbose;
 a = opt.a_c;
 opt.a_c = a; 
@@ -527,6 +527,10 @@ end
 if debug
     figure()
     semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
     title('GMRES convergence resistance, 1-body precond', 'Interpreter','latex')
     xlabel('Iteration number','interpreter','latex')
 end

@@ -23,6 +23,13 @@ rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
 is_collocation = isequal(rcheck,rvec_out);
+Cmap_FU = basis.Cmap_FU;
+if isfield(basis,'pair_cache')
+    pair_cache = basis.pair_cache;
+else
+    pair_cache = struct('enabled',false);
+end
+use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y, ...
     tau_stokes_nonpx, tau_stokes_nonpy,tau_stokes_e_nonpx, tau_stokes_e_nonpy, rimage_k] = ...
     getMobPairTransformationStokes(tau,geom,basis);
@@ -57,29 +64,62 @@ rbase_out_rel = rvec_out(1:N_large)-q(1);
     %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
     % end
     
-% Add action of Lr = BK' for fine sources 
+% Add action of Lr = BK' for pair observables.
+if logical(getOptField(opt,'cmap',false)) && (~isempty(Cmap_FU) || use_pair_cache)
+    for row = 1:size(pairs,1)
+        i = pairs(row,1);
+        p2 = pairs(row,2);
 
-has_neigh = sort(unique(pairs(:)));
-for i = 1:length(has_neigh)
-    k = has_neigh(i); 
+        rhs_pair = [tau_stokes_x(coarse_ind{i}); tau_stokes_x(coarse_ind{p2}); ...
+                    tau_stokes_y(coarse_ind{i}); tau_stokes_y(coarse_ind{p2})];
 
-    % Add BK' part for the uniformly sampled sources...
-    fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-    fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
-    
-    bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+        if use_pair_cache
+            pair = getStokesPairInstance(pair_cache,row);
+            rhs_pair = rotatePairOrderedStokesData(rhs_pair,opt.N_c,pair.meta.phase_c,conj(pair.meta.rot));
+            pair_vel = -pair.group.Cmap_FU*rhs_pair;
+            vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
+            vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
+            pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
+                        real(vel_p2); imag(vel_p2); pair_vel(6)];
+        else
+            pair_vel = -Cmap_FU{i,p2}*rhs_pair;
+        end
 
-    %and for the enhancing extra sources
-    if isempty(rimage_k{k})
-        bcvec_f = zeros(2*N_large,1);
-    else    
-        bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
-            tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
+        rot_x = -imag(rbase_out_rel);
+        rot_y = real(rbase_out_rel);
+        bvec_i = [pair_vel(1) + pair_vel(3)*rot_x; ...
+                  pair_vel(2) + pair_vel(3)*rot_y];
+        bvec_p2 = [pair_vel(4) + pair_vel(6)*rot_x; ...
+                   pair_vel(5) + pair_vel(6)*rot_y];
+
+        res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large) + bvec_i(1:end/2);
+        res((i-1)*N_large+PM+1:i*N_large+PM) = res((i-1)*N_large+PM+1:i*N_large+PM) + bvec_i(end/2+1:end);
+        res((p2-1)*N_large+1:p2*N_large) = res((p2-1)*N_large+1:p2*N_large) + bvec_p2(1:end/2);
+        res((p2-1)*N_large+PM+1:p2*N_large+PM) = res((p2-1)*N_large+PM+1:p2*N_large+PM) + bvec_p2(end/2+1:end);
     end
+else
+    has_neigh = sort(unique(pairs(:)));
+    for i = 1:length(has_neigh)
+        k = has_neigh(i); 
 
-    res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
-    res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
+        % Add BK' part for the uniformly sampled sources...
+        fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+        fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
+        
+        bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
 
+        %and for the enhancing extra sources
+        if isempty(rimage_k{k})
+            bcvec_f = zeros(2*N_large,1);
+        else    
+            bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
+                tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
+        end
+
+        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
+        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
+
+    end
 end
 
 

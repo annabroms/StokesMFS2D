@@ -23,12 +23,14 @@ function [lam_c_x, lam_self_x, lam_f_x, ...
 %   lam_self_y   - One-body coarse y-source strengths (used for self-block subtraction).
 %   lam_f_y   - Cell array with per-particle pair-source strengths in y,
 %                  ordered as [fine-body; fine-image].
-%   u_corr       - Pair correction that replaces compressed pair blocks by fine pair evaluation.
+%   u_corr       - Pair correction used in the peanut solve/postprocess path.
+%                  On the solve grid it cancels the coarse pair block using
+%                  one-body coarse data; off the solve grid it replaces the
+%                  coarse pair block by the explicit fine pair field.
 %   rimage_k     - Per-particle concatenated image/source nodes from all close pairs.
 
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
-refine = geom.refine;
 rimage_vec = geom.rimage_vec;
 opt = geom.opt;
 rvec_out = geom.rvec_out;
@@ -43,6 +45,12 @@ Ypf = basis.Ypf;
 DC_all = basis.DC_all;
 YC_all = basis.YC_all;
 Cmap = basis.Cmap;
+if isfield(basis,'pair_cache')
+    pair_cache = basis.pair_cache;
+else
+    pair_cache = struct('enabled',false);
+end
+use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 
 P = length(q);
 N_c = opt.N_c;
@@ -51,8 +59,7 @@ N_large = length(rvec_out)/P;
 PM = length(rvec_out);
 N_check = length(rcheck_out)/P;
 PM2 = length(rcheck_out);
-
-precomp = opt.precomp;
+use_coarse_pair_corr = isequal(rcheck_out,rvec_out);
 
 % Preallocate coarse/fine source storage.
 lam_c_x = zeros(N_c*P,1);
@@ -80,7 +87,7 @@ for i = 1:P
     lam_c_y(coarse_ind) = lambda_coarse_i(N_c+1:2*N_c);
 end
 
-% One-body part is needed when correcting diagonal blocks in the matvec.
+% Store separately as one-body part is needed when correcting diagonal blocks in the matvec.
 lam_self_x = lam_c_x;
 lam_self_y = lam_c_y;
 
@@ -94,32 +101,29 @@ for pair_row = 1:size(pairs,1)
 
     lambda_i = [lam_self_x(coarse_i); lam_self_y(coarse_i)];
     lambda_p2 = [lam_self_x(coarse_p2); lam_self_y(coarse_p2)];
-    rimage_k{i} = [rimage_k{i}; rimage_vec{i,p2}];
-    rimage_k{p2} = [rimage_k{p2}; rimage_vec{p2,i}];
 
-    if precomp
-        rhs = [lambda_i(1:N_c); lambda_p2(1:N_c); ...
-               lambda_i(N_c+1:2*N_c); lambda_p2(N_c+1:2*N_c)];
+    rhs_mat = [lambda_i(1:N_c) lambda_p2(1:N_c) ...
+               lambda_i(N_c+1:2*N_c) lambda_p2(N_c+1:2*N_c)];
+
+    if use_pair_cache
+        pair = getStokesPairInstance(pair_cache,pair_row);
+        rhs = rotatePairOrderedStokesData(rhs_mat,N_c,pair.meta.phase_c,conj(pair.meta.rot));
+        rhs = rhs(:);
+        rimage_i = pair.rimage_i;
+        rimage_p2 = pair.rimage_j;
     else
-        rout_fine_other2 = getFineOther(opt.a_f,opt.N_f,refine,q,i,p2);
-        [u2,v2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)),...
-            real(rout_fine_other2),imag(rout_fine_other2),...
-            lambda_i(1:N_c),lambda_i(N_c+1:2*N_c),N_c);
-        R2 = -[u2; v2];
-
-        rout_fine_other1 = getFineOther(opt.a_f,opt.N_f,refine,q,p2,i);
-        [u1,v1] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)),...
-            real(rout_fine_other1),imag(rout_fine_other1),...
-            lambda_p2(1:N_c),lambda_p2(N_c+1:2*N_c),N_c);
-        R1 = -[u1; v1];
-
-        rhs = [R1(1:end/2); R2(1:end/2); R1(end/2+1:end); R2(end/2+1:end)];
+        rhs = rhs_mat(:);
+        rimage_i = rimage_vec{i,p2};
+        rimage_p2 = rimage_vec{p2,i};
     end
 
-    % 1) Compute peanut compressed coarse source strengths
-    % 2) Determine flow field on pair itself due to fine representation.
-    % With compression matrices concatenated (opt.cmap = 1), we can do this using the BVP
-    % rhs for the fine solve
+    rimage_k{i} = [rimage_k{i}; rimage_i];
+    rimage_k{p2} = [rimage_k{p2}; rimage_p2];
+
+    % 1) Compute peanut compressed coarse source strengths.
+    % 2) Build the pair correction. On the solve grid we use the coarse
+    %    cross-interaction directly; off the solve grid we retain the
+    %    explicit fine-pair evaluation for postprocessing.
 
     rcheck_i = rcheck_out((i-1)*N_check+1:i*N_check,:);
     rcheck_p2 = rcheck_out((p2-1)*N_check+1:p2*N_check,:);
@@ -129,7 +133,13 @@ for pair_row = 1:size(pairs,1)
     rin_pair_c = [rin_ci; rin_cp2];
 
     if opt.cmap
-        tau_peanut_tot = Cmap{i,p2}*rhs;
+        if use_pair_cache
+            tau_peanut_loc = pair.group.Cmap*rhs;
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_tot = tau_peanut_tot(:);
+        else
+            tau_peanut_tot = Cmap{i,p2}*rhs;
+        end
         [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
             real(rcheck_i),imag(rcheck_i), lam_self_x(coarse_p2),...
             lam_self_y(coarse_p2),N_c);
@@ -138,14 +148,28 @@ for pair_row = 1:size(pairs,1)
             lam_self_y(coarse_i),N_c);
         u_fine = -[ui; up2; vi; vp2];
     else
-        pair_mapped = Upf{i,p2}*rhs;
-        tau_mapped_tot = Ypf{i,p2}*pair_mapped;
-        tau_peanut_temp = DC_all{i,p2}*tau_mapped_tot;
-        tau_peanut_tot = YC_all{i,p2}*tau_peanut_temp;
+        if use_pair_cache
+            pair_mapped = pair.group.Upf*rhs;
+            tau_mapped_tot = pair.group.Ypf*pair_mapped;
+            im_nr_i = numel(pair.group.rimage_canon{1});
+            im_nr_p2 = numel(pair.group.rimage_canon{2});
+            tau_mapped_tot = rotateStokesPairSourceVector(tau_mapped_tot,N_f,im_nr_i,im_nr_p2, ...
+                conj(pair.meta.phase_f),pair.meta.rot);
+            tau_peanut_temp = pair.group.DC*(pair.group.Ypf*pair_mapped);
+            tau_peanut_loc = pair.group.YC*tau_peanut_temp;
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_tot = tau_peanut_tot(:);
+            im_nr = length(rimage_i);
+        else
+            pair_mapped = Upf{i,p2}*rhs;
+            tau_mapped_tot = Ypf{i,p2}*pair_mapped;
+            tau_peanut_temp = DC_all{i,p2}*tau_mapped_tot;
+            tau_peanut_tot = YC_all{i,p2}*tau_peanut_temp;
+            im_nr = length(rimage_vec{i,p2});
+        end
 
         % Pair-local indexing in tau_mapped_tot:
         % [f_i_x; e_i_x; f_p2_x; e_p2_x; f_i_y; e_i_y; f_p2_y; e_p2_y]
-        im_nr = length(rimage_vec{i,p2});
         f_ind1_x = 1:N_f;
         e_ind1_x = N_f+1:N_f+im_nr;
         f_ind2_x = N_f+im_nr+1:2*N_f+im_nr;
@@ -169,22 +193,44 @@ for pair_row = 1:size(pairs,1)
         lam_beta_e_y_chunks{p2}{end+1,1} = tau_mapped_tot(e_ind2_y);
 
 
-         % Evaluate fine grid pair correction on check grid.
-        rin_pair_f = [rbase_in_f+q(i); rimage_vec{i,p2}; rbase_in_f+q(p2); rimage_vec{p2,i}];
-        n_fpair = length(rin_pair_f);
-        [u1,v1] = stokSLPdirect(real(rin_pair_f),imag(rin_pair_f),...
-            real(rout_pair),imag(rout_pair),...
-            tau_mapped_tot(1:n_fpair),tau_mapped_tot(n_fpair+1:2*n_fpair),n_fpair);
-        u_fine = [u1; v1];
+        if ~use_coarse_pair_corr
+            % Postprocessing on off-collocation targets still uses the
+            % explicit fine pair field.
+            rin_pair_f = [rbase_in_f+q(i); rimage_i; rbase_in_f+q(p2); rimage_p2];
+            n_fpair = length(rin_pair_f);
+            [u1,v1] = stokSLPdirect(real(rin_pair_f),imag(rin_pair_f),...
+                real(rout_pair),imag(rout_pair),...
+                tau_mapped_tot(1:n_fpair),tau_mapped_tot(n_fpair+1:2*n_fpair),n_fpair);
+            u_fine = [u1; v1];
+        end
    
     
     end
 
-    % The velocity field correction for the pair happens here! 
-    [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c),...
-        real(rout_pair),imag(rout_pair),...
-        tau_peanut_tot(1:2*N_c),tau_peanut_tot(2*N_c+1:4*N_c),2*N_c);
-    u_peanut = [u1; v1];
+    if use_coarse_pair_corr
+        [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
+            real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),...
+            lam_self_y(coarse_p2),N_c);
+        [up2,vp2] = stokSLPdirect(real(rin_ci),imag(rin_ci),...
+            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),...
+            lam_self_y(coarse_i),N_c);
+        u_fine = -[ui; up2; vi; vp2];
+    end
+
+    % The velocity field correction for the pair happens here.
+    use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
+        isfield(pair.group,'Ecolloc') && ~isempty(pair.group.Ecolloc);
+    if use_dense_u_peanut
+        phase_out = getUniformCircleRotationPhase(N_check,pair.meta.rot);
+        u_peanut = pair.group.Ecolloc*tau_peanut_loc;
+        u_peanut = rotatePairOrderedStokesData(u_peanut,N_check,conj(phase_out),pair.meta.rot);
+        u_peanut = u_peanut(:);
+    else
+        [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c),...
+            real(rout_pair),imag(rout_pair),...
+            tau_peanut_tot(1:2*N_c),tau_peanut_tot(2*N_c+1:4*N_c),2*N_c);
+        u_peanut = [u1; v1];
+    end
 
     pair_ind = [(i-1)*N_check+1:i*N_check ...
                 (p2-1)*N_check+1:p2*N_check ...

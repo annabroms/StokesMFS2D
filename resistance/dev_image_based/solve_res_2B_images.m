@@ -76,7 +76,7 @@ fprintf('==== START: %s ====\n', solver_name);
 % Grid params
 P = length(q); 
 
-opt = get2Dparams();
+opt = get2Dparams(P);
 opt.gmres_verbose = gmres_verbose;
 
 
@@ -363,6 +363,10 @@ if plot_gmres
       figure()
 %     semilogy(e2);
       semilogy(resvec);
+      xlabel('iteration number','interpreter','latex');
+      ylabel('Estimated relative residual');
+      axis tight
+      grid on
       title('Convergence resistance with pair corr','interpreter','latex')
 
       %what's the resiudal?

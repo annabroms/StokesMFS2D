@@ -1,8 +1,11 @@
-function opt = get2Dparams(P)
+function opt = get2Dparams(P,N_c)
 %get2Dparams returns struct with default parameters for a Stokes MFS 2D problem
 
+if nargin<2
+    N_c = 60; % sources on coarse proxy grid
+end
+
 opt.P = P; %number of particles
-N_c = 60; % sources on coarse proxy grid
 opt.N_c = N_c; 
 
 %set separation between true boundary and proxy surface
@@ -40,5 +43,8 @@ opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 opt.visualise_sol = 0; % plot postprocessing diagnostics
 opt.visualise_grid = 0; % plot source/collocation grids during setup
 opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing?
+opt.project_force = false; % project out net force/torque-producing modes in Stokes mobility solves
+opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated separations
+opt.shared_sep_tol = 1e-2; % separation tolerance for grouping repeated pairs
 
 end

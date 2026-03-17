@@ -29,6 +29,12 @@ else
 end
 
 Cmap_FU = basis.Cmap_FU;
+if isfield(basis,'pair_cache')
+    pair_cache = basis.pair_cache;
+else
+    pair_cache = struct('enabled',false);
+end
+use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 
 P = length(q);
 N_large = length(rvec_out)/P;
@@ -62,7 +68,7 @@ if isequal(rcheck,rvec_out)
     %Need contribution from every pair to the velocity vector that sets
     %boundary conditions.
     if opt.cmap
-        if isempty(Cmap_FU)
+        if isempty(Cmap_FU) && ~use_pair_cache
             error('opt.cmap=true but basis.Cmap_FU is empty.');
         end
         if isempty(rimage_vec)
@@ -82,7 +88,17 @@ if isequal(rcheck,rvec_out)
                         lam_self_y(coarse_i); lam_self_y(coarse_p2)];
 
             % Determine rigid body motion for the pair, using ansatz
-            pair_vel = -Cmap_FU{i,p2}*rhs_pair;
+            if use_pair_cache
+                pair = getStokesPairInstance(pair_cache,pair_it);
+                rhs_pair = rotatePairOrderedStokesData(rhs_pair,N_c,pair.meta.phase_c,conj(pair.meta.rot));
+                pair_vel = -pair.group.Cmap_FU*rhs_pair;
+                vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
+                vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
+                pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
+                            real(vel_p2); imag(vel_p2); pair_vel(6)];
+            else
+                pair_vel = -Cmap_FU{i,p2}*rhs_pair;
+            end
 
             %These velocities now must be mapped to boundary velocities at the collocation points on each particle, and added to the result.
             pair_vel = pair_vel(:); % [Ux_i; Uy_i; W_i; Ux_p2; Uy_p2; W_p2]

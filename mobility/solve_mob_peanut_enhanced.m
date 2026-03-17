@@ -71,6 +71,7 @@ debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','rel');
 maxit = getOptField(opt,'maxit',800);
 rad = getOptField(opt,'rad',1);
+get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -124,10 +125,11 @@ rimage_in = [];
 
 %Get pair basis
 plot_grid = 0; 
-opt.project = true;
+opt.project_force = true;
 opt.pair_basis_debug = plot_grid;
 opt.show_counter = true;
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
                               
 
 % TODO: update visualisation:
@@ -140,11 +142,16 @@ Lc_pair = getILpair(Lc{1}); %I-L projection with coarse grid for a pair. TODO: r
 %% Construct check boundaries
 % Create new grid points, for which the accuracy of the solution is
 % to be evaluated. 
-rcheck_b = [];
-n_bound = 803;
-t = linspace(0,2*pi,n_bound)';
-for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rad*(cos(t)+1i*sin(t))];
+if get_bndry_field
+    rcheck_b = [];
+    n_bound = 803;
+    t = linspace(0,2*pi,n_bound)';
+    for k = 1:P
+        rcheck_b = [rcheck_b; q(k)+rad*(cos(t)+1i*sin(t))];
+    end
+else
+    rcheck_b = [];
+    n_bound = 0;
 end
 
 %% Repackage to prepare for solve
@@ -155,7 +162,9 @@ geom_solve.rbase_in_c = rbase_in_c;
 geom_solve.rbase_in_f = rbase_in_f;
 geom_solve.rvec_in = rvec_in_c;
 geom_solve.rimage_vec = rimage_vec;
-geom_solve.opt = opt;
+opt_solve = opt;
+opt_solve.get_bndry_field = false;
+geom_solve.opt = opt_solve;
 geom_solve.rvec_out = rout;
 geom_solve.rcheck = rout;
 geom_solve.q = q;
@@ -172,8 +181,10 @@ basis_mob.YC_all = YC_all;
 basis_mob.Cmap = Cmap;
 basis_mob.Cmap_FU = Cmap_FU; 
 basis_mob.Lc_pair = Lc_pair;
+basis_mob.pair_cache = pair_cache;
 
 geom_check = geom_solve;
+geom_check.opt = opt;
 geom_check.rcheck = rcheck_b;
 
 %% Solve system
@@ -234,10 +245,14 @@ disp(' == Postprocessing == ');
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 
-% Recover coarse and fine sources from data on the boundary
+% Recover coarse and fine sources from data on the boundary / collocation grid.
+geom_post = geom_solve;
+if get_bndry_field
+    geom_post = geom_check;
+end
 [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
     lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
-    transform_mob_peanut_stokes(tau,geom_check,basis_mob);
+    transform_mob_peanut_stokes(tau,geom_post,basis_mob);
 lambda_c = [lam_c_x; lam_c_y];
 
 %%% Get rigid body motion. 
@@ -263,7 +278,17 @@ if opt.cmap
                     lam_self_y(coarse_i); lam_self_y(coarse_p2)];
 
         % Determine rigid body motion for the pair, using ansatz
-        pair_vel = Cmap_FU{i,p2}*rhs_pair;
+        if basis_mob.pair_cache.enabled
+            pair = getStokesPairInstance(basis_mob.pair_cache,pair_it);
+            rhs_pair = rotatePairOrderedStokesData(rhs_pair,N_c,pair.meta.phase_c,conj(pair.meta.rot));
+            pair_vel = pair.group.Cmap_FU*rhs_pair;
+            vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
+            vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
+            pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
+                        real(vel_p2); imag(vel_p2); pair_vel(6)];
+        else
+            pair_vel = Cmap_FU{i,p2}*rhs_pair;
+        end
         UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i)+ pair_vel(1:3); 
         UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2)+ pair_vel(4:6);
 
@@ -286,40 +311,42 @@ else
     end
 end
 
-%% CHECK RESIDUAL AT SURFACE
-%Compute velocity at surface
-B = getKmat2D(rcheck_b(1:n_bound)-q(1),0); %same for all particles
-u_lhs = zeros(2*P*n_bound,1);
-for k = 1:P  
-    res = B*UW(3*(k-1)+1:3*k);
-    u_lhs((k-1)*n_bound+1:k*n_bound) = res(1:end/2);
-    u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
-end
+if get_bndry_field
+    B = getKmat2D(rcheck_b(1:n_bound)-q(1),0); %same for all particles
+    u_lhs = zeros(2*P*n_bound,1);
+    for k = 1:P  
+        res = B*UW(3*(k-1)+1:3*k);
+        u_lhs((k-1)*n_bound+1:k*n_bound) = res(1:end/2);
+        u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
+    end
 
-%Using representation
-u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
-S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
-u_rhs = u_rhs-S_0;  %Note! Sign here due to how we have defined the completion flow. 
-                    %This is accordinng to the representation of the flow
+    u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
+    S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
+    u_rhs = u_rhs-S_0;
 
-disp('Surface residual')
-diff_vec = u_rhs-u_lhs;
-
-%max_abs = max(abs(u_rhs(1:end/2)+1i*u_rhs(end/2+1:end)));
-max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
-res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
-abs_res = max(res); 
-if max_abs > 0
-    rel_vec = res/max_abs;
+    disp('Surface residual')
+    diff_vec = u_rhs-u_lhs;
+    max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
+    res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
+    abs_res = max(res); 
+    if max_abs > 0
+        rel_vec = res/max_abs;
+    else
+        rel_vec = res;
+    end
+    rel_res = max(rel_vec);
+    fprintf('Relative boundary error: %1.3e \n', rel_res);
+    fprintf('Absolute boundary error: %1.3e \n', abs_res);
 else
-    rel_vec = res;
+    rel_res = nan;
+    abs_res = nan;
+    rel_vec = [];
+    res = [];
+    fprintf('Boundary field evaluation skipped (opt.get_bndry_field=0)\n');
 end
-rel_res = max(rel_vec);
-fprintf('Relative boundary error: %1.3e \n', rel_res);
-fprintf('Absolute boundary error: %1.3e \n', abs_res);
 
  
-if visualise_sol
+if visualise_sol && get_bndry_field
     
     % visualise boundary velocities with some offset from boundary so that particles
     % visually don't overlap
@@ -381,21 +408,22 @@ close all;
 q = [0; 2.001; 2.001i]; %center coordinates
 
 delta = 1e-3; 
-P = 3; 
+P = 2; 
 q = 0:2+delta:(P-1)*(2+delta);
-P = 4; 
-q = [0; 2+delta; 7; 9+delta];
-P = 20; 
+% P = 4; 
+% q = [0; 2+delta; 7; 9+delta];
+%P = 20; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));
+
 %q(1) = 8;
 %q = q+5; 
-%q = q-q(1);
+%q = q-q(1);´
 
 rng(5); 
 q = grow_cluster(P,delta,2);
-
+q = [0; 2+delta];
 
 F = [real(q) imag(q)]; 
 T = zeros(size(q));  
@@ -419,7 +447,7 @@ N_peanut = 400;
 gmres_tol = 1e-8;
 images = 1; 
 lr = 0; % long-range precond
-debug = 0; 
+debug = 1; 
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 opt = get2Dparams(P);
@@ -429,6 +457,8 @@ opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
+opt.reuse_pair_basis_by_sep = 0; 
+opt.cmap = 1; 
 %opt.Npeanut = 0; 
 
 [UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt); 
