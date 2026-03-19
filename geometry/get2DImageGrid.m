@@ -129,7 +129,7 @@ if image
                 %get number of image locations to be generated, from empiric
                 %relationship
                 sample_nbr = ceil(slope*log10(d)+m); 
-                sample_nbr = opt.n_clusters; 
+                sample_nbr = opt.Nclust; 
                 %sample_nbr = 1; 
                 %sample_nbr = 120;
                % sample_nbr = 80; 

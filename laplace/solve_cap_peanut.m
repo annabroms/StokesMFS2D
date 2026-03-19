@@ -291,7 +291,7 @@ q = grow_cluster(P,delta,2,R);
 
 % Solve capacitance for hexagonal lattice
 rings = 8; 
-%rings = 3; 
+rings = 5; 
 q = hexagonal_lattice(delta,rings,R);
 P = length(q); 
 v_body = buildAlternatingVoltages(q,R);

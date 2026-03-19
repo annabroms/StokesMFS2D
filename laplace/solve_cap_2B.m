@@ -230,9 +230,9 @@ close all;
 
 %% Set geometry and data
 rng(8);
-delta = 1e-4; 
+delta = 1e-2; 
 R = 2; 
-P = 10;
+P = 6;
 q = grow_cluster(P,delta,2,R);
 
 %hexagonal lattice
@@ -240,18 +240,20 @@ q = grow_cluster(P,delta,2,R);
 %y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
 %q = [0; 2*R+delta*R; x+1i*y];
 % mode = 5; 
-% mode = 1;
-% q = hexagonal_lattice(delta,mode,R);
+mode = 1;
+q = hexagonal_lattice(delta,mode,R);
+q =  [0; R*(2+delta);10+[0;R*(2+delta)]*1i];
 % 
-% P = length(q); 
+P = length(q); 
 v_body = rand(P,1); 
 
 %% Set params and settings
-opt = getLaplace2Dparams(P,R);
+N_c = 40;
+opt = getLaplace2Dparams(P,R,N_c);
 opt.visualise_sol = 1;
 opt.visualise_grid = 1; 
 opt.gmres_tol = 1e-12;
-opt.debug = 0;
+opt.debug = 1;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.Nclust = 100;

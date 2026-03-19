@@ -68,7 +68,7 @@ if project
 end
 
 %tol = 1e-6;
-tol = 1e-12;
+tol = 1e-10;
 tol = 1e-14;
 %tol = eps; 
 %tol = 1e-8; 

@@ -71,7 +71,7 @@ if isempty(pairs)
     return
 end
 
-pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),numel(rbase_in_f));
+pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),numel(rbase_in_f),opt);
 
 if ~reuse_pair_basis
     total_pairs = size(pairs,1);
@@ -146,11 +146,23 @@ pair_cache.group_id = group_id;
 pair_cache.group_sep = group_sep;
 pair_cache.representative_rows = rep_rows;
 pair_cache.groups = repmat(init_pair_group(),n_groups,1);
+total_pairs = size(pairs,1);
+covered_pairs = 0;
 
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
         q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
         project_charge);
+
+    if show_counter
+        rep_i = pairs(rep_rows(gg),1);
+        rep_j = pairs(rep_rows(gg),2);
+        n_rep = sum(group_id == gg);
+        covered_pairs = covered_pairs + n_rep;
+        fprintf(['getPairBasisLaplace: processed canonical group %d/%d ', ...
+            'from pair (%d,%d), covers %d pairs -> %d/%d pairs covered\n'], ...
+            gg,n_groups,rep_i,rep_j,n_rep,covered_pairs,total_pairs);
+    end
 end
 
 for row = 1:size(pairs,1)
@@ -179,7 +191,8 @@ pair_cache.enabled = false;
 pair_cache.shared_sep_tol = [];
 pair_cache.rout_base_f = [];
 pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[],'phase_c',[],'phase_f',[], ...
+    'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
+    'phase_f',[],'phase_f_inv',[], ...
     'Ucross_colloc_actual',[],'Ec_colloc_actual',[], ...
     'Lr_colloc_actual',[]),0,1);
 pair_cache.groups = repmat(init_pair_group(),0,1);
@@ -196,10 +209,11 @@ group = struct('group_id',[],'sep',[],'q_pair',[],'rimage_canon',{{}}, ...
     'nout_f',[],'nsrc_f',[],'ntar_f',[],'rep_pair',[]);
 end
 
-function meta = build_pair_meta(q,pairs,nc,nf)
+function meta = build_pair_meta(q,pairs,nc,nf,opt)
 total_pairs = size(pairs,1);
 meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[],'phase_c',[],'phase_f',[], ...
+    'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
+    'phase_f',[],'phase_f_inv',[], ...
     'Ucross_colloc_actual',[],'Ec_colloc_actual',[], ...
     'Lr_colloc_actual',[]),total_pairs,1);
 
@@ -219,8 +233,10 @@ for row = 1:total_pairs
     meta(row).sep = sep;
     meta(row).mid = 0.5*(q(i)+q(j));
     meta(row).rot = rot;
-    meta(row).phase_c = getUniformCircleRotationPhase(nc,rot);
-    meta(row).phase_f = getUniformCircleRotationPhase(nf,rot);
+    meta(row).phase_c = getUniformCircleRotationSpec(nc,rot,opt);
+    meta(row).phase_c_inv = invertUniformCircleRotationSpec(meta(row).phase_c);
+    meta(row).phase_f = getUniformCircleRotationSpec(nf,rot,opt);
+    meta(row).phase_f_inv = invertUniformCircleRotationSpec(meta(row).phase_f);
 end
 end
 
@@ -290,6 +306,7 @@ DC = [];
 YC = [];
 C = [];
 QV = [];
+
 if opt.N_peanut
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0,R);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];

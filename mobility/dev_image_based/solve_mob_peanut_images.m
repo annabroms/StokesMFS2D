@@ -116,7 +116,7 @@ if nargin < 5 || isempty(delta_pair)
     delta_pair = accstop; %We want to use the pair correction for all gaps smaller than delta_pair. (or accstop).
 end
 
-opt = get2Dparams(); 
+opt = get2Dparams(P); 
 opt.gmres_verbose = gmres_verbose;
 opt.s = s;
 opt.Rp_c = Rp_c;
@@ -149,10 +149,11 @@ for k = 1:P
     rvec_in_c = [rvec_in_c; q(k)+rbase_in_c];
 end
 
+
 %Construct image grid
 basic = 1; %return only the basic outer grid, else refined outer grid 
 %[rout, weights, rin, rimage, nimage, pair_points, pairs, rimage_pairs, refine, rin_base] 
-[rout,~,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
+[rout,~,~,~,~,pairs,rimage_vec,refine,rbase_in_f] = get2DImageGrid(q,rad,opt);
 
 
 %get evaluation of lambda0
@@ -560,7 +561,7 @@ P = 2;
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
 q = R * exp(1i * (0:P-1).' * (2*pi/P));
-q(1) = 8;
+%q(1) = 8;
 F = [real(q) imag(q)]; 
 T = zeros(size(q)); 
 rad = ones(size(q)); 
@@ -574,8 +575,10 @@ delta_pair = 0.2;
 %[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 
 %compare to a solution with image enhancement
-N_peanut = 1200; 
-[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
+N_peanut = 400; 
+gmres_tol = 1e-8;
+debug = 1; 
+[UW2,lambdahat,it2,gmres_tol, err2] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,gmres_tol,debug);
 
 str = sprintf('Relative residual with 2-body precond: %1.2e vs with peanut compression: %1.2e\n Converging in %u resp % u iterations',err1,err2,it1,it2);
 disp(str)

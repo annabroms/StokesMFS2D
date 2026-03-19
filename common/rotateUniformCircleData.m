@@ -10,8 +10,10 @@ function values_rot = rotateUniformCircleData(values,rot,phase)
 %            t_k = 2*pi*k/N, stored as N x nd.
 %   rot    - Unit complex number exp(1i*theta). The output satisfies
 %            values_rot(t_k) = values(t_k + theta).
-%   phase  - Optional precomputed Fourier phase vector from
-%            getUniformCircleRotationPhase(size(values,1),rot).
+%   phase  - Optional precomputed rotation data. This can be either:
+%            * a Fourier phase vector from
+%              getUniformCircleRotationPhase(size(values,1),rot)
+%            * a rotation spec from getUniformCircleRotationSpec(...)
 %
 % Output:
 %   values_rot - Shifted samples, same size as values.
@@ -31,17 +33,25 @@ if n == 0
     return
 end
 
+spec = [];
+
 if nargin < 3 || isempty(phase)
     if nargin < 2 || isempty(rot)
         values_rot = values;
         return
     end
-    theta = atan2(imag(rot),real(rot));
-    if abs(theta) < 10*eps
-        values_rot = values;
-        return
+    if isstruct(rot)
+        spec = rot;
+    else
+        theta = atan2(imag(rot),real(rot));
+        if abs(theta) < 10*eps
+            values_rot = values;
+            return
+        end
+        phase = getUniformCircleRotationPhase(n,rot);
     end
-    phase = getUniformCircleRotationPhase(n,rot);
+elseif isstruct(phase)
+    spec = phase;
 else
     phase = phase(:);
     if numel(phase) ~= n
@@ -50,8 +60,43 @@ else
     end
 end
 
-F = fft(values,[],1);
-values_rot = ifft(F.*phase,[],1);
+if ~isempty(spec)
+    switch lower(char(spec.mode))
+        case 'fft'
+            phase = spec.phase(:);
+            if numel(phase) ~= n
+                error('rotateUniformCircleData:BadSpecSize', ...
+                    'rotation spec phase must have one entry per sample.');
+            end
+
+            F = fft(values,[],1);
+            values_rot = ifft(F.*phase,[],1);
+
+        case 'oversampled_fft'
+            if spec.n ~= n
+                error('rotateUniformCircleData:BadSpecSize', ...
+                    'rotation spec expects %d samples, got %d.',spec.n,n);
+            end
+            if spec.n_oversampled < n || mod(spec.n_oversampled,n) ~= 0
+                error('rotateUniformCircleData:BadOversampledSize', ...
+                    'oversampled grid size must be an integer multiple of n.');
+            end
+
+            values_up = interpft(values,spec.n_oversampled,1);
+            if spec.shift_steps ~= 0
+                values_up = circshift(values_up,-spec.shift_steps,1);
+            end
+            stride = spec.n_oversampled/n;
+            values_rot = values_up(1:stride:end,:);
+
+        otherwise
+            error('rotateUniformCircleData:BadMode', ...
+                'Unsupported rotation mode "%s".',spec.mode);
+    end
+else
+    F = fft(values,[],1);
+    values_rot = ifft(F.*phase,[],1);
+end
 
 if isreal(values)
     values_rot = real(values_rot);

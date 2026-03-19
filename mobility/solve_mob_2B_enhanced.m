@@ -62,14 +62,8 @@ debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','abs');
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
-rad = getOptField(opt,'rad',1);
-if isscalar(rad)
-    rad = repmat(rad,P,1);
-else
-    rad = rad(:);
-    assert(numel(rad)==P,'opt.rad must be scalar or have one entry per particle.');
-end
-rad0 = rad(1);
+opt.rad = 1;
+
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.')
@@ -92,16 +86,16 @@ tol_c = getOptField(opt,'tol_c',1e-12);
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = getOptField(opt,'Rp_c',rad0*max([1-sep_c,0.01]));
-Rp_f = getOptField(opt,'Rp_f',rad0*max([1-sep_f,0.01]));
-opt.rad = rad;
+Rp_c = getOptField(opt,'Rp_c',max([1-sep_c,0.01]));
+Rp_f = getOptField(opt,'Rp_f',max([1-sep_f,0.01]));
+opt.rad = 1;
 
 %% CREATE GRID
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
 
-rbase_out_c = rad0*(cos(tout_c)+1i*sin(tout_c));
+rbase_out_c = cos(tout_c)+1i*sin(tout_c);
 tin = linspace(0,2*pi,N_c+1);
 tin = tin(1:end-1)';
 rbase_in_c = Rp_c*cos(tin)+Rp_c*1i*sin(tin);
@@ -167,7 +161,7 @@ rimage_in = [];
 [U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
 
 %Get pair basis
-opt.project_pair = true;
+opt.project = true;
 opt.N_peanut = 0; %no peanut compression here!
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
@@ -205,7 +199,7 @@ rcheck_b = [];
 n_bound = 803;
 t = linspace(0,2*pi,n_bound)';
 for k = 1:P
-    rcheck_b = [rcheck_b; q(k)+rad(k)*(cos(t)+1i*sin(t))];
+    rcheck_b = [rcheck_b; q(k)+(cos(t)+1i*sin(t))];
 end
 
 %% SOLVE SYSTEM
@@ -407,13 +401,13 @@ if logical(getOptField(opt,'cmap',false)) && (~isempty(basis.Cmap_FU) || basis.p
         if isfield(basis,'pair_cache') && basis.pair_cache.enabled
             pair = getStokesPairInstance(basis.pair_cache,row);
             rhs_pair = rotatePairOrderedStokesData(rhs_pair,opt.N_c,pair.meta.phase_c,conj(pair.meta.rot));
-            pair_vel = pair.group.Cmap_FU*rhs_pair;
+            pair_vel = -pair.group.Cmap_FU*rhs_pair;
             vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
             vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
             pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
                         real(vel_p2); imag(vel_p2); pair_vel(6)];
         else
-            pair_vel = basis.Cmap_FU{i,p2}*rhs_pair;
+            pair_vel = -basis.Cmap_FU{i,p2}*rhs_pair;
         end
         UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i) + pair_vel(1:3);
         UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2) + pair_vel(4:6);
@@ -531,45 +525,63 @@ function test_solve_mob
 
 close all;
 delta = 0.001;
-q = [0; 2+delta; (2+delta)*1i]; %center coordinates
-q = [0; 2+delta; 4+4*delta];
+rng(5);
+%q = [0; 2+delta; (2+delta)*1i]; %center coordinates
+q = [0; 2+delta]*exp(1i*pi/23);
+%q = [0; 2+delta; 6; 8+delta;];
 %or, instead, three cireles in triangle
 % delta = 0.001; 
 % x = 1+delta/2;
 % y = sqrt((2+delta)^2-(1+delta/2)^2);
 % q = [0; 2+delta; x+1i*y];
 
-F = [1 0; 0 0; 0 1]; %forces on the particles
-T = [1; 1; 1]; %torques on the particles
-rad = [1; 1; 1]; 
+% F = [1 0; 0 0; 0 1]; %forces on the particles
+% T = [1; 1; 1]; %torques on the particles
+% rad = [1; 1; 1]; 
+P = 5;
+q = grow_cluster(P,delta,2); 
+
+P = length(q); 
+F = rand(P,2);
+T = rand(P,1);
+rad = ones(P,1);
+
 
 
 
 %If only two particles
-q = [0; 2+delta];
-F = F(1:2,:); 
-T = T(1:2); 
-rad = [1;1]; 
+% q = 5+[0; 2+delta];
+% F = F(1:2,:); 
+% T = T(1:2); 
+% rad = [1;1]; 
 
 %F = F-mean(F); %zero total force
 
-visualise = 1; 
+visualise = 0; 
 images = 1; 
-delta_pair = 0.5; 
+delta_pair = 0.2; 
 lr= 0; 
-[UW1,lambda_1,it1,~,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
+%[UW1,lambda_1,it1,~,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 
 %compare to a solution with image enhancement
 gmres_tol = 1e-8;
-debug = 1; 
-opt = get2Dparams(length(q));
+debug = 0; 
+N_c = 60; 
+opt = get2Dparams(length(q),N_c);
 opt.delta_pair = delta_pair;
 opt.visualise_sol = visualise;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
-opt.visualise_grid = 1; 
+opt.visualise_grid = 0; 
 opt.cmap = 1;
+opt.reuse_pair_basis_by_sep = 1;
+opt.visualise_grid = 1; 
+opt.pair_basis_debug = 1;
+opt.rotation_mode = 'oversampled_fft';
+opt.rotation_mode = 'fft';
+opt.rotation_oversample = 32; 
+opt.project_coarse_in_reference_frame = 0; 
 
 % is this a way to debug?
 % opt.N_peanut = 0;%  

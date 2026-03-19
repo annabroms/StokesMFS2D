@@ -36,8 +36,10 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %                     absolute boundary errors
 %       use_fmm       use FMM-accelerated Stokeslet evaluation in field
 %                     evaluation paths that support it
-%       cmap          if true, use coarse-to-coarse pair map in postprocessing
-
+%       cmap          if true, use coarse-to-coarse pair map without
+%                     recovering fine sources (other than for evaluating the 
+%                     field at or near the boundaries)
+%
 %
 % Outputs:
 %   UW         - Rigid-body motion vector [Ux1; Uy1; W1; ...; UxP; UyP; WP].
@@ -72,6 +74,13 @@ surface_error_mode = getOptField(opt,'surface_error_mode','rel');
 maxit = getOptField(opt,'maxit',800);
 rad = getOptField(opt,'rad',1);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+N_peanut = getOptField(opt,'N_peanut',400);
+if N_peanut <= 0
+    error('solve_mob_peanut_enhanced:InvalidNPeanut', ...
+        ['solve_mob_peanut_enhanced requires opt.N_peanut > 0 ', ...
+         'to build the peanut-compressed pair basis.']);
+end
+opt.N_peanut = N_peanut;
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -89,7 +98,7 @@ tol_c = getOptField(opt,'tol_c',1e-10);
 sep_c = (1/N_c)*log(1/tol_c);
 sep_f = (1/N_f)*log(1/tol_c); %what to pick?
 
-Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01])); %check!
+Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01])); 
 Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
 %% Discretize
@@ -124,13 +133,20 @@ rimage_in = [];
 [U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
 
 %Get pair basis
-plot_grid = 0; 
+plot_grid = 1; 
 opt.project_force = true;
+opt.project = true;
 opt.pair_basis_debug = plot_grid;
 opt.show_counter = true;
+opt.rad = ones(P,1);
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
-                              
+
+Kf = getKmat2D(rbase_in_f,0);
+Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
+Lf_pair = getILpair(Lf);
+
+%[UB_all,YB_all,UC_all,YC_all,Cmap,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);                              
 
 % TODO: update visualisation:
 %Visualise 1-body and pair-basis
@@ -169,6 +185,7 @@ geom_solve.rvec_out = rout;
 geom_solve.rcheck = rout;
 geom_solve.q = q;
 geom_solve.pairs = pairs;
+geom_solve.refine = refine; 
 
 basis_mob = struct();
 basis_mob.U = U;
@@ -182,6 +199,7 @@ basis_mob.Cmap = Cmap;
 basis_mob.Cmap_FU = Cmap_FU; 
 basis_mob.Lc_pair = Lc_pair;
 basis_mob.pair_cache = pair_cache;
+basis_mob.Lf_pair = Lf_pair; %debug
 
 geom_check = geom_solve;
 geom_check.opt = opt;
@@ -250,6 +268,7 @@ geom_post = geom_solve;
 if get_bndry_field
     geom_post = geom_check;
 end
+
 [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
     lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom_post,basis_mob);
@@ -281,13 +300,13 @@ if opt.cmap
         if basis_mob.pair_cache.enabled
             pair = getStokesPairInstance(basis_mob.pair_cache,pair_it);
             rhs_pair = rotatePairOrderedStokesData(rhs_pair,N_c,pair.meta.phase_c,conj(pair.meta.rot));
-            pair_vel = pair.group.Cmap_FU*rhs_pair;
+            pair_vel = -pair.group.Cmap_FU*rhs_pair;
             vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
             vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
             pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
                         real(vel_p2); imag(vel_p2); pair_vel(6)];
         else
-            pair_vel = Cmap_FU{i,p2}*rhs_pair;
+            pair_vel = -Cmap_FU{i,p2}*rhs_pair;
         end
         UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i)+ pair_vel(1:3); 
         UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2)+ pair_vel(4:6);
@@ -320,6 +339,7 @@ if get_bndry_field
         u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
     end
 
+    geom_check.opt.self_correct = 0; % matvec to be modified
     u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
     S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
     u_rhs = u_rhs-S_0;
@@ -423,10 +443,11 @@ q = R * exp(1i * (0:P-1).' * (2*pi/P));
 
 rng(5); 
 q = grow_cluster(P,delta,2);
-q = [0; 2+delta];
+q = [0; 2+delta]*1i;
 
 F = [real(q) imag(q)]; 
 T = zeros(size(q));  
+rad = ones(size(q));
 %F = [1 0; -1 0];
 
 %F = [1 0; 0 0; 0 1; -1 0]; %forces on the particles
@@ -449,21 +470,24 @@ images = 1;
 lr = 0; % long-range precond
 debug = 1; 
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
-
-opt = get2Dparams(P);
+N_c = 60;
+opt = get2Dparams(P,N_c);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
-opt.visualise_sol = visualise;
+opt.visualise_sol = 0;
+opt.visualise_grid = 0; 
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
 opt.reuse_pair_basis_by_sep = 0; 
-opt.cmap = 1; 
-%opt.Npeanut = 0; 
-
-[UW2,sol2] = solve_mob_peanut_enhanced(q,F,T,opt); 
-% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise);
-% [UW4,lambdahat4,it4,gmres_tol, rel4, abs4] = solve_mob_2B_enhanced(q,F,T,delta_pair,visualise);
+opt.cmap = 0; % coarse to coarse compression?
+opt.N_peanut = 400; 
+opt.self_correct = 0; % create identiy matrix for a pair?
+[UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 
+opt.self_correct = 1;
+[UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 
+[UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,opt.gmres_tol,1);
+[UW2B,sol_2B] = solve_mob_2B_enhanced(q,F,T,opt);
 alignfigs(3);
 
 end

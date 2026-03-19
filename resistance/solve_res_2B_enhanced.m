@@ -706,15 +706,17 @@ P = length(q);
 if test == 1
     %[FT,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, visualise);
     rng(9);
-    P = 2;
+    P = 5;
     delta = 0.05; %P = 5
     delta = 1e-2;
     %delta = 1;
-    q = [0; 2+delta];
+    q = [0; 2+delta]*1i;
     %q = grow_cluster(P,delta,2);
-    side = 2 + delta;               % neighbor center distance
-    R = side / (2*sin(pi/P));         % ring radius
-    %q = R * exp(1i * (0:P-1).' * (2*pi/P));
+    % side = 2 + delta;               % neighbor center distance
+    % R = side / (2*sin(pi/P));         % ring radius
+    % q = R * exp(1i * (0:P-1).' * (2*pi/P));
+    % q = [0; 2+delta; 4+2*delta]*1i;
+    P = length(q);
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); rad = ones(P,1);
@@ -722,7 +724,7 @@ if test == 1
     lr = 0; 
     images = 1; 
 
-    [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, lr,visualise);
+   % [FT1,lambda,it1,gmres_tol,err1] = solve_res_1B(q,U,W,rad,images, lr,visualise);
     gmres_tol = 1e-7;
     debug = 1; 
     opt = get2Dparams(P);

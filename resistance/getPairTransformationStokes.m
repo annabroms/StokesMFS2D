@@ -143,7 +143,7 @@ for pair_row = 1:size(pairs,1)
         pair_mapped = pair.group.Upf*coarse_to_fine_tot;
         beta_tot = pair.group.Ypf*pair_mapped;
         beta_tot = rotateStokesPairSourceVector(beta_tot,N_f,length(rimage_i),length(rimage_p2), ...
-            conj(pair.meta.phase_f),pair.meta.rot);
+            pair.meta.phase_f_inv,pair.meta.rot);
     else
         pair_mapped = Upf{i,p2}*coarse_to_fine_tot;
         beta_tot = Ypf{i,p2}*pair_mapped;

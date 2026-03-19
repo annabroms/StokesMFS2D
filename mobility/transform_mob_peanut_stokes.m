@@ -1,8 +1,34 @@
 function [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x, ...
     lam_c_y,lam_c_nonpy,lam_self_y,lam_f_y,u_corr,rimage_k] = ...
     transform_mob_peanut_stokes(tau,geom,basis)
-%TRANSFORM_MOB_PEANUT_STOKES Map coarse boundary data to interior compressed Stokeslet sources.
+%TRANSFORM_MOB_PEANUT_STOKES Map boundary data to coarse interior Stokes sources.
+%
+% Syntax:
+%   [lam_c_x, lam_c_nonpx, lam_self_x, lam_f_x, ...
+%    lam_c_y, lam_c_nonpy, lam_self_y, lam_f_y, u_corr, rimage_k] = ...
+%       transform_mob_peanut_stokes(tau,geom,basis)
+%
+% Outputs:
+%   lam_c_x, lam_c_y
+%       Projected coarse source strengths with compressed pair corrections.
+%   lam_c_nonpx, lam_c_nonpy
+%       Unprojected coarse source strengths, needed for rigid-body terms 
+%   lam_self_x, lam_self_y
+%       Coarse projected sources before pair corrections are applied
+%       (corresponding to one-body basis only). Needed to enforce identity
+%       diagonal blocks in system matrix.
+%   lam_f_x, lam_f_y
+%       Fine source strengths used in the pair correction and, when
+%       `opt.cmap = 0`, also in the BK' correction path.
+%   u_corr
+%       Pair correction to the velocity field evaluated at all collocation nodes. 
+%   rimage_k
+%       Cell array of per-body enhancing source locations.
+%
+%   Anna Broms, Mar 2026
+%
 
+%% Prepare discretisation and preallocate
 rbase_in_c = geom.rbase_in_c;
 rbase_in_f = geom.rbase_in_f;
 rimage_vec = geom.rimage_vec;
@@ -59,7 +85,7 @@ end
 rimage_k = cell(P,1);
 u_corr = zeros(2*N_check*P,1);
 
-% Phase 1: one-body coarse map.
+%% Phase 1: one-body coarse map.
 for i = 1:P
     coarse_ind = (i-1)*N_c+1:i*N_c;
     tau_particle_x = tau((i-1)*N_large+1:N_large*i);
@@ -82,19 +108,23 @@ end
 lam_self_x = lam_c_x;
 lam_self_y = lam_c_y;
 
+
+%% Phase 2: loop over all pairs
 for row = 1:size(pairs,1)
     i = pairs(row,1);
     p2 = pairs(row,2);
 
     coarse_i = (i-1)*N_c+1:i*N_c;
     coarse_p2 = (p2-1)*N_c+1:p2*N_c;
+
+    % take out projected one-body sources
     lambda_i = [lam_self_x(coarse_i); lam_self_y(coarse_i)];
     lambda_p2 = [lam_self_x(coarse_p2); lam_self_y(coarse_p2)];
 
     rhs_mat = [lambda_i(1:N_c) lambda_p2(1:N_c) ...
                lambda_i(N_c+1:end) lambda_p2(N_c+1:end)];
 
-    if use_pair_cache
+    if use_pair_cache % reuse information from multiple pairs
         pair = getStokesPairInstance(pair_cache,row);
         rhs = rotatePairOrderedStokesData(rhs_mat,N_c,pair.meta.phase_c,conj(pair.meta.rot));
         rhs = rhs(:);
@@ -115,7 +145,7 @@ for row = 1:size(pairs,1)
             pair_mapped = pair.group.Upf*rhs;
             tau_mapped_loc = pair.group.Ypf*pair_mapped;
             tau_mapped_tot = rotateStokesPairSourceVector(tau_mapped_loc,N_f,length(rimage_i),length(rimage_p2), ...
-                conj(pair.meta.phase_f),pair.meta.rot);
+                pair.meta.phase_f_inv,pair.meta.rot);
         else
             pair_mapped = Upf{i,p2}*rhs;
             tau_mapped_tot = Ypf{i,p2}*pair_mapped;
@@ -127,9 +157,10 @@ for row = 1:size(pairs,1)
 
     if use_cmap
         if use_pair_cache
-            tau_peanut_loc = pair.group.Cmap_proj*rhs;
+            tau_peanut_ntot = pair.group.Cmap*rhs;
+            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
             tau_peanut_tot = tau_peanut_loc;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,pair.meta.phase_c_inv,pair.meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_ntot = Cmap{i,p2}*rhs;
@@ -138,8 +169,9 @@ for row = 1:size(pairs,1)
     else
         if use_pair_cache
             tau_peanut_ntot = pair.group.YC*(pair.group.DC*tau_mapped_loc);
-            tau_peanut_tot = pair.group.Lc_pair*tau_peanut_ntot;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
+            tau_peanut_tot = tau_peanut_loc;
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,pair.meta.phase_c_inv,pair.meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_ntot = YC_all{i,p2}*(DC_all{i,p2}*tau_mapped_tot);
@@ -181,27 +213,51 @@ for row = 1:size(pairs,1)
     rout_pair = [rcheck_i; rcheck_p2];
     rin_pair_c = [rbase_in_c+q(i); rbase_in_c+q(p2)];
 
-    use_dense_u_pair = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
-        isfield(pair.group,'Ucross_colloc') && ~isempty(pair.group.Ucross_colloc);
-    if use_dense_u_pair
-        phase_out = getUniformCircleRotationPhase(N_check,pair.meta.rot);
-        u_pair = pair.group.Ucross_colloc*rhs;
-        u_pair = rotatePairOrderedStokesData(u_pair,N_check,conj(phase_out),pair.meta.rot);
-        u_pair = u_pair(:);
-    else
-        [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
-            real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
-        [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
-            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
-        u_pair = -[ui; up2; vi; vp2];
+    if ~use_cmap
+        % When the fine pair sources are available, evaluate the pair
+        % correction directly from the projected fine densities to mirror
+        % transform_mob_peanut.
+        fine_rin_pair = [rbase_in_f+q(i); rimage_i; rbase_in_f+q(p2); rimage_p2];
+
+        nsrc_i = numel(rbase_in_f) + numel(rimage_i);
+        nsrc_p2 = numel(rbase_in_f) + numel(rimage_p2);
+
+        tau_fine_i = [tau_mapped_tot(f_ind1_x); tau_mapped_tot(e_ind1_x); ...
+                      tau_mapped_tot(f_ind1_y); tau_mapped_tot(e_ind1_y)];
+        tau_fine_p2 = [tau_mapped_tot(f_ind2_x); tau_mapped_tot(e_ind2_x); ...
+                       tau_mapped_tot(f_ind2_y); tau_mapped_tot(e_ind2_y)];
+
+        tau_mapped_proj_i = projectOutRigid2D(tau_fine_i, ...
+            [rbase_in_f+q(i); rimage_i], q(i));
+        tau_mapped_proj_p2 = projectOutRigid2D(tau_fine_p2, ...
+            [rbase_in_f+q(p2); rimage_p2], q(p2));
+
+        fine_fx = [tau_mapped_proj_i(1:nsrc_i); tau_mapped_proj_p2(1:nsrc_p2)];
+        fine_fy = [tau_mapped_proj_i(nsrc_i+1:end); tau_mapped_proj_p2(nsrc_p2+1:end)];
+
+        [u1,v1] = stokSLPdirect(real(fine_rin_pair),imag(fine_rin_pair), ...
+            real(rout_pair),imag(rout_pair),fine_fx,fine_fy,numel(fine_rin_pair));
+        u_pair = [u1; v1];
+    %else
+        if opt.self_correct
+            [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
+                real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
+            [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
+                real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
+            u_pair = -[ui; up2; vi; vp2]; % need to add lr here?
+        end
     end
 
     use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
         isfield(pair.group,'Ecolloc') && ~isempty(pair.group.Ecolloc);
+
+    use_dense_u_peanut = 0;
+
     if use_dense_u_peanut
-        phase_out = getUniformCircleRotationPhase(N_check,pair.meta.rot);
+        phase_out = getUniformCircleRotationSpec(N_check,pair.meta.rot,opt);
+        phase_out_inv = invertUniformCircleRotationSpec(phase_out);
         u_peanut_corr = pair.group.Ecolloc*tau_peanut_loc;
-        u_peanut_corr = rotatePairOrderedStokesData(u_peanut_corr,N_check,conj(phase_out),pair.meta.rot);
+        u_peanut_corr = rotatePairOrderedStokesData(u_peanut_corr,N_check,phase_out_inv,pair.meta.rot);
         u_peanut_corr = u_peanut_corr(:);
     else
         [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c), ...
@@ -216,6 +272,8 @@ for row = 1:size(pairs,1)
     u_corr(pair_ind) = u_corr(pair_ind)+u_pair-u_peanut_corr;
 end
 
+
+%% Store fine sources for post-processing? 
 if need_explicit_pair_sources
     lam_f_x = cell(P,1);
     lam_f_y = cell(P,1);

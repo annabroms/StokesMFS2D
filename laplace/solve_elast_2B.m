@@ -230,18 +230,19 @@ run_two_way = false;
 
 
 % Set geometry and data
-rng(8);
+rng(3);
 R = 2;
 delta = 1e-3;
-P = 200;
+P = 2;
 q = grow_cluster(P,delta,2,R);
+q = [0; (2+delta)*R]*1i*exp(1i*pi/4);
 %hexagonal lattice
 % x = R+R*delta/2;
 % y = sqrt((2*R+delta*R)^2-(R+R*delta/2)^2);
 % q = [0; 2*R+delta*R; x+1i*y];
-% mode = 6; 
-% q = hexagonal_lattice(delta,mode,R);
-% P = length(q); 
+mode = 4; 
+q = hexagonal_lattice(delta,mode,R);
+P = length(q); 
 Q_body = randn(P,1);
 Q_body = Q_body-mean(Q_body); %zero total charge
 
@@ -251,12 +252,12 @@ opt.rad = R;
 opt.visualise_sol = 1;
 opt.visualise_grid = 1; 
 opt.debug = 0;
-opt.delta_pair = 0.2;
 opt.gmres_tol = 1e-7;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.reuse_pair_basis_by_sep=true;
 opt.shared_sep_tol = 1e-2*delta*max(1,opt.rad);
+
 
 % Solve
 [v2,sol2] = solve_elast_2B(q,Q_body,opt);

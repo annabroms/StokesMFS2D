@@ -48,7 +48,7 @@ N = size(rin_vec,1)/P; %Proxy sources per body. Assumed the same for everyone.
 if isempty(rimage) %compute just one factor, for a single particle
     tol = 1e-10;
     tol = 1e-14; %just remove the last singval.
-   % tol = 1e-11;
+    %tol = 1e-11;
     %tol = 1e-16;
 else
     tol = 1e-10;

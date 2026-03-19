@@ -94,11 +94,13 @@ for row = 1:size(pairs,1)
     if use_pair_cache
         pair = getLaplacePairInstance(pair_cache,row);
         phase_c = pair.meta.phase_c;
-        phase_f = pair.meta.phase_f;
+        phase_f_inv = pair.meta.phase_f_inv;
         group = pair.group;
 
         rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],phase_c);
+        %rhs_pair = [lam_i lam_p2]; %debug;
         rhs_pair = rhs_pair(:);
+        
 
         pair_mapped = group.Upf*rhs_pair;
         beta_tot_nonp_local = group.Ypf*pair_mapped;
@@ -137,7 +139,7 @@ for row = 1:size(pairs,1)
     beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
         beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
     if use_pair_cache
-        beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],conj(phase_f));
+        beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],phase_f_inv);
     end
     beta_i_fine = beta_fine_pair(:,1);
     beta_p2_fine = beta_fine_pair(:,2);

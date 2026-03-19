@@ -135,7 +135,7 @@ for pair_row = 1:size(pairs,1)
     if opt.cmap
         if use_pair_cache
             tau_peanut_loc = pair.group.Cmap*rhs;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_tot = Cmap{i,p2}*rhs;
@@ -154,10 +154,10 @@ for pair_row = 1:size(pairs,1)
             im_nr_i = numel(pair.group.rimage_canon{1});
             im_nr_p2 = numel(pair.group.rimage_canon{2});
             tau_mapped_tot = rotateStokesPairSourceVector(tau_mapped_tot,N_f,im_nr_i,im_nr_p2, ...
-                conj(pair.meta.phase_f),pair.meta.rot);
+                pair.meta.phase_f_inv,pair.meta.rot);
             tau_peanut_temp = pair.group.DC*(pair.group.Ypf*pair_mapped);
             tau_peanut_loc = pair.group.YC*tau_peanut_temp;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,conj(pair.meta.phase_c),pair.meta.rot);
+            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
             im_nr = length(rimage_i);
         else
@@ -221,9 +221,10 @@ for pair_row = 1:size(pairs,1)
     use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
         isfield(pair.group,'Ecolloc') && ~isempty(pair.group.Ecolloc);
     if use_dense_u_peanut
-        phase_out = getUniformCircleRotationPhase(N_check,pair.meta.rot);
+        phase_out = getUniformCircleRotationSpec(N_check,pair.meta.rot,opt);
+        phase_out_inv = invertUniformCircleRotationSpec(phase_out);
         u_peanut = pair.group.Ecolloc*tau_peanut_loc;
-        u_peanut = rotatePairOrderedStokesData(u_peanut,N_check,conj(phase_out),pair.meta.rot);
+        u_peanut = rotatePairOrderedStokesData(u_peanut,N_check,phase_out_inv,pair.meta.rot);
         u_peanut = u_peanut(:);
     else
         [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c),...

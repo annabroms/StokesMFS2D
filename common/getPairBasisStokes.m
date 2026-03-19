@@ -27,11 +27,7 @@ else
 end
 
 %Show progress for building pair basis?
-if isfield(opt,'show_counter') && ~isempty(opt.show_counter)
-    show_counter = logical(opt.show_counter);
-else
-    show_counter = false;
-end
+show_counter = opt.show_counter; 
 
 % Need fine sources explicitly?
 need_explicit_pair_sources = (N_peanut == 0) || ~use_pair_observable_map || get_bndry_field;
@@ -56,7 +52,7 @@ if isempty(pairs)
 end
 
 N_f = opt.N_f;
-pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),N_f);
+pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),N_f,opt);
 
 if ~reuse_pair_basis
     total_pairs = size(pairs,1);
@@ -98,11 +94,23 @@ pair_cache.group_id = group_id;
 pair_cache.group_sep = group_sep;
 pair_cache.representative_rows = rep_rows;
 pair_cache.groups = repmat(init_pair_group(),n_groups,1);
+total_pairs = size(pairs,1);
+covered_pairs = 0;
 
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
         q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
         need_explicit_pair_sources,debug);
+
+    if show_counter
+        rep_i = pairs(rep_rows(gg),1);
+        rep_j = pairs(rep_rows(gg),2);
+        n_rep = sum(group_id == gg);
+        covered_pairs = covered_pairs + n_rep;
+        fprintf(['getPairBasisStokes: processed canonical group %d/%d ', ...
+            'from pair (%d,%d), covers %d pairs -> %d/%d pairs covered\n'], ...
+            gg,n_groups,rep_i,rep_j,n_rep,covered_pairs,total_pairs);
+    end
 end
 
 for row = 1:size(pairs,1)
@@ -153,7 +161,8 @@ pair_cache = struct();
 pair_cache.enabled = false;
 pair_cache.shared_sep_tol = [];
 pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[],'phase_c',[],'phase_f',[]),0,1);
+    'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
+    'phase_f',[],'phase_f_inv',[]),0,1);
 pair_cache.groups = repmat(init_pair_group(),0,1);
 pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
@@ -168,10 +177,11 @@ group = struct('group_id',[],'sep',[],'q_pair',[],'rimage_canon',{{}}, ...
     'Upair_colloc',[],'Ucross_colloc',[],'Ecolloc',[],'rep_pair',[]);
 end
 
-function meta = build_pair_meta(q,pairs,nc,nf)
+function meta = build_pair_meta(q,pairs,nc,nf,opt)
 total_pairs = size(pairs,1);
 meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
-    'mid',[],'rot',[],'phase_c',[],'phase_f',[]),total_pairs,1);
+    'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
+    'phase_f',[],'phase_f_inv',[]),total_pairs,1);
 
 for row = 1:total_pairs
     i = pairs(row,1);
@@ -189,9 +199,12 @@ for row = 1:total_pairs
     meta(row).sep = sep;
     meta(row).mid = 0.5*(q(i)+q(j));
     meta(row).rot = rot;
-    meta(row).phase_c = getUniformCircleRotationPhase(nc,rot);
-    meta(row).phase_f = getUniformCircleRotationPhase(nf,rot);
+    meta(row).phase_c = getUniformCircleRotationSpec(nc,rot,opt);
+    meta(row).phase_c_inv = invertUniformCircleRotationSpec(meta(row).phase_c);
+    meta(row).phase_f = getUniformCircleRotationSpec(nf,rot,opt);
+    meta(row).phase_f_inv = invertUniformCircleRotationSpec(meta(row).phase_f);
 end
+
 end
 
 function [group_id,group_sep,rep_rows] = group_pair_separations(meta,sep_tol)
@@ -236,7 +249,6 @@ group.q_pair = pair.q_pair;
 group.rimage_canon = pair.rimage_canon;
 group.refine_canon = pair.refine_canon;
 group.Cmap = pair.Cmap;
-group.Cmap_proj = pair.Cmap_proj;
 group.Cmap_FU = pair.Cmap_FU;
 group.Upair_colloc = pair.Upair_colloc;
 group.Ucross_colloc = pair.Ucross_colloc;
@@ -289,27 +301,19 @@ pair.q_pair = q_pair;
 pair.rimage_canon = {rimage_i; rimage_j};
 pair.refine_canon = {refine_i; refine_j};
 
-rad = getOptField(opt,'rad',1);
-if numel(rad) > 1
-    rad = rad(1);
-end
-if isfield(opt,'project_force') && ~isempty(opt.project_force)
-    project_force = logical(opt.project_force);
-elseif isfield(opt,'project') && ~isempty(opt.project)
-    project_force = logical(opt.project);
-else
-    project_force = false;
-end
+
+project_force = opt.project_force;
+
 N_c = opt.N_c;
 a_c = getOptField(opt,'a_c',1.2);
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
-rout_base_c = rad*(cos(tout_c)+1i*sin(tout_c));
+rout_base_c = cos(tout_c)+1i*sin(tout_c);
 
 nout = ceil(opt.a_f*opt.N_f);
 t = linspace(0,2*pi,nout+1);
 t = t(1:end-1)';
-rout_base = rad*(cos(t)+1i*sin(t));
+rout_base = cos(t)+1i*sin(t);
 
 rin_1_f = q_pair(1)+rbase_in_f;
 rin_2_f = q_pair(2)+rbase_in_f;
@@ -366,7 +370,7 @@ end
 
 [Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair);
 Npair = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_f);
-Upf = -Uf_pair'*Npair;
+Upf = -Uf_pair'*Npair; %
 
 pair.Upf = Upf;
 pair.Ypf = Yf_pair;
@@ -376,7 +380,7 @@ pair.Lc_pair = Lc_pair;
 pair.DC = [];
 pair.YC = [];
 pair.Cmap = [];
-pair.Cmap_proj = [];
+pair.Cmap_FU = [];
 
 if getOptField(opt,'N_peanut',0)
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
@@ -386,17 +390,12 @@ if getOptField(opt,'N_peanut',0)
     pair.YC = YC;
     if logical(getOptField(opt,'cmap',false))
         pair.Cmap = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
-        if ~isempty(Lc_pair)
-            pair.Cmap_proj = Lc_pair*pair.Cmap;
-        else
-            pair.Cmap_proj = pair.Cmap;
-        end
     end
 else
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
 end
 
-pair.Cmap_FU = [];
+
 if logical(getOptField(opt,'cmap',false))
     Kft_pair = getKftPair(Kf1,Kf2);
     pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);

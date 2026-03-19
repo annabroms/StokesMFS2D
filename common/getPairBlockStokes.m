@@ -58,9 +58,9 @@ else
     Atot = S;
 end 
 
-tol = 1e-14; %SVD truncation level
+tol = 1e-11; %SVD truncation level
 
-[Y,U] = getPseudoFactors(Atot,tol,0); 
+[Y,U] = getPseudoFactors(Atot,tol,1); 
 
 
 end

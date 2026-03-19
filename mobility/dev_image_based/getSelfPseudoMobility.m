@@ -61,10 +61,12 @@ if isempty(rimage) %compute just one factor, for a single particle
     tol = 1e-14; %just remove the last singval.
    % tol = 1e-11;
     %tol = 1e-16;
+    tol = 1e-10; 
 else
     tol = 1e-10;
     tol = 1e-9;
     tol = 1e-14; 
+    
     %tol = 1e-16;
     %tol = 1e-9;
     %tol = 1e-6;

@@ -16,13 +16,13 @@ use_matrix_free_BKt = true; % set false to use the original dense B*K' products
 
 
 %Transform coarse \mu -> coarse \lambda
-[tau_stokes_x, tau_stokes_nonpx,tau_self_x, tau_beta_x,tau_stokes_y,tau_stokes_nonpy,tau_self_y,tau_beta_y,u_corr] = transform_mob_peanut(tau,rbase_in_c,...
+[tau_stokes_x, ~,tau_self_x, tau_beta_x,tau_stokes_y,~,tau_self_y,tau_beta_y,u_corr] = transform_mob_peanut(tau,rbase_in_c,...
     rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,rcheck,q,Us,Ys,Lc,pairs,Ucf,Ycf,Up,Yp,Cmap,Lc_pair,Lf_pair);
 
 res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y);
 
 res = res+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 
-% adding the fine representation instead
+% adding the fine representation instead, then adding identity
 
 %Imposing boundary conditions, if solving
 if isequal(rcheck,rvec_out)
@@ -42,6 +42,7 @@ if isequal(rcheck,rvec_out)
     
     %Need contribution from every pair to the velocity vector that sets
     %boundary conditions.
+
     has_neigh = sort(unique(pairs(:)));
     for i = 1:length(has_neigh)
         k = has_neigh(i); 
@@ -52,7 +53,7 @@ if isequal(rcheck,rvec_out)
         else
             bcvec = B*K'*[fbx; fby];
         end
-    
+
         res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
         res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
 
@@ -70,13 +71,15 @@ if isequal(rcheck,rvec_out)
         uii = Nii*tau_xy; %This is G*(I-L)
     
         %subract contribution in x
-        res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2)+tau((i-1)*N_large+1:i*N_large);
+        res((i-1)*N_large+1:i*N_large) = res((i-1)*N_large+1:i*N_large)-uii(1:end/2);
     
         %subract contribution in y
         res((i-1)*N_large+1+PM:i*N_large+PM) = res((i-1)*N_large+1+PM:i*N_large+PM)-...
-            uii(end/2+1:end)+tau((i-1)*N_large+PM+1:i*N_large+PM);
+            uii(end/2+1:end);
         
     end
+
+    res = res+tau;
 
 end
 

@@ -157,7 +157,7 @@ for i = 1:P
                 tau_peanut_ntot = YC_all{i,p2}*tau_peanut_temp;
             end
 
-
+            % Get projected equivalent sources
             tau_peanut_tot= Lc_pair*tau_peanut_ntot; 
 
             %Store

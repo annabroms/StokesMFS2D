@@ -46,5 +46,8 @@ opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing
 opt.project_force = false; % project out net force/torque-producing modes in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated separations
 opt.shared_sep_tol = 1e-2; % separation tolerance for grouping repeated pairs
+opt.rotation_mode = 'fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
+opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
+opt.show_counter = 1; 
 
 end

@@ -155,7 +155,7 @@ for row = 1:size(pairs,1)
         projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
     if use_pair_cache
-        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],conj(meta.phase_c));
+        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],meta.phase_c_inv);
         tau_peanut_pair = tau_pair_rot(:,1:2);
         tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
     end
@@ -212,7 +212,7 @@ for row = 1:size(pairs,1)
         beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
             beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
         if use_pair_cache
-            beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],conj(meta.phase_f));
+            beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],meta.phase_f_inv);
         end
         beta_i_fine = beta_fine_pair(:,1);
         beta_p2_fine = beta_fine_pair(:,2);

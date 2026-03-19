@@ -64,8 +64,8 @@ rbase_out_rel = rvec_out(1:N_large)-q(1);
     %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
     % end
     
-% Add action of Lr = BK' for pair observables.
-if logical(getOptField(opt,'cmap',false)) && (~isempty(Cmap_FU) || use_pair_cache)
+% Add action of Lr = BK' for close pairs
+if  (~isempty(Cmap_FU) || use_pair_cache) && logical(getOptField(opt,'cmap',false))
     for row = 1:size(pairs,1)
         i = pairs(row,1);
         p2 = pairs(row,2);
@@ -75,16 +75,21 @@ if logical(getOptField(opt,'cmap',false)) && (~isempty(Cmap_FU) || use_pair_cach
 
         if use_pair_cache
             pair = getStokesPairInstance(pair_cache,row);
+
+            % rotate to frame of reference
             rhs_pair = rotatePairOrderedStokesData(rhs_pair,opt.N_c,pair.meta.phase_c,conj(pair.meta.rot));
-            pair_vel = -pair.group.Cmap_FU*rhs_pair;
+            pair_vel = pair.group.Cmap_FU*rhs_pair;
+
+            %apply rotation back to frame of pair
             vel_i = pair.meta.rot*(pair_vel(1) + 1i*pair_vel(2));
             vel_p2 = pair.meta.rot*(pair_vel(4) + 1i*pair_vel(5));
             pair_vel = [real(vel_i); imag(vel_i); pair_vel(3); ...
                         real(vel_p2); imag(vel_p2); pair_vel(6)];
         else
-            pair_vel = -Cmap_FU{i,p2}*rhs_pair;
+            pair_vel = Cmap_FU{i,p2}*rhs_pair;
         end
 
+        % get boundary velocity from translational and angular velocity
         rot_x = -imag(rbase_out_rel);
         rot_y = real(rbase_out_rel);
         bvec_i = [pair_vel(1) + pair_vel(3)*rot_x; ...
@@ -106,18 +111,18 @@ else
         fcx = tau_stokes_nonpx((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
         fcy = tau_stokes_nonpy((k-1)*N_f+1+P*N_c:k*N_f+P*N_c);
         
-        bcvec_c = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
+        bcvec_f = applyBKt2D(rbase_out_rel,0,rbase_in_f,0,fcx,fcy);
 
         %and for the enhancing extra sources
         if isempty(rimage_k{k})
-            bcvec_f = zeros(2*N_large,1);
+            bcvec_e = zeros(2*N_large,1);
         else    
-            bcvec_f = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
+            bcvec_e = applyBKt2D(rbase_out_rel,0,rimage_k{k},q(k),...
                 tau_stokes_e_nonpx{k},tau_stokes_e_nonpy{k}); 
         end
 
-        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_c(1:end/2)+bcvec_f(1:end/2);
-        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_c(end/2+1:end) + bcvec_f(end/2+1:end);
+        res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec_f(1:end/2)+bcvec_e(1:end/2);
+        res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec_f(end/2+1:end) + bcvec_e(end/2+1:end);
 
     end
 end
