@@ -303,7 +303,7 @@ opt = getLaplace2Dparams(P,R,N_c);
 opt.delta_pair = 0.2;
 opt.Nclust = 100;
 opt.N_peanut = 400;
-opt.visualise_sol = 0;
+opt.visualise_sol = 1;
 opt.visualise_grid =0; 
 opt.gmres_tol = 1e-8;
 opt.debug = 0;
@@ -312,7 +312,7 @@ opt.gmres_verbose = 0;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-8; % tolerance used in the low-rank compression
 opt.reuse_pair_basis_by_sep = 1;
-opt.get_bndry_field = 0; 
+opt.get_bndry_field = 1; 
 
 %tic
 [Qp,solp] = solve_cap_peanut(q,v_body,opt);
@@ -339,99 +339,4 @@ fprintf('Peanut: it=%d, maxres=%.3e\n',itp,resp);
 fprintf('2B    : it=%d, maxres=%.3e\n',it2,res2);
 fprintf('Rel diff in Q (peanut vs 2B): %.3e\n',norm(Qp-Q2)/max(1,norm(Q2)));
 
-end
-
-function plotBodyScalars(q,R,v_body,Q,font_size)
-q = q(:);
-v_body = v_body(:);
-Q = Q(:);
-P = numel(q);
-
-if nargin < 5 || isempty(font_size)
-    font_size = 14;
-end
-
-if isscalar(R)
-    rad = repmat(R,P,1);
-else
-    rad = R(:);
-end
-
-theta = linspace(0,2*pi,200);
-xmin = min(real(q)-rad);
-xmax = max(real(q)+rad);
-ymin = min(imag(q)-rad);
-ymax = max(imag(q)+rad);
-pad = 0.1*max(rad);
-
-figure();
-tiledlayout(1,2,'TileSpacing','compact','Padding','compact');
-
-vals = {v_body,Q};
-titles = {'Given body voltages','Computed net charges'};
-cbar_labels = {'Voltage','Net charge'};
-cmaps = {parula(256),blueWhiteRedMap(256)};
-
-for it = 1:2
-    ax = nexttile;
-    hold(ax,'on');
-
-    for k = 1:P
-        zk = q(k) + rad(k)*(cos(theta)+1i*sin(theta));
-        fill(ax,real(zk),imag(zk),vals{it}(k), ...
-            'EdgeColor',[0.2 0.2 0.2],'LineWidth',0.75);
-    end
-
-    axis(ax,'equal');
-    xlim(ax,[xmin-pad xmax+pad]);
-    ylim(ax,[ymin-pad ymax+pad]);
-    xlabel(ax,'$x$','Interpreter','latex');
-    ylabel(ax,'$y$','Interpreter','latex');
-    title(ax,titles{it},'Interpreter','latex');
-    box(ax,'on');
-    colormap(ax,cmaps{it});
-    ax.FontSize = font_size;
-    ax.TitleFontSizeMultiplier = 1.0;
-    ax.LabelFontSizeMultiplier = 1.0;
-    ax.TickLabelInterpreter = 'latex';
-
-    if min(vals{it}) < 0 && max(vals{it}) > 0
-        vmax = max(abs(vals{it}));
-        clim(ax,[-vmax vmax]);
-    end
-
-    c = colorbar(ax);
-    c.Label.String = cbar_labels{it};
-    c.FontSize = font_size;
-    c.Label.FontSize = font_size;
-    c.TickLabelInterpreter = 'latex';
-    c.Label.Interpreter = 'latex';
-end
-
-sgtitle('Bodywise voltages and net charges', ...
-    'FontSize',font_size,'Interpreter','latex');
-end
-
-function cmap = blueWhiteRedMap(n)
-if nargin < 1 || isempty(n)
-    n = 256;
-end
-
-x = linspace(0,1,n)';
-cmap = zeros(n,3);
-
-mid = 0.5;
-left = x <= mid;
-right = x > mid;
-
-tleft = x(left)/mid;
-tright = (x(right)-mid)/(1-mid);
-
-cmap(left,1) = tleft;
-cmap(left,2) = tleft;
-cmap(left,3) = 0.3 + 0.7*tleft;
-
-cmap(right,1) = 1.0;
-cmap(right,2) = 1.0 - 0.8*tright;
-cmap(right,3) = 1.0 - tright;
 end

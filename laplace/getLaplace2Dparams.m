@@ -1,9 +1,10 @@
-function opt = getLaplace2Dparams(P,R,N_c)
+function opt = getLaplace2Dparams(P,R,N_c,N_f)
 %GETLAPLACE2DPARAMS Default parameters for scalar Laplace MFS in 2D.
 %
 % Input: P - number of particles.
 %        R - physical particle radius
-%        N_c - Number of proxy points per particle
+%        N_c - Number of coarse proxy points per particle
+%        N_f - Number of fine proxy points per particle
 %
 % See also: solve_cap_1B, solve_cap_2B, solve_cap_peanut.
 %
@@ -12,7 +13,9 @@ function opt = getLaplace2Dparams(P,R,N_c)
 % Discretisation parameters, basic discretisation:
 opt.rad = R;
 opt.P = P; 
-if nargin<3
+if nargin<4
+    N_f = 150;
+elseif nargin<3
     N_c = 80;
 end
 opt.N_c = N_c;
@@ -28,7 +31,6 @@ opt.beta = 0.3; % beta is a parameter determining the shape of the enhancing ell
 % segments for close pairs. Smaller beta means tip of ellipse closer to image accumulation points.
 opt.Nclust = 100; % Chebyshev nodes on each ellipse segment for close pairs, a portion of which are used as enhancing sources.
 opt.a_f = 1.2;
-N_f = 150;
 opt.N_f = N_f;
 sep = (1/N_f)*log(1/tol);
 opt.Rp_f = opt.rad*max([1-sep,0.01]);
@@ -41,6 +43,7 @@ opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
 opt.reuse_pair_basis_by_sep = true; % build one canonical x-axis pair basis per repeated separation
+opt.check_rotations = false; % store per-pair pair-basis data alongside the canonical cache for debugging
 opt.shared_sep_tol = 1e-2*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'

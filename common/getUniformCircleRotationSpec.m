@@ -11,6 +11,7 @@ function spec = getUniformCircleRotationSpec(n,rot,opt)
 %   opt - Optional struct with fields:
 %         rotation_mode       : 'fft' | 'oversampled_fft'
 %         rotation_oversample : positive integer factor for oversampled_fft
+%                               (used to build an oversampled Fourier shift)
 %
 % Output:
 %   spec - Struct consumed by rotateUniformCircleData.
@@ -62,7 +63,7 @@ switch mode
                 'rotation_oversample must be a positive integer.');
         end
         spec.n_oversampled = oversample*n;
-        spec.shift_steps = round(theta*spec.n_oversampled/(2*pi));
+        spec.phase = getUniformCircleRotationPhase(spec.n_oversampled,rot);
 
     otherwise
         error('getUniformCircleRotationSpec:BadMode', ...

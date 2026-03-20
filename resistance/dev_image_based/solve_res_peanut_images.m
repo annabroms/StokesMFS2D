@@ -284,6 +284,7 @@ if visualise
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')
+    axis tight
 end
 % hold on
 % semilogy(resvec2); 
@@ -512,9 +513,11 @@ if visualise
     figure()
     subplot(1,2,1)
     semilogy(abs(lambda_proxy))
+    axis tight
     hold on
     subplot(1,2,2)
     plot(lambda_proxy)
+    axis tight
     sgtitle('Source strengths $\lambda$ with peanut compression, resistance', 'interpreter','latex')
 
     

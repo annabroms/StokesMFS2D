@@ -107,7 +107,7 @@ Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 %Outer basic grid
 tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
 tout_c = tout_c(1:end-1)';
-rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
+rbase_out_c = cos(tout_c)+1i*sin(tout_c);
 
 tin_f = linspace(0,2*pi,N_f+1);
 tin_f = tin_f(1:end-1)'; 
@@ -225,6 +225,7 @@ if visualise_sol
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')
+    axis tight
 end
 
 disp(' == Postprocessing == ');
@@ -237,7 +238,7 @@ if opt.get_bndry_field
     n_bound = 803;
     t = linspace(0,2*pi,n_bound)';
     for k = 1:P
-        rcheck_b = [rcheck_b; q(k)+rad*(cos(t)+1i*sin(t))];
+        rcheck_b = [rcheck_b; q(k)+cos(t)+1i*sin(t)];
     end
 
     % Prepare for evaluating flow field in rcheck_b.
@@ -361,9 +362,11 @@ if visualise_sol
     figure()
     subplot(1,2,1)
     semilogy(abs(lambda_proxy))
+    axis tight
     hold on
     subplot(1,2,2)
     plot(lambda_proxy)
+    axis tight
     sgtitle('Source strengths $\lambda$ with peanut compression, resistance', 'interpreter','latex')
 
    
@@ -448,7 +451,7 @@ if test == 1
 else
 
     rng(9);
-    P = 4;
+    P = 20;
     delta = 0.001; %P = 5
     x = 1+delta/2;
     y = sqrt((2+delta)^2-(1+delta/2)^2);
@@ -462,8 +465,8 @@ else
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); 
     %W = zeros(P,1); 
-    gmres_tol = 1e-7; 
-    debug = 1; 
+    gmres_tol = 1e-8;
+    debug = 0;
 
     N_c = 100; 
     opt = get2Dparams(P,N_c);
@@ -473,12 +476,17 @@ else
     opt.gmres_tol = gmres_tol;
     opt.debug = debug;
     opt.cmap = 1; 
-    opt.reuse_pair_basis_by_sep = 1; 
-    [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
+    opt.reuse_pair_basis_by_sep = 1;
+    opt.rotation_mode = 'oversampled_fft';
+   % opt.rotation_oversample = 8;
+    opt.rotation_mode = 'fft';
+    [FT1p,sol1p] = solve_res_peanut_enhanced(q,U,W,opt);
+    opt.reuse_pair_basis_by_sep = 0;
+    [FT2p,sol2p] = solve_res_peanut_enhanced(q,U,W,opt);
     [FT2,sol2] = solve_res_2B_enhanced(q,U,W,opt);
     
     str = sprintf('Relative residual with peanut compression: %1.2e vs 2B preconditioner without compression: %1.2e\n Converging in %u resp %u iterations', ...
-        sol1.rel_res,sol2.rel_res,sol1.it,sol2.it);
+        sol1p.rel_res,sol2.rel_res,sol1p.it,sol2.it);
     disp(str)
     
     alignfigs;

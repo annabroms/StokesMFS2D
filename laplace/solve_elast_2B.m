@@ -25,6 +25,7 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
+%       body_plot_font_size font size for the bodywise scalar plots
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %
 % Outputs:
@@ -60,6 +61,7 @@ visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visuali
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
+body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 
 q = q(:);
 Q_body = Q_body(:);
@@ -212,6 +214,11 @@ if visualise_sol
     plot(u_b); hold on;
     plot(v_true);
     title('Boundary potential and per-body means (Laplace elastance 2B)')
+
+    plotBodyScalars(q,rad,Q_body,v_body,body_plot_font_size, ...
+        {'Given body charges','Computed body voltages'}, ...
+        {'Charge','Voltage'}, ...
+        'Bodywise charges and voltages');
 end
 
 sol = struct();

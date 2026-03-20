@@ -48,7 +48,6 @@ use_cmap = isfield(opt,'cmap') && opt.cmap;
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 need_explicit_pair_sources = ~use_cmap || get_bndry_field;
 
-
 P = numel(q);
 N_c = opt.N_c;
 N_f = opt.N_f;
@@ -116,15 +115,19 @@ for row = 1:size(pairs,1)
     if use_pair_cache % if distances are shared for more than one pair
         meta = pair_cache.meta(row);
         group = pair_cache.groups(meta.group_id);
-        rot = meta.rot;
+        % interpolate data to canonical reference frame
         rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],meta.phase_c);
-        rhs_pair = rhs_pair(:);
-        pair_mapped = group.Upf*rhs_pair;
+        rhs_pair = rhs_pair(:);    
+
+        % recover fine sources
         if need_explicit_pair_sources
+            pair_mapped = group.Upf*rhs_pair;
             beta_tot_nonp_local = group.Ypf*pair_mapped;
         else
             beta_tot_nonp_local = [];
         end
+
+        % use coarse-to-coarse map without going via fine sources
         if use_cmap
             tau_peanut_nonp_local = group.Cmap*rhs_pair;
             pair_qv_local = group.Cmap_QV*rhs_pair;
@@ -151,14 +154,18 @@ for row = 1:size(pairs,1)
     end
 
     tau_peanut_nonp_pair = reshape(tau_peanut_nonp_local,N_c,2);
-    tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
-        projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
+   % tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
+      %  projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
     if use_pair_cache
-        tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],meta.phase_c_inv);
-        tau_peanut_pair = tau_pair_rot(:,1:2);
-        tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
+        % tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],meta.phase_c_inv);
+        % tau_peanut_pair = tau_pair_rot(:,1:2);
+        % tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
+        tau_pair_rot = rotateUniformCircleData(tau_peanut_nonp_pair,[],meta.phase_c_inv);
+        tau_peanut_nonp_pair = tau_pair_rot;
     end
+    tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
+        projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
     lam_c(idx_i) = lam_c(idx_i) + tau_peanut_pair(:,1);
     lam_c(idx_p2) = lam_c(idx_p2) + tau_peanut_pair(:,2);
@@ -169,22 +176,29 @@ for row = 1:size(pairs,1)
         pair_qv_nonp(p2) = pair_qv_nonp(p2) + pair_qv_local(2);
     end
 
+
+    %% Determine correction field for the pair
     block_i = (i-1)*N_check+1:i*N_check;
     block_p2 = (p2-1)*N_check+1:p2*N_check;
     rout_pair = [rcheck_out(block_i); rcheck_out(block_p2)];
     rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
     use_dense_u_pair = use_ucorr_colloc && use_pair_cache && ~need_explicit_pair_sources ...
         && isfield(meta,'Ucross_colloc_actual') && ~isempty(meta.Ucross_colloc_actual) ...
-        && isfield(meta,'Ec_colloc_actual') && ~isempty(meta.Ec_colloc_actual);
+        && isfield(meta,'Ec_colloc_actual') && ~isempty(meta.Ec_colloc_actual);    
+
     if use_dense_u_pair
+        % use stored dense matrices
         rhs_actual = [lam_i; lam_p2];
         u_fine = meta.Ucross_colloc_actual*rhs_actual;
+
         if project_charge
             u_fine = u_fine - meta.Lr_colloc_actual*pair_qv_local;
         end
+
         u_peanut = meta.Ec_colloc_actual*tau_peanut_pair(:);
         u_pair = u_fine - u_peanut;
-    elseif need_explicit_pair_sources
+    elseif need_explicit_pair_sources 
+        % use fine sources
         if use_pair_cache
             rimage_i = meta.mid + meta.rot*group.rimage_canon{1};
             rimage_p2 = meta.mid + meta.rot*group.rimage_canon{2};
@@ -200,6 +214,7 @@ for row = 1:size(pairs,1)
         e_p2 = 2*N_f+im_i+1:2*N_f+im_i+im_p2;
         beta_i_nonp_local = [beta_tot_nonp_local(s_i); beta_tot_nonp_local(e_i)];
         beta_p2_nonp_local = [beta_tot_nonp_local(s_p2); beta_tot_nonp_local(e_p2)];
+        
         beta_i_local = projectChargeMode(beta_i_nonp_local,project_charge);
         beta_p2_local = projectChargeMode(beta_p2_nonp_local,project_charge);
 
@@ -234,9 +249,14 @@ for row = 1:size(pairs,1)
         u_fine = lapSLPfield(rin_pair_f,rout_pair,beta_tot_actual,false);
         u_peanut = lapSLPfield(rin_pair_c,rout_pair,tau_peanut_pair(:),false);
         u_pair = u_fine - u_peanut;
+
     else
+        % use direct summation to recreate rhs
         u_fine_i = -lapSLPfield(q(p2)+rbase_in_c,rcheck_out(block_i),lam_p2,false);
         u_fine_p2 = -lapSLPfield(q(i)+rbase_in_c,rcheck_out(block_p2),lam_i,false);
+
+        % To match rhs in pair-problem, ones-matrix must be subtracted as
+        % it is later added again. 
         if project_charge
             u_fine_i = u_fine_i - pair_qv_local(1);
             u_fine_p2 = u_fine_p2 - pair_qv_local(2);
@@ -250,6 +270,8 @@ for row = 1:size(pairs,1)
     u_corr(pair_idx) = u_corr(pair_idx) + u_pair;
 end
 
+
+%% Store sources
 if need_explicit_pair_sources
     for k = 1:P
         if ~isempty(lam_e_chunks{k})

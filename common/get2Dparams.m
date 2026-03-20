@@ -48,6 +48,7 @@ opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated se
 opt.shared_sep_tol = 1e-2; % separation tolerance for grouping repeated pairs
 opt.rotation_mode = 'fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
-opt.show_counter = 1; 
+opt.show_counter = 1; % show progress for pair compressions
+opt.self_correct = 1; % enforce identity diagonal matrices in system matrix
 
 end

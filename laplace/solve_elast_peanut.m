@@ -26,6 +26,7 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
+%       body_plot_font_size font size for the bodywise scalar plots
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse-to-coarse map
 %       get_bndry_field
@@ -68,6 +69,7 @@ debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 
 q = q(:);
 Q_body = Q_body(:);
@@ -148,6 +150,9 @@ geom.pairs = pairs;
 geom.rimage_vec = rimage_vec;
 geom.rvec_in = rvec_in_c;
 geom.pair_cache = pair_cache;
+if opt.cmap
+    geom.opt.get_bndry_field = 0;
+end
 
 basis = struct();
 basis.U = UU;
@@ -160,6 +165,8 @@ basis.Cmap = Cmap;
 basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
 basis.Nii = lapSLPmat(rbase_in_c,rbase_out_c);
+
+
 
 %% Get rhs based on "completion flow"
 [lambda0_c,u_rhs] = getChargeCompletionFlowLaplace(rvec_in_c,rout,coarse_source_ind,Q_body,use_fmm);
@@ -214,6 +221,7 @@ if get_bndry_field
     geom_eval = geom;
     geom_eval.opt = opt;
     geom_eval.rcheck = rcheck_b;
+    geom_eval.opt.get_bndry_field = 1; 
 else
     geom_eval = geom;
 end
@@ -234,8 +242,10 @@ for k = 1:P
 end
 
 if get_bndry_field
-    u_b = lapSLPfield(rvec_in_c,rcheck_b,lambda0_c+lam_c,use_fmm);
-    u_b = u_b+u_corr;
+    u_b1 = matvec_lap_peanut_enhanced(tau,geom_eval,basis);
+    u_b2 = lapSLPfield(rvec_in_c,rcheck_b,lambda0_c,use_fmm); %+lam_c,use_fmm);
+    %u_b = u_b+u_corr;
+    u_b = u_b1+u_b2;
 
     v_true = zeros(P*n_bound,1);
     for k = 1:P
@@ -261,6 +271,11 @@ if visualise_sol
     figure();
     semilogy(abs(lambda_proxy))
     title('Coarse proxy strengths (Laplace elastance peanut)')
+
+    plotBodyScalars(q,rad,Q_body,v_body,body_plot_font_size, ...
+        {'Given body charges','Computed body voltages'}, ...
+        {'Charge','Voltage'}, ...
+        'Bodywise charges and voltages');
 end
 
 sol = struct();
@@ -281,26 +296,36 @@ run_two_way = true;
 rng(9);
 %% Set geometry and data
 R = 2; 
-delta = 1e-3;
-P = 2; 
+delta = 1e-2;
+P = 20; 
 q = grow_cluster(P,delta,2,R);
+%q = [0; R*(2+delta)]*exp(1i*pi/13);
 Q_body = randn(P,1);
 Q_body = Q_body-mean(Q_body); %zero total charge
 
 %% Tune parameters
-opt = getLaplace2Dparams(P,R);
-opt.visualise_sol = 1;
-opt.debug = 2; % determine system matrix by using matvec with columns of the identity matrix as input
+N_c = 61;
+N_f = 150;
+opt = getLaplace2Dparams(P,R,N_c,N_f);
+opt.visualise_sol = 0;
+opt.debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
 opt.use_fmm = true;
 opt.gmres_verbose = 0; %no output from gmres
 opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
 opt.N_peanut = 400; % nodes on peanut separation surface
 opt.gmres_tol = 1e-10;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
-opt.cmap_tol = 1e-6; 
+opt.cmap_tol = 1e-8; 
+opt.reuse_pair_basis_by_sep = 1;
+opt.check_rotations = 0; 
+opt.rotation_mode = 'fft'; 
+opt.rotation_oversample = 8; 
+opt.cmap = 1;
 
 %% Solve
 [vp,solp] = solve_elast_peanut(q,Q_body,opt);
+opt.reuse_pair_basis_by_sep = 0;
+[vp2,solp2] = solve_elast_peanut(q,Q_body,opt);
 opt_2B = opt;
 opt_2B.visualise_sol = 0;
 [v2,sol2] = solve_elast_2B(q,Q_body,opt_2B);

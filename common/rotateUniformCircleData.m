@@ -83,9 +83,12 @@ if ~isempty(spec)
             end
 
             values_up = interpft(values,spec.n_oversampled,1);
-            if spec.shift_steps ~= 0
-                values_up = circshift(values_up,-spec.shift_steps,1);
+            phase = spec.phase(:);
+            if numel(phase) ~= spec.n_oversampled
+                error('rotateUniformCircleData:BadSpecSize', ...
+                    'oversampled rotation spec phase must have one entry per oversampled sample.');
             end
+            values_up = ifft(fft(values_up,[],1).*phase,[],1);
             stride = spec.n_oversampled/n;
             values_rot = values_up(1:stride:end,:);
 

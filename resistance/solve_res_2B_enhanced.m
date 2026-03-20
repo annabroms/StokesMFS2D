@@ -516,6 +516,7 @@ if visualise_sol
     semilogy(abs(lambda))
     ylabel('Magnitude of MFS coefficients','interpreter','latex')
     title('Pair corr resistance')
+    axis tight
 
     % lambda_x = lambda(1:length(rin_f));
     % lambda_y = lambda(length(rin_f)+1:2*length(rin_f));

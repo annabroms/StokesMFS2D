@@ -17,6 +17,7 @@ N_f = opt.N_f;
 N_peanut = opt.N_peanut;
 R = opt.rad;
 reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
+check_rotations = logical(getOptField(opt,'check_rotations',false));
 shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-12*max(1,R));
 
 if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
@@ -64,6 +65,7 @@ end
 
 pair_cache = init_pair_cache();
 pair_cache.enabled = reuse_pair_basis;
+pair_cache.check_rotations = check_rotations;
 pair_cache.shared_sep_tol = shared_sep_tol;
 pair_cache.rout_base_f = rout_base_f(:);
 
@@ -165,6 +167,18 @@ for gg = 1:n_groups
     end
 end
 
+if check_rotations
+    % Keep a per-pair copy in the solve geometry so the debug path can
+    % compare against the canonical cached group later.
+    pair_cache.check_pairs = repmat(init_pair_group(),size(pairs,1),1);
+    for row = 1:size(pairs,1)
+        gid = group_id(row);
+        pair_cache.check_pairs(row) = build_pair_group(gid,row,pair_cache.meta(row).sep, ...
+            q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
+            project_charge,false);
+    end
+end
+
 for row = 1:size(pairs,1)
     gid = group_id(row);
     pair_cache.meta(row).group_id = gid;
@@ -188,6 +202,7 @@ end
 function pair_cache = init_pair_cache()
 pair_cache = struct();
 pair_cache.enabled = false;
+pair_cache.check_rotations = false;
 pair_cache.shared_sep_tol = [];
 pair_cache.rout_base_f = [];
 pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
@@ -196,6 +211,7 @@ pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
     'Ucross_colloc_actual',[],'Ec_colloc_actual',[], ...
     'Lr_colloc_actual',[]),0,1);
 pair_cache.groups = repmat(init_pair_group(),0,1);
+pair_cache.check_pairs = repmat(init_pair_group(),0,1);
 pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
 pair_cache.representative_rows = zeros(0,1);
@@ -273,18 +289,30 @@ group_id = zeros(size(sep));
 group_id(order) = group_id_sorted;
 end
 
-function group = build_pair_group(group_id,row,sep,q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,rout_base_f,project_charge)
+function group = build_pair_group(group_id,row,sep,q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,rout_base_f,project_charge,use_canonical)
+if nargin < 13
+    use_canonical = true;
+end
+
 i = pairs(row,1);
 j = pairs(row,2);
 mid = 0.5*(q(i)+q(j));
 rot = (q(j)-q(i))/abs(q(j)-q(i));
 R = opt.rad;
 
-q_pair = [-sep/2; sep/2];
-rimage_i = map_points_to_canonical(rimage_vec{i,j},mid,rot);
-rimage_j = map_points_to_canonical(rimage_vec{j,i},mid,rot);
-refine_i = map_points_to_canonical(refine{i,j},mid,rot);
-refine_j = map_points_to_canonical(refine{j,i},mid,rot);
+if use_canonical
+    q_pair = [-sep/2; sep/2];
+    rimage_i = map_points_to_canonical(rimage_vec{i,j},mid,rot);
+    rimage_j = map_points_to_canonical(rimage_vec{j,i},mid,rot);
+    refine_i = map_points_to_canonical(refine{i,j},mid,rot);
+    refine_j = map_points_to_canonical(refine{j,i},mid,rot);
+else
+    q_pair = [q(i); q(j)];
+    rimage_i = rimage_vec{i,j};
+    rimage_j = rimage_vec{j,i};
+    refine_i = refine{i,j};
+    refine_j = refine{j,i};
+end
 
 rout_f = [q_pair(1)+rout_base_f; refine_i; q_pair(2)+rout_base_f; refine_j];
 rin_pair_f = [q_pair(1)+rbase_in_f; rimage_i; q_pair(2)+rbase_in_f; rimage_j];

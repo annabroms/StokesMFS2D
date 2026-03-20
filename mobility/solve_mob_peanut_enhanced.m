@@ -400,6 +400,7 @@ if visualise_sol && get_bndry_field
     figure()
     semilogy(abs(lambda_c))
     title('Coarse source strengths mobility, peanut compression')
+    axis tight
     
 end
 
@@ -478,7 +479,7 @@ opt.surface_error_mode = 'rel';
 opt.reuse_pair_basis_by_sep = 1; 
 opt.cmap = 1; % coarse to coarse compression?
 opt.N_peanut = 400; 
-opt.self_correct = 0; % create identiy matrix for a pair by utilising known rhs in pair problem
+opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 
 opt.reuse_pair_basis_by_sep = 0;
 [UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 

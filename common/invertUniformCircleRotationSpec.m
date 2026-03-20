@@ -21,7 +21,8 @@ switch lower(char(spec.mode))
         spec_inv.phase = conj(spec.phase);
 
     case 'oversampled_fft'
-        spec_inv.shift_steps = -spec.shift_steps;
+        spec_inv.phase = conj(spec.phase);
+        spec_inv.shift_steps = 0;
 
     otherwise
         error('invertUniformCircleRotationSpec:BadMode', ...

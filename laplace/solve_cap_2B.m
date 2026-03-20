@@ -26,6 +26,7 @@ function [Q,sol] = solve_cap_2B(q,v_body,opt)
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
 %       visualise_sol plot postprocessing diagnostics
+%       body_plot_font_size font size for the bodywise scalar plots
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %
 % Outputs:
@@ -62,6 +63,7 @@ gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
+body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 
 q = q(:);
 v_body = v_body(:);
@@ -211,6 +213,8 @@ if visualise_sol
     figure();
     plot(u_b); hold on; plot(g_true)
     title('Boundary values: lhs vs rhs (Laplace 2B)')
+
+    plotBodyScalars(q,R,v_body,Q,body_plot_font_size);
 end
 
 sol = struct();
