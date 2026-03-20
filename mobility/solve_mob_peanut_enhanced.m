@@ -133,7 +133,7 @@ rimage_in = [];
 [U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
 
 %Get pair basis
-plot_grid = 1; 
+plot_grid = 0; %debug option: visualise each close pair 
 opt.project_force = true;
 opt.project = true;
 opt.pair_basis_debug = plot_grid;
@@ -141,12 +141,7 @@ opt.show_counter = true;
 opt.rad = ones(P,1);
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
-
-Kf = getKmat2D(rbase_in_f,0);
-Lf = Kf*((Kf'*Kf)\Kf'); %This is x y
-Lf_pair = getILpair(Lf);
-
-%[UB_all,YB_all,UC_all,YC_all,Cmap,~,nimage] = getPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},Lf,Kf);                              
+                     
 
 % TODO: update visualisation:
 %Visualise 1-body and pair-basis
@@ -199,10 +194,12 @@ basis_mob.Cmap = Cmap;
 basis_mob.Cmap_FU = Cmap_FU; 
 basis_mob.Lc_pair = Lc_pair;
 basis_mob.pair_cache = pair_cache;
-basis_mob.Lf_pair = Lf_pair; %debug
 
 geom_check = geom_solve;
 geom_check.opt = opt;
+if opt.cmap
+    geom_solve.opt.get_bndry_field = 0;
+end
 geom_check.rcheck = rcheck_b;
 
 %% Solve system
@@ -221,8 +218,7 @@ if debug
         CC(:,k) = uu;
     end
     toc
-    figure(14);
-    clf; 
+    figure();
     imagesc(log10(abs(CC)))
     colorbar
     title([solver_name ': log_{10} |matvec system matrix|'],'interpreter','none')
@@ -338,8 +334,7 @@ if get_bndry_field
         u_lhs((k-1)*n_bound+1:k*n_bound) = res(1:end/2);
         u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
     end
-
-    geom_check.opt.self_correct = 0; % matvec to be modified
+    geom_check.opt.self_correct = 0; 
     u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
     S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
     u_rhs = u_rhs-S_0;
@@ -427,8 +422,8 @@ close all;
 %% Set geometry and data
 q = [0; 2.001; 2.001i]; %center coordinates
 
-delta = 1e-3; 
-P = 2; 
+delta = 1e-2; 
+P = 3; 
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
@@ -443,8 +438,9 @@ q = R * exp(1i * (0:P-1).' * (2*pi/P));
 
 rng(5); 
 q = grow_cluster(P,delta,2);
-q = [0; 2+delta]*1i;
+%q = [0; 2+delta]*1i;
 
+P = length(q); 
 F = [real(q) imag(q)]; 
 T = zeros(size(q));  
 rad = ones(size(q));
@@ -474,17 +470,17 @@ N_c = 60;
 opt = get2Dparams(P,N_c);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
-opt.visualise_sol = 0;
+opt.visualise_sol = 1;
 opt.visualise_grid = 0; 
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
-opt.reuse_pair_basis_by_sep = 0; 
-opt.cmap = 0; % coarse to coarse compression?
+opt.reuse_pair_basis_by_sep = 1; 
+opt.cmap = 1; % coarse to coarse compression?
 opt.N_peanut = 400; 
-opt.self_correct = 0; % create identiy matrix for a pair?
+opt.self_correct = 0; % create identiy matrix for a pair by utilising known rhs in pair problem
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 
-opt.self_correct = 1;
+opt.reuse_pair_basis_by_sep = 0;
 [UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 
 [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,opt.gmres_tol,1);
 [UW2B,sol_2B] = solve_mob_2B_enhanced(q,F,T,opt);

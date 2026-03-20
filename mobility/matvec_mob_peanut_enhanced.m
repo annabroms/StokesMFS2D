@@ -49,25 +49,18 @@ N_large = PM_check/P;
 res = zeros(2*PM_check,1);
 
 on_coarse_grid = isequal(rcheck,rvec_out); % better to determine this with opt field
-add_lr = (~opt.self_correct && on_coarse_grid) || (opt.self_correct && on_coarse_grid);
+%if ~opt.cmap
+    add_lr = (~opt.self_correct && on_coarse_grid);
+%else
+ %   add_lr = 0;
+%end
 
-%% If solving: Impose boundary conditions
-if on_coarse_grid
+rbase_out_rel = rcheck(1:N_large)-q(1);  
 
-    rbase_out_rel = rvec_out(1:N_large)-q(1);
-    
-    %We never add and subtract the Lr contribution for each body
-    % for k= 1:P
-    %     bcvec = B*K'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
-    %     res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
-    %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
-    % end
-    
+if add_lr
     %Need contribution from every pair to the velocity vector that sets
     %boundary conditions. Each pair uses the ansatz U_corr = -K^T_f beta_f,
-    %with beta_f the fine source strengths (see paper for details).
-    lr_add = ~opt.self_correct;
-    if lr_add
+    %with beta_f the fine source strengths (see paper for details)
     if opt.cmap % used compressed mapping: correction_to_velocity <- course boundary data
 
         % Loop over all pairs in contact
@@ -129,7 +122,23 @@ if on_coarse_grid
         end
     end
 
-    end
+end
+
+
+
+%% If solving: Impose boundary conditions
+if on_coarse_grid
+
+    
+    
+    %We never add and subtract the Lr contribution for each body
+    % for k= 1:P
+    %     bcvec = B*K'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
+    %     res((k-1)*N_large+1:k*N_large) = res((k-1)*N_large+1:k*N_large) + bcvec(1:end/2);
+    %     res((k-1)*N_large+PM+1:k*N_large+PM) = res((k-1)*N_large+PM+1:k*N_large+PM) + bcvec(end/2+1:end);
+    % end
+    
+    
 
     %% Need to subract off the 1-body basis contribution computed twice and
     rout = rvec_out(1:N_large)-q(1);

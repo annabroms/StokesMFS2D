@@ -282,7 +282,7 @@ rng(9);
 %% Set geometry and data
 R = 2; 
 delta = 1e-3;
-P = 20; 
+P = 2; 
 q = grow_cluster(P,delta,2,R);
 Q_body = randn(P,1);
 Q_body = Q_body-mean(Q_body); %zero total charge
@@ -290,13 +290,13 @@ Q_body = Q_body-mean(Q_body); %zero total charge
 %% Tune parameters
 opt = getLaplace2Dparams(P,R);
 opt.visualise_sol = 1;
-opt.debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
+opt.debug = 2; % determine system matrix by using matvec with columns of the identity matrix as input
 opt.use_fmm = true;
 opt.gmres_verbose = 0; %no output from gmres
 opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
 opt.N_peanut = 400; % nodes on peanut separation surface
 opt.gmres_tol = 1e-10;
-opt.compress_cmap = 1; %use low rank approximation of coarse-coarse map
+opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-6; 
 
 %% Solve

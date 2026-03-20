@@ -63,7 +63,7 @@ N_check = length(rcheck_out)/P;
 PM2 = length(rcheck_out);
 use_cmap = logical(getOptField(opt,'cmap',false));
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
-need_explicit_pair_sources = ~use_cmap || get_bndry_field;
+need_explicit_pair_sources = ~use_cmap || get_bndry_field || ~opt.self_correct;
 
 lam_c_x = zeros(N_c*P,1);
 lam_c_y = zeros(N_c*P,1);
@@ -213,7 +213,7 @@ for row = 1:size(pairs,1)
     rout_pair = [rcheck_i; rcheck_p2];
     rin_pair_c = [rbase_in_c+q(i); rbase_in_c+q(p2)];
 
-    if ~use_cmap
+    if  ~opt.self_correct
         % When the fine pair sources are available, evaluate the pair
         % correction directly from the projected fine densities to mirror
         % transform_mob_peanut.
@@ -238,14 +238,15 @@ for row = 1:size(pairs,1)
         [u1,v1] = stokSLPdirect(real(fine_rin_pair),imag(fine_rin_pair), ...
             real(rout_pair),imag(rout_pair),fine_fx,fine_fy,numel(fine_rin_pair));
         u_pair = [u1; v1];
-    %else
-        if opt.self_correct
-            [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
-                real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
-            [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
-                real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
-            u_pair = -[ui; up2; vi; vp2]; % need to add lr here?
-        end
+    else
+
+        [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
+            real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
+        [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
+            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
+        u_pair = -[ui; up2; vi; vp2];
+        % need to remove lr in the matvec to create identity in system matrix
+
     end
 
     use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
