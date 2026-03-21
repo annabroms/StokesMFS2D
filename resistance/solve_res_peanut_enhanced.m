@@ -211,13 +211,15 @@ disp(' == Solving... == ');
     @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
     fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
-figure()
-semilogy(resvec); 
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
+if visualise_sol
+    figure()
+    semilogy(resvec);
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence with peanut compression, resistance', 'interpreter','latex')
+end
 
 if visualise_sol
     %check residual

@@ -381,11 +381,11 @@ end
 
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},Lf,pairs,Upf,Ypf),urhs,2*length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
-plot_gmres = true; 
-
 %Modify to build with krylov preconditioning
 %[tau, e2, precond] = precond_gmres(@(x) ...)
 %it = length(e2); 
+
+plot_gmres = visualise;
 
 if plot_gmres
       figure()

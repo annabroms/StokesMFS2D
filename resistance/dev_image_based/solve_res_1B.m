@@ -524,7 +524,7 @@ end
 %VL = matvec_res_Stokes(x_gmres,rin,rout,rimage,nimage,q,Uii,Yii,pair_points,s);
 %res = VL-fout; %this is large. 
 % Decay of residual with iteration number
-if debug
+if visualise
     figure()
     semilogy(resvec)
     xlabel('iteration number','interpreter','latex');

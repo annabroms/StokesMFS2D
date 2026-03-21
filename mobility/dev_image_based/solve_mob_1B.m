@@ -241,17 +241,19 @@ elseif solve
     [mu_gmres,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_1B(x,rin,rout,rout,rimage,nimage,q,UU,Y,L,pair_points,s,1,project_proxy),u,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
 % Decay of residual with iteration number
-figure()
-semilogy(resvec)
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence mobility, 1-body precond', 'Interpreter','latex')
-xlabel('iteration number','interpreter','latex')
-ylabel('Estimated relative residual');
-axis tight
-grid on
+if visualise
+    figure()
+    semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence mobility, 1-body precond', 'Interpreter','latex')
+    xlabel('iteration number','interpreter','latex')
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+end
 
 disp(' == Postprocessing == ');
 %% GET LAMBDA

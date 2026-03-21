@@ -293,13 +293,15 @@ end
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_peanut(x,rbase_in_c,rbase_in_f,rvec_in_c,refine,rimage_vec,nimage,opt,rout,rout,q,U,Y,Lc{1},pairs,UB_all,YB_all,UC_all, YC_all,Cmap,Lc_pair,Lf_pair),urhs,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
-figure()
-semilogy(resvec); 
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
+if visualise
+    figure()
+    semilogy(resvec);
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence with peanut compression, mobility', 'interpreter','latex')
+end
 
 
 if debug

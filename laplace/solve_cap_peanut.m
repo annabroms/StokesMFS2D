@@ -192,12 +192,14 @@ disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
-figure(); semilogy(resvec)
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence capacitance peanut','interpreter','latex')
+if visualise_sol
+    figure(); semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence capacitance peanut','interpreter','latex')
+end
 
 disp(' == Postprocessing == ');
 %% Postprocess
@@ -285,26 +287,31 @@ rng(8);
 
 % Set geometry and data
 R = 2;
-P = 10;
+P = 30;
 delta = 1e-3;
 q = grow_cluster(P,delta,2,R);
+q = (2*R+delta*R)*(0:P-1);
+offset = 1;
+%q = q+(-offset/2*1i+offset*1i*rand(size(q)));
 
 % Solve capacitance for hexagonal lattice
-rings = 8; 
-rings = 5; 
-q = hexagonal_lattice(delta,rings,R);
+%rings = 8; 
+%rings = 5; 
+%q = hexagonal_lattice(delta,rings,R);
 P = length(q); 
 v_body = buildAlternatingVoltages(q,R);
 check_multi_compress = 0; 
 
 % Set parameters and settings
 N_c = 60; 
-opt = getLaplace2Dparams(P,R,N_c);
-opt.delta_pair = 0.2;
+N_f = 60; 
+opt = getLaplace2Dparams(P,R,N_c,N_f);
+opt.delta_pair = 2*R+0.6;
+%opt.delta_pair = 0.4;
 opt.Nclust = 100;
 opt.N_peanut = 400;
 opt.visualise_sol = 1;
-opt.visualise_grid =0; 
+opt.visualise_grid = 0; 
 opt.gmres_tol = 1e-8;
 opt.debug = 0;
 opt.use_fmm = true;

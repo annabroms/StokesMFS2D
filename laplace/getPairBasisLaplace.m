@@ -16,6 +16,9 @@ P = numel(q);
 N_f = opt.N_f;
 N_peanut = opt.N_peanut;
 R = opt.rad;
+if numel(R) > 1
+    R = R(1);
+end
 reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
 check_rotations = logical(getOptField(opt,'check_rotations',false));
 shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-12*max(1,R));
@@ -162,8 +165,8 @@ for gg = 1:n_groups
         n_rep = sum(group_id == gg);
         covered_pairs = covered_pairs + n_rep;
         fprintf(['getPairBasisLaplace: processed canonical group %d/%d ', ...
-            'from pair (%d,%d), covers %d pairs -> %d/%d pairs covered\n'], ...
-            gg,n_groups,rep_i,rep_j,n_rep,covered_pairs,total_pairs);
+            'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
+            gg,n_groups,rep_i,rep_j,group_sep(gg)-2*R,n_rep,covered_pairs,total_pairs);
     end
 end
 

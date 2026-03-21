@@ -171,12 +171,14 @@ disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
     u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 
-figure(); semilogy(resvec)
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence elastance 2B','interpreter','latex')
+if visualise_sol
+    figure(); semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence elastance 2B','interpreter','latex')
+end
 
 disp(' == Postprocessing == ');
 %% Postprocess

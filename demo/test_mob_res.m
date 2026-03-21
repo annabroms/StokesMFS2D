@@ -22,14 +22,14 @@ clc;
 rng(8);
 
 %% Configuration
-P = 4;
-delta = 1e-3;                 % geometric spacing parameter
-geometry_mode = 'dumbbells';       % 'line' | 'dumbbells' | 'cluster'
+P = 20;
+delta = 1e-2;                 % geometric spacing parameter
+geometry_mode = 'cluster';       % 'line' | 'dumbbells' | 'cluster'
 delta_pair = 0.2;             % near-pair threshold for 2B/peanut
 N_peanut = 400;               % points per peanut separation surface
 
 
-run_image_1B = true;          % include solve_mob_1B / solve_res_1B
+run_image_1B = false;          % include solve_mob_1B / solve_res_1B
 image = 1;
 lr = 0;
 
@@ -60,11 +60,7 @@ printPauseDivider();
 disp('Press key to continue...')
 pause();
 
-%% Mobility comparison (input F,T, compare UW)
-printDivider('Mobility comparison (input F,T -> output U,W)');
-F_ref = randn(P,2);
-T_ref = randn(P,1);
-
+%% Initialize settings
 opt_mob = get2Dparams(P);
 opt_mob.delta_pair = delta_pair;
 opt_mob.N_peanut = N_peanut;
@@ -75,6 +71,13 @@ opt_mob.surface_error_mode = surface_error_mode;
 opt_mob.gmres_verbose = gmres_verbose;
 opt_mob.rad = rad(1);
 opt_mob.visualise_grid = 1; 
+opt_mob.reuse_pair_basis_by_sep = 1;
+
+%% Mobility comparison (input F,T, compare UW)
+printDivider('Mobility comparison (input F,T -> output U,W)');
+F_ref = randn(P,2);
+T_ref = randn(P,1);
+
 [UW_2B,sol_mob_2B] = solve_mob_2B_enhanced(q,F_ref,T_ref,opt_mob);
 [UW_peanut,sol_mob_peanut] = solve_mob_peanut_enhanced(q,F_ref,T_ref,opt_mob);
 gmres_iter_mob_2B = sol_mob_2B.it;
@@ -116,15 +119,16 @@ printDivider('Resistance comparison (input U,W -> output F,T)');
 U_ref = randn(P,2);
 W_ref = randn(P,1);
 
-opt_res = get2Dparams(P);
-opt_res.rad = rad;
-opt_res.delta_pair = delta_pair;
-opt_res.N_peanut = N_peanut;
-opt_res.lr = lr;
-opt_res.visualise = visualise;
-opt_res.gmres_tol = gmres_tol;
-opt_res.debug = debug;
-opt_res.gmres_verbose = gmres_verbose;
+% opt_res = get2Dparams(P);
+% opt_res.rad = rad;
+% opt_res.delta_pair = delta_pair;
+% opt_res.N_peanut = N_peanut;
+% opt_res.lr = lr;
+% opt_res.visualise = visualise;
+% opt_res.gmres_tol = gmres_tol;
+% opt_res.debug = debug;
+% opt_res.gmres_verbose = gmres_verbose;
+opt_res = opt_mob;
 
 [FT_2B,sol_res_2B] = solve_res_2B_enhanced(q,U_ref,W_ref,opt_res);
 [FT_peanut,sol_res_peanut] = solve_res_peanut_enhanced(q,U_ref,W_ref,opt_res);

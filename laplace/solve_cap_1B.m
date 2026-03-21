@@ -114,12 +114,14 @@ disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_1B(x,geom,basis), ...
     fout,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
 
-figure(); semilogy(resvec)
-xlabel('iteration number','interpreter','latex');
-ylabel('Estimated relative residual');
-axis tight
-grid on
-title('GMRES convergence capacitance 1B','interpreter','latex')
+if visualise_sol
+    figure(); semilogy(resvec)
+    xlabel('iteration number','interpreter','latex');
+    ylabel('Estimated relative residual');
+    axis tight
+    grid on
+    title('GMRES convergence capacitance 1B','interpreter','latex')
+end
 
 disp(' == Postprocessing == ');
 [lambda_all,lambda_body] = mapBoundaryToSources1B(tau,geom,basis);

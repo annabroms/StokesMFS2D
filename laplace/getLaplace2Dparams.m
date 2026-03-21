@@ -15,6 +15,7 @@ opt.rad = R;
 opt.P = P; 
 if nargin<4
     N_f = 150;
+    N_c = 80;
 elseif nargin<3
     N_c = 80;
 end

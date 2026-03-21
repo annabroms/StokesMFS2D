@@ -3,6 +3,7 @@ function opt = get2Dparams(P,N_c)
 
 if nargin<2
     N_c = 60; % sources on coarse proxy grid
+    N_c = 100;
 end
 
 opt.P = P; %number of particles

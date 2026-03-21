@@ -50,6 +50,15 @@ Run the function with no input arguments, for example:
   - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
   - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
 
+### Particle-line demos
+- `demo/particle_line_mob.m`
+  - Sweeps a line of particles over several gaps `delta` and particle counts `P`, recording the mobility residual and GMRES iterations.
+  - An optional `resistance = true` branch solves the matching resistance problem on the same geometries and reports those results in separate figures.
+- `demo/particle_line_elast.m`
+  - Sweeps the same line geometry for the elastance solve, recording the boundary residual and GMRES iterations.
+  - An optional `capacitance = true` branch solves the matching capacitance problem on the same geometries and reports those results in separate figures.
+  - For the capacitance branch, a larger pair-detection parameter `delta_pair` is needed than in the mobility demo.
+
 ### Capacitance example
 ![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
 

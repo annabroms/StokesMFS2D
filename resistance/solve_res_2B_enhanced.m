@@ -66,10 +66,7 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 lr = getOptField(opt,'lr',0);
-rad = getOptField(opt,'rad',ones(P,1));
-rad = rad(:);
-assert(numel(rad)==P,'opt.rad must have one entry per particle.');
-
+rad = ones(P,1); %assume for now all are identical
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -304,7 +301,7 @@ end
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 
-plot_gmres = true; 
+plot_gmres = visualise_sol;
 
 %With Krylov precond, do something like
 %[tau, e2, precond] = precond_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);

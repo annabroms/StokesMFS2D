@@ -17,6 +17,10 @@ get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
 
 shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-2);
+pair_rad = getOptField(opt,'rad',1);
+if numel(pair_rad) > 1
+    pair_rad = pair_rad(1);
+end
 
 
 %Draw pair discretisation for debugging?
@@ -108,8 +112,8 @@ for gg = 1:n_groups
         n_rep = sum(group_id == gg);
         covered_pairs = covered_pairs + n_rep;
         fprintf(['getPairBasisStokes: processed canonical group %d/%d ', ...
-            'from pair (%d,%d), covers %d pairs -> %d/%d pairs covered\n'], ...
-            gg,n_groups,rep_i,rep_j,n_rep,covered_pairs,total_pairs);
+            'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
+            gg,n_groups,rep_i,rep_j,group_sep(gg)-2*pair_rad,n_rep,covered_pairs,total_pairs);
     end
 end
 

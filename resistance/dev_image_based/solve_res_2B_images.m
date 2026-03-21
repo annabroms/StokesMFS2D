@@ -353,11 +353,11 @@ if lr
 else                                                                                 
     [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rout,q,UU,YY,pairs,Upf,Ypf,s),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 end
-plot_gmres = true; 
-
 %With Krylov precond, do something like
 %[tau, e2, precond] = precond_gmres(@(x) matvec_res_2B_images(x,rbase_in_c,rbase_in_f,refine,rimage_vec,nimage,opt,rvec_out,q,UU,YY,pairs,Upf,Ypf,s), fout, zeros(2*size(rvec_out,1),1), 2*size(rvec_out,1), gmres_tol, precond,debug);
 %it = length(e2); 
+
+plot_gmres = visualise;
 
 if plot_gmres
       figure()

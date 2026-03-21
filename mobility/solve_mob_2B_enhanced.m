@@ -354,7 +354,7 @@ end
 
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
-plot_gmres = true; 
+plot_gmres = visualise_sol;
 
 %Modify to build with krylov preconditioning
 %[tau, e2, precond] = precond_gmres(@(x) ...)
