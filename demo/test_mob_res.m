@@ -23,7 +23,7 @@ rng(8);
 
 %% Configuration
 P = 20;
-delta = 1e-2;                 % geometric spacing parameter
+delta = 1e-3;                 % geometric spacing parameter
 geometry_mode = 'cluster';       % 'line' | 'dumbbells' | 'cluster'
 delta_pair = 0.2;             % near-pair threshold for 2B/peanut
 N_peanut = 400;               % points per peanut separation surface
@@ -64,7 +64,7 @@ pause();
 opt_mob = get2Dparams(P);
 opt_mob.delta_pair = delta_pair;
 opt_mob.N_peanut = N_peanut;
-opt_mob.visualise = visualise;
+opt_mob.visualise_sol = visualise;
 opt_mob.gmres_tol = gmres_tol;
 opt_mob.debug = debug;
 opt_mob.surface_error_mode = surface_error_mode;

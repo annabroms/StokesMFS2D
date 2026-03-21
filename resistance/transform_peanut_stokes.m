@@ -51,6 +51,7 @@ else
     pair_cache = struct('enabled',false);
 end
 use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
+use_dense = logical(getOptField(opt,'use_dense',false)) && isequal(rcheck_out,rvec_out);
 
 P = length(q);
 N_c = opt.N_c;
@@ -95,6 +96,7 @@ lam_self_y = lam_c_y;
 for pair_row = 1:size(pairs,1)
     i = pairs(pair_row,1);
     p2 = pairs(pair_row,2);
+    meta = pair_cache.meta(pair_row);
 
     coarse_i = (i-1)*N_c+1:i*N_c;
     coarse_p2 = (p2-1)*N_c+1:p2*N_c;
@@ -140,13 +142,19 @@ for pair_row = 1:size(pairs,1)
         else
             tau_peanut_tot = Cmap{i,p2}*rhs;
         end
-        [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
-            real(rcheck_i),imag(rcheck_i), lam_self_x(coarse_p2),...
-            lam_self_y(coarse_p2),N_c);
-        [up2,vp2] = stokSLPdirect(real(rin_ci),imag(rin_ci),...
-            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),...
-            lam_self_y(coarse_i),N_c);
-        u_fine = -[ui; up2; vi; vp2];
+        rhs_self = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
+                    lam_self_y(coarse_i); lam_self_y(coarse_p2)];
+        if use_dense && isfield(meta,'Ucross_colloc_actual') && ~isempty(meta.Ucross_colloc_actual)
+            u_fine = meta.Ucross_colloc_actual * rhs_self;
+        else
+            [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
+                real(rcheck_i),imag(rcheck_i), lam_self_x(coarse_p2),...
+                lam_self_y(coarse_p2),N_c);
+            [up2,vp2] = stokSLPdirect(real(rin_ci),imag(rin_ci),...
+                real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),...
+                lam_self_y(coarse_i),N_c);
+            u_fine = -[ui; up2; vi; vp2];
+        end
     else
         if use_pair_cache
             pair_mapped = pair.group.Upf*rhs;
@@ -198,34 +206,40 @@ for pair_row = 1:size(pairs,1)
             % explicit fine pair field.
             rin_pair_f = [rbase_in_f+q(i); rimage_i; rbase_in_f+q(p2); rimage_p2];
             n_fpair = length(rin_pair_f);
-            [u1,v1] = stokSLPdirect(real(rin_pair_f),imag(rin_pair_f),...
-                real(rout_pair),imag(rout_pair),...
-                tau_mapped_tot(1:n_fpair),tau_mapped_tot(n_fpair+1:2*n_fpair),n_fpair);
-            u_fine = [u1; v1];
+            if use_dense && isfield(meta,'Upair_colloc_actual') && ~isempty(meta.Upair_colloc_actual)
+                u_fine = meta.Upair_colloc_actual * ...
+                    [tau_mapped_tot(1:n_fpair); tau_mapped_tot(n_fpair+1:2*n_fpair)];
+            else
+                [u1,v1] = stokSLPdirect(real(rin_pair_f),imag(rin_pair_f),...
+                    real(rout_pair),imag(rout_pair),...
+                    tau_mapped_tot(1:n_fpair),tau_mapped_tot(n_fpair+1:2*n_fpair),n_fpair);
+                u_fine = [u1; v1];
+            end
         end
    
     
     end
 
     if use_coarse_pair_corr
-        [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
-            real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),...
-            lam_self_y(coarse_p2),N_c);
-        [up2,vp2] = stokSLPdirect(real(rin_ci),imag(rin_ci),...
-            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),...
-            lam_self_y(coarse_i),N_c);
-        u_fine = -[ui; up2; vi; vp2];
+        rhs_self = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
+                    lam_self_y(coarse_i); lam_self_y(coarse_p2)];
+        if use_dense && isfield(meta,'Ucross_colloc_actual') && ~isempty(meta.Ucross_colloc_actual)
+            u_fine = meta.Ucross_colloc_actual * rhs_self;
+        else
+            [ui,vi] = stokSLPdirect(real(rin_cp2),imag(rin_cp2),...
+                real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),...
+                lam_self_y(coarse_p2),N_c);
+            [up2,vp2] = stokSLPdirect(real(rin_ci),imag(rin_ci),...
+                real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),...
+                lam_self_y(coarse_i),N_c);
+            u_fine = -[ui; up2; vi; vp2];
+        end
     end
 
     % The velocity field correction for the pair happens here.
-    use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
-        isfield(pair.group,'Ecolloc') && ~isempty(pair.group.Ecolloc);
-    if use_dense_u_peanut
-        phase_out = getUniformCircleRotationSpec(N_check,pair.meta.rot,opt);
-        phase_out_inv = invertUniformCircleRotationSpec(phase_out);
-        u_peanut = pair.group.Ecolloc*tau_peanut_loc;
-        u_peanut = rotatePairOrderedStokesData(u_peanut,N_check,phase_out_inv,pair.meta.rot);
-        u_peanut = u_peanut(:);
+    if use_dense && isfield(meta,'Ecolloc_actual') && ~isempty(meta.Ecolloc_actual)
+        tau_peanut_src = [tau_peanut_tot(1:2*N_c); tau_peanut_tot(2*N_c+1:4*N_c)];
+        u_peanut = meta.Ecolloc_actual * tau_peanut_src;
     else
         [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c),...
             real(rout_pair),imag(rout_pair),...

@@ -164,7 +164,7 @@ rimage_in = [];
 opt.project = true;
 opt.N_peanut = 0; %no peanut compression here!
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c);
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -499,7 +499,8 @@ if visualise_sol
     c.TickLabelInterpreter = 'latex';
     ylabel(c, sprintf('%s boundary error (log10)', err_label), 'interpreter','none','FontSize',14)
     c.FontSize = 14;
-    title(sprintf('%s: Boundary %s error', solver_name, err_label), 'interpreter','none')
+    err_label_cap = [upper(err_label(1)) err_label(2:end)];
+    title(sprintf('%s: %s boundary error', solver_name, err_label_cap), 'interpreter','none')
 
 
     %% Visualise source strengths

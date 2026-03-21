@@ -70,11 +70,6 @@ b = [sum(tau_x); ...
      sum(tau_y); ...
      sum((-dy).*tau_x + dx.*tau_y)];
 
-if rcond(G) < 1e-14
-    error('projectOutRigid2D:IllConditioned', ...
-        'Rigid projection system is ill-conditioned.');
-end
-
 alpha = G\b;
 rigid_x = alpha(1) - alpha(3)*dy;
 rigid_y = alpha(2) + alpha(3)*dx;

@@ -3,4 +3,4 @@
 * Does Cmap matrix have any low rank structure? -> Sort of! To be investigated more. The tricky bit is that the same compression would be needed for the Cmap_QV and Cmap_FU mappings.
 * Implement rotations to avoid computing essentially the same compression multiple times. -> Done for both Laplace and Stokes. Check how accurate the FFT based interpolation is! 
 * Test 1-body left-precond
-* Speed up mobility solve by checking if direct eval can be made faster
+* Speed up mobility solve by checking if direct eval can be made faster -> compiled version not faster, but what is faster is to use matrix instead of summation in loop.

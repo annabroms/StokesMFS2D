@@ -20,14 +20,15 @@ rad = 1;
 delta_vec = [1e-1 1e-2 1e-3];
 delta_labels = arrayfun(@(d) sprintf('$\\delta = %.3g$', d), ...
     delta_vec, 'UniformOutput', false);
-P_values = 10:10:100;
+P_values = 20:20:400;
+font_size = 14;  % Controls axes, labels, titles, and legends.
 
 N_c = 100;
 N_peanut = 400;
 delta_pair = 0.2;
 gmres_tol = 1e-8;
 load_mode = 'alternating';  % 'smooth' keeps the original trigonometric loads.
-resistance = true;
+resistance = false;
 
 fprintf('=== particle_line mobility demo ===\n');
 
@@ -85,6 +86,7 @@ for i = 1:length(delta_vec)
 
 end
 
+%%
 figure('Name','Mobility residual vs P');
 hold on;
 for i = 1:length(delta_vec)
@@ -92,12 +94,9 @@ for i = 1:length(delta_vec)
         'LineWidth',1.5,'MarkerSize',6, ...
         'DisplayName',delta_labels{i});
 end
-xlabel('Number of particles P');
-ylabel('Relative boundary residual');
-title('Mobility peanut solve residual vs P');
-grid on;
-axis tight;
-legend('Location','best','Interpreter','latex');
+styleLinePlot(gca,font_size,'Number of particles $P$', ...
+    'Relative boundary residual', ...
+    'Mobility peanut solve residual vs $P$');
 
 
 figure('Name','Mobility iterations vs P');
@@ -107,41 +106,32 @@ for i = 1:length(delta_vec)
         'LineWidth',1.5,'MarkerSize',6, ...
         'DisplayName',delta_labels{i});
 end
-xlabel('Number of particles P');
-ylabel('GMRES iterations');
-title('Mobility peanut solve iterations vs P');
-grid on;
-axis tight;
-legend('Location','best','Interpreter','latex');
+styleLinePlot(gca,font_size,'Number of particles $P$', ...
+    'GMRES iterations', ...
+    'Mobility peanut solve iterations vs $P$');
 
 if resistance
     figure('Name','Resistance residual vs P');
     hold on;
     for i = 1:length(delta_vec)
         semilogy(P_values,res_rel_res_values(i,:),'-o', ...
-            'LineWidth',1.5,'MarkerSize',6, ...
-            'DisplayName',delta_labels{i});
+        'LineWidth',1.5,'MarkerSize',6, ...
+        'DisplayName',delta_labels{i});
     end
-    xlabel('Number of particles P');
-    ylabel('Relative boundary residual');
-    title('Resistance peanut solve residual vs P');
-    grid on;
-    axis tight;
-    legend('Location','best','Interpreter','latex');
+    styleLinePlot(gca,font_size,'Number of particles $P$', ...
+        'Relative boundary residual', ...
+        'Resistance peanut solve residual vs $P$');
 
     figure('Name','Resistance iterations vs P');
     hold on;
     for i = 1:length(delta_vec)
         plot(P_values,res_it_values(i,:),'-o', ...
-            'LineWidth',1.5,'MarkerSize',6, ...
-            'DisplayName',delta_labels{i});
+        'LineWidth',1.5,'MarkerSize',6, ...
+        'DisplayName',delta_labels{i});
     end
-    xlabel('Number of particles P');
-    ylabel('GMRES iterations');
-    title('Resistance peanut solve iterations vs P');
-    grid on;
-    axis tight;
-    legend('Location','best','Interpreter','latex');
+    styleLinePlot(gca,font_size,'Number of particles $P$', ...
+        'GMRES iterations', ...
+        'Resistance peanut solve iterations vs $P$');
 end
 
 

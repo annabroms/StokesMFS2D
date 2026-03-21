@@ -300,6 +300,7 @@ offset = 1;
 %q = hexagonal_lattice(delta,rings,R);
 P = length(q); 
 v_body = buildAlternatingVoltages(q,R);
+v_body = rand(P,1);
 check_multi_compress = 0; 
 
 % Set parameters and settings
@@ -307,6 +308,7 @@ N_c = 60;
 N_f = 60; 
 opt = getLaplace2Dparams(P,R,N_c,N_f);
 opt.delta_pair = 2*R+0.6;
+%opt.delta_pair = 4*R+0.6; %not better
 %opt.delta_pair = 0.4;
 opt.Nclust = 100;
 opt.N_peanut = 400;

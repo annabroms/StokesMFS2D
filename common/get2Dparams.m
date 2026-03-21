@@ -1,9 +1,13 @@
-function opt = get2Dparams(P,N_c)
+function opt = get2Dparams(P,N_c,N_f)
 %get2Dparams returns struct with default parameters for a Stokes MFS 2D problem
 
 if nargin<2
     N_c = 60; % sources on coarse proxy grid
     N_c = 100;
+    N_c = 150;
+    N_f = 150; % sources on fine proxy grid
+elseif nargin<3
+    N_f = 150;
 end
 
 opt.P = P; %number of particles
@@ -30,7 +34,6 @@ opt.Nclust = 100;
 % Pair corrections
 opt.pc = 0; %use pair corrections?
 opt.delta_pair = 0.2; %activate pair_corrections
-N_f = 150; %Set fine grid
 opt.N_f = N_f;
 tol = 1e-12;
 sep = (1/N_f)*log(1/tol); %separation between surfaces based on rule of thumb in Stein & Barnett QFS paper (2021) 
@@ -46,10 +49,12 @@ opt.visualise_grid = 0; % plot source/collocation grids during setup
 opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing?
 opt.project_force = false; % project out net force/torque-producing modes in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated separations
-opt.shared_sep_tol = 1e-2; % separation tolerance for grouping repeated pairs
-opt.rotation_mode = 'fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
+opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs
+opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
+opt.use_matrix_free_Lc_pair = true; % matrix-free pair rigid projection; set false for dense comparison
 opt.show_counter = 1; % show progress for pair compressions
 opt.self_correct = 1; % enforce identity diagonal matrices in system matrix
+opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
 
 end

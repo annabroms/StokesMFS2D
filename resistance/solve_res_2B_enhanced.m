@@ -142,7 +142,7 @@ end
 
 %Get pair basis
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c);
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).

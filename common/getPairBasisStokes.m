@@ -1,4 +1,4 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c)
 %GETPAIRBASISSTOKES Build Stokes pair-basis pseudoinverse factors.
 %
 % Syntax:
@@ -6,6 +6,12 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt)
 %   [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes( ...
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c)
+%
+% If opt.use_dense is enabled and rout_base_c is supplied, pair_cache.meta
+% also stores the actual dense Stokeslet blocks on the solver collocation
+% grid so the transform helpers can skip direct summation of Stokeslets.
 %
 % Anna Broms, Mar 2026
 
@@ -15,11 +21,19 @@ N_peanut = getOptField(opt,'N_peanut',0);
 use_pair_observable_map = logical(getOptField(opt,'cmap',false));
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
+use_dense = logical(getOptField(opt,'use_dense',false));
 
 shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-2);
 pair_rad = getOptField(opt,'rad',1);
 if numel(pair_rad) > 1
     pair_rad = pair_rad(1);
+end
+
+if nargin < 9
+    rout_base_c = [];
+end
+if ~isempty(rout_base_c)
+    rout_base_c = rout_base_c(:);
 end
 
 
@@ -88,6 +102,11 @@ if ~reuse_pair_basis
         end
     end
 
+    if use_dense && ~isempty(rout_base_c)
+        pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
+            rout_base_c,rimage_pairs,pairs);
+    end
+
     return
 end
 
@@ -121,6 +140,11 @@ for row = 1:size(pairs,1)
     gid = group_id(row);
     pair_cache.meta(row).group_id = gid;
     pair_cache.meta(row).sep = group_sep(gid);
+end
+
+if use_dense && ~isempty(rout_base_c)
+    pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
+        rout_base_c,rimage_pairs,pairs);
 end
 
 if show_counter
@@ -166,7 +190,9 @@ pair_cache.enabled = false;
 pair_cache.shared_sep_tol = [];
 pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
     'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
-    'phase_f',[],'phase_f_inv',[]),0,1);
+    'phase_f',[],'phase_f_inv',[], ...
+    'Upair_colloc_actual',[],'Ucross_colloc_actual',[], ...
+    'Ecolloc_actual',[]),0,1);
 pair_cache.groups = repmat(init_pair_group(),0,1);
 pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
@@ -185,7 +211,9 @@ function meta = build_pair_meta(q,pairs,nc,nf,opt)
 total_pairs = size(pairs,1);
 meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
     'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
-    'phase_f',[],'phase_f_inv',[]),total_pairs,1);
+    'phase_f',[],'phase_f_inv',[], ...
+    'Upair_colloc_actual',[],'Ucross_colloc_actual',[], ...
+    'Ecolloc_actual',[]),total_pairs,1);
 
 for row = 1:total_pairs
     i = pairs(row,1);
@@ -415,6 +443,32 @@ if project_force
     pair.Ecolloc = stokSLPmat(rin_pair_c,rout_pair_c,1);
     pair.Ucross_colloc = build_cross_pair_velocity_map(pair.Ecolloc,N_c,numel(rout_base_c));
 end
+end
+
+function pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
+    rout_base_c,rimage_pairs,pairs)
+total_pairs = size(pairs,1);
+for row = 1:total_pairs
+    [Upair_actual,Ucross_actual,E_actual] = build_actual_pair_dense( ...
+        q,rbase_in_c,rbase_in_f,rout_base_c,rimage_pairs,pairs,row);
+    pair_cache.meta(row).Upair_colloc_actual = Upair_actual;
+    pair_cache.meta(row).Ucross_colloc_actual = Ucross_actual;
+    pair_cache.meta(row).Ecolloc_actual = E_actual;
+end
+end
+
+function [Upair_actual,Ucross_actual,E_actual] = build_actual_pair_dense( ...
+    q,rbase_in_c,rbase_in_f,rout_base_c,rimage_pairs,pairs,row)
+i = pairs(row,1);
+j = pairs(row,2);
+
+rin_pair_f = [q(i)+rbase_in_f; rimage_pairs{i,j}; q(j)+rbase_in_f; rimage_pairs{j,i}];
+rin_pair_c = [q(i)+rbase_in_c; q(j)+rbase_in_c];
+rout_pair = [q(i)+rout_base_c; q(j)+rout_base_c];
+
+Upair_actual = stokSLPmat(rin_pair_f,rout_pair,1);
+E_actual = stokSLPmat(rin_pair_c,rout_pair,1);
+Ucross_actual = build_cross_pair_velocity_map(E_actual,numel(rbase_in_c),numel(rout_base_c));
 end
 
 function Ucross = build_cross_pair_velocity_map(Epair,N_src,N_tgt)

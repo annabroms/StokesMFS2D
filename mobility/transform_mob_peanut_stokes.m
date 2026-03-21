@@ -62,6 +62,8 @@ PM = length(rvec_out);
 N_check = length(rcheck_out)/P;
 PM2 = length(rcheck_out);
 use_cmap = logical(getOptField(opt,'cmap',false));
+use_dense = logical(getOptField(opt,'use_dense',false)) && isequal(rcheck_out,rvec_out);
+use_matrix_free_Lc_pair = logical(getOptField(opt,'use_matrix_free_Lc_pair',true));
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 need_explicit_pair_sources = ~use_cmap || get_bndry_field || ~opt.self_correct;
 
@@ -113,6 +115,7 @@ lam_self_y = lam_c_y;
 for row = 1:size(pairs,1)
     i = pairs(row,1);
     p2 = pairs(row,2);
+    meta = pair_cache.meta(row);
 
     coarse_i = (i-1)*N_c+1:i*N_c;
     coarse_p2 = (p2-1)*N_c+1:p2*N_c;
@@ -158,23 +161,38 @@ for row = 1:size(pairs,1)
     if use_cmap
         if use_pair_cache
             tau_peanut_ntot = pair.group.Cmap*rhs;
-            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
-            tau_peanut_tot = tau_peanut_loc;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,pair.meta.phase_c_inv,pair.meta.rot);
-            tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_ntot = Cmap{i,p2}*rhs;
-            tau_peanut_tot = Lc_pair*tau_peanut_ntot;
         end
     else
         if use_pair_cache
             tau_peanut_ntot = pair.group.YC*(pair.group.DC*tau_mapped_loc);
-            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
-            tau_peanut_tot = tau_peanut_loc;
-            tau_peanut_tot = rotatePairOrderedStokesData(tau_peanut_tot,N_c,pair.meta.phase_c_inv,pair.meta.rot);
-            tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_ntot = YC_all{i,p2}*(DC_all{i,p2}*tau_mapped_tot);
+        end
+    end
+
+    if use_matrix_free_Lc_pair
+        if use_pair_cache
+            tau_peanut_loc = projectOutRigidPair2D( ...
+                tau_peanut_ntot, ...
+                rbase_in_c + pair.group.q_pair(1), pair.group.q_pair(1), ...
+                rbase_in_c + pair.group.q_pair(2), pair.group.q_pair(2));
+            tau_peanut_tot = rotatePairOrderedStokesData( ...
+                tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
+            tau_peanut_tot = tau_peanut_tot(:);
+        else
+            tau_peanut_tot = projectOutRigidPair2D( ...
+                tau_peanut_ntot, ...
+                rbase_in_c + q(i), q(i), rbase_in_c + q(p2), q(p2));
+        end
+    else
+        if use_pair_cache
+            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
+            tau_peanut_tot = rotatePairOrderedStokesData( ...
+                tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
+            tau_peanut_tot = tau_peanut_tot(:);
+        else
             tau_peanut_tot = Lc_pair*tau_peanut_ntot;
         end
     end
@@ -234,32 +252,33 @@ for row = 1:size(pairs,1)
 
         fine_fx = [tau_mapped_proj_i(1:nsrc_i); tau_mapped_proj_p2(1:nsrc_p2)];
         fine_fy = [tau_mapped_proj_i(nsrc_i+1:end); tau_mapped_proj_p2(nsrc_p2+1:end)];
-
-        [u1,v1] = stokSLPdirect(real(fine_rin_pair),imag(fine_rin_pair), ...
-            real(rout_pair),imag(rout_pair),fine_fx,fine_fy,numel(fine_rin_pair));
-        u_pair = [u1; v1];
+        if use_dense && isfield(meta,'Upair_colloc_actual') && ~isempty(meta.Upair_colloc_actual)
+            u_pair = meta.Upair_colloc_actual * [fine_fx; fine_fy];
+        else
+            [u1,v1] = stokSLPdirect(real(fine_rin_pair),imag(fine_rin_pair), ...
+                real(rout_pair),imag(rout_pair),fine_fx,fine_fy,numel(fine_rin_pair));
+            u_pair = [u1; v1];
+        end
     else
 
-        [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
-            real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
-        [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
-            real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
-        u_pair = -[ui; up2; vi; vp2];
+        rhs_self = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
+                    lam_self_y(coarse_i); lam_self_y(coarse_p2)];
+        if use_dense && isfield(meta,'Ucross_colloc_actual') && ~isempty(meta.Ucross_colloc_actual)
+            u_pair = meta.Ucross_colloc_actual * rhs_self;
+        else
+            [ui,vi] = stokSLPdirect(real(rbase_in_c+q(p2)),imag(rbase_in_c+q(p2)), ...
+                real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2),lam_self_y(coarse_p2),N_c);
+            [up2,vp2] = stokSLPdirect(real(rbase_in_c+q(i)),imag(rbase_in_c+q(i)), ...
+                real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i),lam_self_y(coarse_i),N_c);
+            u_pair = -[ui; up2; vi; vp2];
+        end
         % need to remove lr in the matvec to create identity in system matrix
 
     end
 
-    use_dense_u_peanut = use_pair_cache && isequal(rcheck_out,rvec_out) && ...
-        isfield(pair.group,'Ecolloc') && ~isempty(pair.group.Ecolloc);
-
-    use_dense_u_peanut = 0;
-
-    if use_dense_u_peanut
-        phase_out = getUniformCircleRotationSpec(N_check,pair.meta.rot,opt);
-        phase_out_inv = invertUniformCircleRotationSpec(phase_out);
-        u_peanut_corr = pair.group.Ecolloc*tau_peanut_loc;
-        u_peanut_corr = rotatePairOrderedStokesData(u_peanut_corr,N_check,phase_out_inv,pair.meta.rot);
-        u_peanut_corr = u_peanut_corr(:);
+    if use_dense && isfield(meta,'Ecolloc_actual') && ~isempty(meta.Ecolloc_actual)
+        tau_peanut_src = [tau_peanut_tot(1:2*N_c); tau_peanut_tot(2*N_c+1:4*N_c)];
+        u_peanut_corr = meta.Ecolloc_actual * tau_peanut_src;
     else
         [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c), ...
             real(rout_pair),imag(rout_pair),tau_peanut_tot(1:2*N_c), ...

@@ -20,8 +20,8 @@ rad = 2;
 delta_vec = [1e-1 1e-2 1e-3];
 delta_labels = arrayfun(@(d) sprintf('$\\delta = %.3g$', d), ...
     delta_vec, 'UniformOutput', false);
-P_values = 10:10:100;
-P_values = 20:20:200;
+P_values = 50:20:400;
+font_size = 14;  % Controls axes, labels, titles, and legends.
 
 N_peanut = 400;
 %delta_pair = 0.2;
@@ -82,19 +82,17 @@ for i = 1:length(delta_vec)
     end
 end
 
+%%
 figure('Name','Elastance residual vs P');
-hold on;
 for i = 1:length(delta_vec)
     semilogy(P_values,max_res_values(i,:),'-o', ...
         'LineWidth',1.5,'MarkerSize',6, ...
         'DisplayName',delta_labels{i});
+    hold on
 end
-xlabel('Number of particles P');
-ylabel('Maximum boundary residual');
-title('Elastance peanut solve residual vs P');
-grid on;
-axis tight;
-legend('Location','best','Interpreter','latex');
+styleLinePlot(gca,font_size,'Number of particles $P$', ...
+    'Maximum boundary residual', ...
+    'Elastance peanut solve residual vs $P$');
 
 figure('Name','Elastance iterations vs P');
 hold on;
@@ -103,41 +101,32 @@ for i = 1:length(delta_vec)
         'LineWidth',1.5,'MarkerSize',6, ...
         'DisplayName',delta_labels{i});
 end
-xlabel('Number of particles P');
-ylabel('GMRES iterations');
-title('Elastance peanut solve iterations vs P');
-grid on;
-axis tight;
-legend('Location','best','Interpreter','latex');
+styleLinePlot(gca,font_size,'Number of particles $P$', ...
+    'GMRES iterations', ...
+    'Elastance peanut solve iterations vs $P$');
 
 if capacitance
     figure('Name','Capacitance residual vs P');
     hold on;
     for i = 1:length(delta_vec)
         semilogy(P_values,cap_max_res_values(i,:),'-o', ...
-            'LineWidth',1.5,'MarkerSize',6, ...
-            'DisplayName',delta_labels{i});
+        'LineWidth',1.5,'MarkerSize',6, ...
+        'DisplayName',delta_labels{i});
     end
-    xlabel('Number of particles P');
-    ylabel('Maximum boundary residual');
-    title('Capacitance peanut solve residual vs P');
-    grid on;
-    axis tight;
-    legend('Location','best','Interpreter','latex');
+    styleLinePlot(gca,font_size,'Number of particles $P$', ...
+        'Maximum boundary residual', ...
+        'Capacitance peanut solve residual vs $P$');
 
     figure('Name','Capacitance iterations vs P');
     hold on;
     for i = 1:length(delta_vec)
         plot(P_values,cap_it_values(i,:),'-o', ...
-            'LineWidth',1.5,'MarkerSize',6, ...
-            'DisplayName',delta_labels{i});
+        'LineWidth',1.5,'MarkerSize',6, ...
+        'DisplayName',delta_labels{i});
     end
-    xlabel('Number of particles P');
-    ylabel('GMRES iterations');
-    title('Capacitance peanut solve iterations vs P');
-    grid on;
-    axis tight;
-    legend('Location','best','Interpreter','latex');
+    styleLinePlot(gca,font_size,'Number of particles $P$', ...
+        'GMRES iterations', ...
+        'Capacitance peanut solve iterations vs $P$');
 end
 
 function q = buildParticleLine(P,rad,delta)

@@ -39,6 +39,7 @@ project_coarse_in_reference_frame = logical( ...
     getOptField(opt,'project_coarse_in_reference_frame',false));
 project_fine_in_reference_frame = logical( ...
     getOptField(opt,'project_fine_in_reference_frame',false));
+use_matrix_free_Lc_pair = logical(getOptField(opt,'use_matrix_free_Lc_pair',true));
 
 P = length(q);
 N_coarse = opt.N_c;
@@ -164,7 +165,20 @@ for pair_row = 1:size(pairs,1)
     end
 
     if project_coarse_in_reference_frame
-        coarse_to_fine_tot = Lc_pair*coarse_to_fine_tot;
+        if use_matrix_free_Lc_pair
+            if use_pair_cache
+                coarse_to_fine_tot = projectOutRigidPair2D( ...
+                    coarse_to_fine_tot, ...
+                    rbase_in_c + pair.group.q_pair(1), pair.group.q_pair(1), ...
+                    rbase_in_c + pair.group.q_pair(2), pair.group.q_pair(2));
+            else
+                coarse_to_fine_tot = projectOutRigidPair2D( ...
+                    coarse_to_fine_tot, ...
+                    rbase_in_c+q(i), q(i), rbase_in_c+q(p2), q(p2));
+            end
+        else
+            coarse_to_fine_tot = Lc_pair*coarse_to_fine_tot;
+        end
     end
 
     if use_pair_cache

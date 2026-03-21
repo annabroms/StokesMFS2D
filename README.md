@@ -58,7 +58,7 @@ Run the function with no input arguments, for example:
 
 ### Capacitance on a hexagonal grid
 
-![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
+![Capacitance example on a hexagonal disk geometry](demo/figs/hexagonal_volt_charge.png)
 
 The figure shows prescribed body voltages and the corresponding net charges recovered by a peanut-compressed capacitance solve on a 271-disk hexagonal geometry with 756 near-contact pairs at separation $10^{-3}$.
 

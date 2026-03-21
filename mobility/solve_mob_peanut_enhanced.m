@@ -140,7 +140,7 @@ opt.pair_basis_debug = plot_grid;
 opt.show_counter = true;
 opt.rad = ones(P,1);
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1});
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c);
                      
 
 % TODO: update visualisation:
@@ -148,7 +148,7 @@ opt.rad = ones(P,1);
 %warning('Deactivate opt.precomp');
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
-Lc_pair = getILpair(Lc{1}); %I-L projection with coarse grid for a pair. TODO: replace.
+Lc_pair = getILpair(Lc{1}); % Dense pair projector kept for fallback/comparison.
 
 %% Construct check boundaries
 % Create new grid points, for which the accuracy of the solution is
@@ -395,7 +395,8 @@ if visualise_sol && get_bndry_field
     c.TickLabelInterpreter = 'latex';
     ylabel(c, sprintf('%s boundary error (log10)', err_label), 'interpreter','none','FontSize',18)
     c.FontSize = 18; 
-    title(sprintf('%s: Boundary %s error', solver_name, err_label), 'interpreter','none')
+    err_label_cap = [upper(err_label(1)) err_label(2:end)];
+    title(sprintf('%s: %s boundary error', solver_name, err_label_cap), 'interpreter','none')
 
 
     %% Visualise source strengths
@@ -420,13 +421,13 @@ end
 
 function test_solve_mob
 
-close all; 
+close all;
 
 %% Set geometry and data
 q = [0; 2.001; 2.001i]; %center coordinates
 
-delta = 1e-2; 
-P = 3; 
+delta = 1e-3;
+P = 80;
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
@@ -439,13 +440,17 @@ q = R * exp(1i * (0:P-1).' * (2*pi/P));
 %q = q+5; 
 %q = q-q(1);´
 
-rng(5); 
+rng(8);
 q = grow_cluster(P,delta,2);
 %q = [0; 2+delta]*1i;
+rings = 2;
+q = hexagonal_lattice(delta,rings,1);
 
-P = length(q); 
-F = [real(q) imag(q)]; 
-T = zeros(size(q));  
+P = length(q);
+F = [real(q) imag(q)];
+T = zeros(size(q));
+F = randn(P,2);
+T = randn(P,1);
 rad = ones(size(q));
 %F = [1 0; -1 0];
 
@@ -455,22 +460,23 @@ rad = ones(size(q));
 
 %F = F-mean(F); %zero total force
 
-visualise = 1; 
-delta_pair = 0.5;
 
+delta_pair = 0.2;
+visualise = 1; % one-body solve specific
 %% Solve
 %[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 
 %compare to a solution with image enhancement
-N_peanut = 400; 
+N_peanut = 400;
 %[UW1, lambdahat1,it1,gmres_tol, rel1, abs1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
 gmres_tol = 1e-8;
 images = 1; 
 lr = 0; % long-range precond
-debug = 1; 
+debug = 0;
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
-N_c = 60;
-opt = get2Dparams(P,N_c);
+N_c = 150;
+N_f = 150;
+opt = get2Dparams(P,N_c,N_f);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
 opt.visualise_sol = 1;
@@ -478,15 +484,17 @@ opt.visualise_grid = 0;
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
-opt.reuse_pair_basis_by_sep = 1; 
+opt.rotation_mode = 'oversampled_fft';
+opt.reuse_pair_basis_by_sep = 1;
 opt.cmap = 1; % coarse to coarse compression?
-opt.N_peanut = 400; 
 opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
+opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
+opt.beta = 0.3;
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 
-opt.reuse_pair_basis_by_sep = 0;
-[UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 
-[UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,opt.gmres_tol,1);
-[UW2B,sol_2B] = solve_mob_2B_enhanced(q,F,T,opt);
-alignfigs(3);
+% opt.reuse_pair_basis_by_sep = 0;
+% [UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 
+% [UW3,lambdahat3,it3,gmres_tol, rel3, abs3] = solve_mob_peanut_images(q,F,T,rad,delta_pair,N_peanut,visualise,opt.gmres_tol,1);
+% [UW2B,sol_2B] = solve_mob_2B_enhanced(q,F,T,opt);
+% alignfigs(3);
 
 end

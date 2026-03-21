@@ -27,9 +27,11 @@ cent_j = cj + (rj*ell2) * (-v);
 
 % Extra collocation clustered near closest approach
 Mclust = max(50, 5*Nclust);
+%Mclust = max(50, 10*Nclust);
 t = linspace(0,2*pi,Mclust).';
-tclust = pi + mobius_map(t, 0.9); 
+%tclust = pi + mobius_map(t, 0.9); 
 %tclust = pi + mobius_map(t, 0.7); %0.7
+tclust = pi + mobius_map(t, 0.6); %0.7
 ang_i = angle(v);
 ang_j = angle(-v);
 coll_i = ci + ri*(cos(ang_i + tclust) + 1i*sin(ang_i + tclust));

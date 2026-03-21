@@ -11,6 +11,7 @@ N_check = length(rcheck_out)/P;
 PM2 = length(rcheck_out);
 
 %s = opt.s; %[0 0 1 1]; %stresslet and potential dipoles at image points
+use_matrix_free_Lc_pair = logical(getOptField(opt,'use_matrix_free_Lc_pair',true));
 
 %map densities back
 
@@ -158,7 +159,13 @@ for i = 1:P
             end
 
             % Get projected equivalent sources
-            tau_peanut_tot= Lc_pair*tau_peanut_ntot; 
+            if use_matrix_free_Lc_pair
+                tau_peanut_tot = projectOutRigidPair2D( ...
+                    tau_peanut_ntot, ...
+                    rbase_in_c+q(i), q(i), rbase_in_c+q(p2), q(p2));
+            else
+                tau_peanut_tot= Lc_pair*tau_peanut_ntot;
+            end
 
             %Store
             tau_stokes_x((i-1)*N_c+1:N_c*i) = tau_stokes_x((i-1)*N_c+1:N_c*i)+...

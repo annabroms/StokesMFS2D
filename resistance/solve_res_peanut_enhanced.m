@@ -133,7 +133,7 @@ end
 opt.project_force = false;
 opt.show_counter = true;
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[]);
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c);
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
@@ -388,7 +388,7 @@ function test_solve_res
 
 close all; 
 test = 2; 
-delta_pair = 0.2; 
+delta_pair = 0.2;
 N_peanut = 400; 
 
 if test == 1
@@ -470,7 +470,7 @@ else
     gmres_tol = 1e-8;
     debug = 0;
 
-    N_c = 100; 
+    N_c = 150; 
     opt = get2Dparams(P,N_c);
     opt.delta_pair = delta_pair;
     opt.N_peanut = N_peanut;
@@ -480,8 +480,8 @@ else
     opt.cmap = 1; 
     opt.reuse_pair_basis_by_sep = 1;
     opt.rotation_mode = 'oversampled_fft';
-   % opt.rotation_oversample = 8;
-    opt.rotation_mode = 'fft';
+    opt.rotation_oversample = 8;
+   % opt.rotation_mode = 'fft';
     [FT1p,sol1p] = solve_res_peanut_enhanced(q,U,W,opt);
     opt.reuse_pair_basis_by_sep = 0;
     [FT2p,sol2p] = solve_res_peanut_enhanced(q,U,W,opt);

@@ -552,7 +552,8 @@ if visualise
     c.TickLabelInterpreter = 'latex';
     ylabel(c, sprintf('%s boundary error (log10)', err_label), 'interpreter','none','FontSize',14)
     c.FontSize = 14;
-    title(sprintf('%s: Boundary %s error', solver_name, err_label), 'interpreter','none')
+    err_label_cap = [upper(err_label(1)) err_label(2:end)];
+    title(sprintf('%s: %s boundary error', solver_name, err_label_cap), 'interpreter','none')
 
 
     %% Visualise source strengths
