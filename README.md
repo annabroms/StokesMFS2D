@@ -39,7 +39,50 @@ Run the function with no input arguments, for example:
 - `solve_cap_2B()`
 - `solve_elast_peanut()`
 
+
 ## Highlighted demos
+
+### Solver overview
+
+- `demo/test_mob_res.m`
+  - Compared stokeslet-only enhanced solvers based on pair-corrections `solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`.
+  - Optional comparison agains one-body (1B) image enhanced solvers (`solve_mob_1B`, `solve_res_1B`), based on mixed source types.
+  - Supports line, dumbbell, cluster, and hexagonal particle layouts.
+  - Two-way check: solve the mobility problem from `(F,T)` to obtain `(U,W)`, then solve the resistance problem using that `(U,W)` and compare the recovered `(F,T)` with the original input (and vice versa).
+
+- `demo/test_cap_elast.m`
+  - Capacitance: prescribed `v_body`, solve for net charge `Q_body`.
+  - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
+  - Two-way check: solve the capacitance problem from `v_body` to obtain `Q_body`, then solve the elastance problem using that `Q_body` and compare the recovered `v_body` with the original input (and vice versa).
+---
+
+### Capacitance on a hexagonal grid
+
+![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
+
+The figure shows prescribed body voltages and the corresponding net charges recovered by a peanut-compressed capacitance solve on a 271-disk hexagonal geometry with 756 near-contact pairs at separation $10^{-3}$.
+
+GMRES converges to a tolerance of $10^{-8}$ in 89 iterations. The relative boundary residual on independent check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.3 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $6.2\times 10^{-7}$.
+
+For comparison, a 1B preconditioned solve using the same fine discretisation requires 25,998 unknowns on a smaller 61-disk geometry (the four inner rings of the lattice), versus 19,512 unknowns for the larger peanut-compressed example. With GMRES tolerance $10^{-8}$, the 1B solve requires 378 iterations and stalls at a relative boundary residual of $8.0\times 10^{-3}$.
+
+Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also visualises additional diagnostics.
+
+---
+
+### Mobility/resistance and elastance/capacitance for aligned particles
+
+- `demo/particle_line_mob.m`
+  - Solves the mobility problem for \(P\) particles arranged in a line with separation \(\delta\).
+  - Records relative residuals and GMRES iterations over sweeps in \(\delta\) and \(P\).
+  - Optional `resistance = true` branch solves the corresponding resistance problem on the same geometries and reports results in separate figures.
+
+- `demo/particle_line_elast.m`
+  - Sweeps the same line geometry for the elastance solve.
+  - Optional `capacitance = true` branch solves the corresponding capacitance problem.
+
+  **Note:** For the capacitance branch, a larger pair-detection parameter `delta_pair` is required than in the mobility demo, so that pair corrections capture longer-range interactions (even skipping a particle).
+<!-- ### Solver overview
 - `demo/test_mob_res.m`
   - Stokeslet-only enhanced comparisons (`solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`).
   - Optional 1B image-based comparisons (`solve_mob_1B`, `solve_res_1B`) that still use mixed source types.
@@ -50,16 +93,8 @@ Run the function with no input arguments, for example:
   - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
   - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
 
-### Particle-line demos
-- `demo/particle_line_mob.m`
-  - Sweeps a line of particles over several gaps `delta` and particle counts `P`, recording the mobility residual and GMRES iterations.
-  - An optional `resistance = true` branch solves the matching resistance problem on the same geometries and reports those results in separate figures.
-- `demo/particle_line_elast.m`
-  - Sweeps the same line geometry for the elastance solve, recording the boundary residual and GMRES iterations.
-  - An optional `capacitance = true` branch solves the matching capacitance problem on the same geometries and reports those results in separate figures.
-  - For the capacitance branch, a larger pair-detection parameter `delta_pair` is needed than in the mobility demo.
 
-### Capacitance example
+### Capacitance on a hexagonal grid
 ![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
 
 The figure shows prescribed body voltages together with the corresponding net charges recovered by a peanut-compressed capacitance solve on a 271-disk hexagonal geometry with 756 near-contact pairs at a separation of $10^{-3}$. GMRES reaches the target tolerance of $10^{-8}$ in 89 iterations, and the relative boundary residual on a new set of check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.3 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $6.2\times 10^{-7}$.
@@ -67,6 +102,15 @@ The figure shows prescribed body voltages together with the corresponding net ch
 For comparison, a one-body preconditioned solve using the same fine discretisation as in the pair solves requires 25,998 unknowns on a 61-disk geometry (the four inner rings of the lattice), compared with 19,512 unknowns for the larger peanut-compressed example. The one-body solve with GMRES tolerance $10^{-8}$ requires 378 iterations and attains only a relative boundary residual of $8.0\times 10^{-3}$.
 
 The example may be recreated by running `demo/capacitance_on_hexagonal_pack.m`, which also visualises some additional diagnostics.
+
+### Mobility/resistance and elastance/capacitance for aligned particles
+- `demo/particle_line_mob.m`
+  - Solves the mobility problem for P particles in a line separated by delta. Records the relative residual and GMRES iterations for a sweep over delta and P.
+  - An optional `resistance = true` branch solves the matching resistance problem on the same geometries and reports those results in separate figures.
+- `demo/particle_line_elast.m`
+  - Sweeps the same line geometry for the elastance solve.
+  - An optional `capacitance = true` branch solves the matching capacitance problem on the same geometries.
+  - NB: For the capacitance branch, a larger pair-detection parameter `delta_pair` is needed than in the mobility demo so that the pair corrections resolve some long range effects.  -->
 
 ## Source-type note
 - The `dev_image_based/` folders under `mobility/`, `resistance/`, and `common/` contain older and not as polished helper functions for Stokes close interaction resolution based on multiple source types.
