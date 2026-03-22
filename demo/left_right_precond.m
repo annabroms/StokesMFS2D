@@ -36,7 +36,7 @@ solve_resistance = false;
 mode = getDemoMode(solve_resistance);
 
 %% Sweep configuration
-delta_vec = [0.01, 0.5, 1, 5];
+delta_vec = [0.1, 0.5, 1, 5];
 P_vec = 10:10:100;
 %P_vec = [10 50];
 %P_vec = 2:1:5;
@@ -157,8 +157,17 @@ function plotSolverMetricFigure(P_vec,delta_vec,left_data,right_data, ...
 figure('Color','w','Name',fig_title);
 tiledlayout(1,numel(delta_vec),'TileSpacing','compact','Padding','compact');
 
+% For iteration plot (use_log = false), use one shared y-range
+common_ylim = [];
+if ~use_log
+    y = [left_data(:); right_data(:)];
+    y = y(isfinite(y));
+    common_ylim = [min(y), max(y)];
+end
+
+
 for id = 1:numel(delta_vec)
-    ax = nexttile;
+    ax = nexttile; axs(id) = ax;
     hold(ax,'on');
 
     plotBand(ax,P_vec,squeeze(left_data(id,:,:)),left_color,'left');
@@ -176,7 +185,11 @@ for id = 1:numel(delta_vec)
     if id == 1
         legend(ax,'Location','best');
     end
-    axis tight
+    xlim(ax,[min(P_vec), max(P_vec)]);
+end
+
+if ~isempty(common_ylim)
+    set(axs,'YLim',common_ylim);
 end
 
 sgtitle(fig_title,'Interpreter','none');

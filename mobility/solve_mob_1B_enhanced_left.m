@@ -203,7 +203,9 @@ close all;
 
 delta = 0.001;
 q = [0; 2+delta];
-P = 3; 
+P = 5; 
+warning(['delta small and P e.g 10 will require a lot of iterations, ' ...
+    'particularly for resistance!'])
 q = grow_cluster(P,delta,2);
 F = rand(P,2);
 T = rand(P,1);
@@ -218,7 +220,7 @@ opt.get_bndry_field = 1;
 opt.gmres_tol = 1e-10;
 opt.gmres_verbose = 0;
 opt.debug = 0;
-opt.maxit = 800;
+opt.maxit = 1000; %max number of iterations
 opt.use_fmm = true;
 
 [field_err,identity_err] = run_left_preconditioner_sanity(opt);
