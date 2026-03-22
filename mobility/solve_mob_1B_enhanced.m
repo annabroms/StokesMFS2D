@@ -191,7 +191,7 @@ end
 function test_solve_mob_1B_enhanced
 close all;
 
-delta = 0.01;
+delta = 0.1;
 q = [0; 2+delta];
 F = [1 0; -1 0];
 T = [1; -1];
@@ -205,7 +205,7 @@ opt.visualise_grid = 0;
 opt.get_bndry_field = 1;
 opt.gmres_tol = 1e-10;
 opt.gmres_verbose = 0;
-opt.debug = 1;
+opt.debug = 0;
 opt.maxit = 800;
 opt.use_fmm = true;
 

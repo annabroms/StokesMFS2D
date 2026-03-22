@@ -37,6 +37,6 @@ for k = 1:P
     lambda_y(sx) = lambda0k(ns+1:end);
 end
 
-u = -getVelocityField(geom.rvec_in,geom.rout,lambda_x,lambda_y,[],[],[],[],[],[],geom.use_fmm);
+u = -getVelocityField(geom.rvec_in,geom.rout,lambda_x,lambda_y,[],[],[],[],[],[],[],geom.use_fmm);
 
 end

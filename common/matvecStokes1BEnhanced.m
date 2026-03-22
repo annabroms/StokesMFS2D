@@ -14,7 +14,7 @@ else
     lambda_y = lambda_py;
 end
 
-res = getVelocityField(geom.rvec_in,geom.rout,lambda_x,lambda_y,[],[],[],[],[],[],geom.use_fmm);
+res = getVelocityField(geom.rvec_in,geom.rout,lambda_x,lambda_y,[],[],[],[],[],[],[],geom.use_fmm);
 
 for k = 1:numel(geom.q)
     self_k = basis.Aii{k}*lambda_body{k};

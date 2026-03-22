@@ -106,12 +106,14 @@ rin_body = cell(P,1);
 rout_body = cell(P,1);
 source_count = zeros(P,1);
 target_count = zeros(P,1);
+has_enhancement = false(P,1);
 
 for k = 1:P
     rin_body{k} = [q(k) + rbase_in_c; cent_clust_cells{k}];
     rout_body{k} = [q(k) + rbase_out_c; coll_clust_cells{k}];
     source_count(k) = numel(rin_body{k});
     target_count(k) = numel(rout_body{k});
+    has_enhancement(k) = ~(isempty(cent_clust_cells{k}) && isempty(coll_clust_cells{k}));
 end
 
 source_offsets = cumsum([1; source_count(1:end-1)]);
@@ -139,17 +141,37 @@ for k = 1:P
     target_x_ind{k} = tx;
     target_y_ind{k} = total_target_count + tx;
 
+    if solve_resistance && ~has_enhancement(k)
+        shared_block = getSharedPlainResistanceBlock( ...
+            rbase_in_c,rbase_out_c,N_c,nout,Rp_c(1),rad0,self_tol);
+        Ksrc{k} = shared_block.Ksrc;
+        Aii{k} = shared_block.Aii;
+        U{k} = shared_block.U;
+        Y{k} = shared_block.Y;
+        continue;
+    end
+
+    if ~solve_resistance && ~has_enhancement(k)
+        shared_block = getSharedPlainMobilityBlock( ...
+            rbase_in_c,rbase_out_c,N_c,nout,Rp_c(1),rad0,self_tol);
+        Ksrc{k} = shared_block.Ksrc;
+        Aii{k} = shared_block.Aii;
+        U{k} = shared_block.U;
+        Y{k} = shared_block.Y;
+        continue;
+    end
+
     Ksrc{k} = getKmat2D(rin_body{k},q(k));
     Nio = stokSLPmat(rin_body{k},rout_body{k},1);
 
     if solve_resistance
         Aii{k} = Nio;
-        [Yk,Uk] = getPseudoFactors(Nio,self_tol,1);
+        [Yk,Uk] = getPseudoFactors(Nio,self_tol,0);
     else
         Ktar = getKmat2D(rout_body{1},q(1));
         L = Ksrc{k}*((Ksrc{k}'*Ksrc{k})\Ksrc{k}');
         A = Nio*(eye(size(L)) - L);
-        [Yk,Uk] = getPseudoFactors(A+Ktar*Ksrc{k}',self_tol,1);
+        [Yk,Uk] = getPseudoFactors(A+Ktar*Ksrc{k}',self_tol,0);
         Aii{k} = A;
     end
 
@@ -182,6 +204,7 @@ geom.pairs = pairs;
 geom.Ksrc = Ksrc;
 geom.cent_clust_cells = cent_clust_cells;
 geom.coll_clust_cells = coll_clust_cells;
+geom.has_enhancement = has_enhancement;
 geom.use_fmm = use_fmm;
 geom.solve_resistance = solve_resistance;
 geom.opt = opt_clean;
@@ -194,5 +217,100 @@ basis.Ksrc = Ksrc;
 basis.self_tol = self_tol;
 basis.use_fmm = use_fmm;
 basis.solve_resistance = solve_resistance;
+basis.has_enhancement = has_enhancement;
 
+end
+
+function shared_block = getSharedPlainResistanceBlock( ...
+    rbase_in_c,rbase_out_c,N_c,nout,Rp_c,rad0,self_tol)
+%GETSHAREDPLAINRESISTANCEBLOCK Cache the plain 1B resistance block.
+%
+% Bodies without ellipse-segment enhancement all share the same translated
+% proxy/collocation geometry, so their one-body pseudoinverse factors are
+% identical. Reusing this block avoids repeated SVDs in both the right- and
+% left-preconditioned enhanced resistance solvers.
+
+persistent cache
+
+if isempty(cache)
+    cache = struct('N_c',{},'nout',{},'Rp_c',{},'rad0',{},'self_tol',{}, ...
+        'Ksrc',{},'Aii',{},'U',{},'Y',{});
+end
+
+for idx = 1:numel(cache)
+    same_block = cache(idx).N_c == N_c && ...
+        cache(idx).nout == nout && ...
+        abs(cache(idx).Rp_c - Rp_c) < 1e-14 && ...
+        abs(cache(idx).rad0 - rad0) < 1e-14 && ...
+        abs(cache(idx).self_tol - self_tol) < 1e-14;
+    if same_block
+        shared_block = cache(idx);
+        return;
+    end
+end
+
+Aii = stokSLPmat(rbase_in_c,rbase_out_c,1);
+[Yplain,Uplain] = getPseudoFactors(Aii,self_tol,0);
+
+shared_block = struct();
+shared_block.N_c = N_c;
+shared_block.nout = nout;
+shared_block.Rp_c = Rp_c;
+shared_block.rad0 = rad0;
+shared_block.self_tol = self_tol;
+shared_block.Ksrc = getKmat2D(rbase_in_c,0);
+shared_block.Aii = Aii;
+shared_block.U = Uplain';
+shared_block.Y = Yplain;
+
+cache(end+1) = shared_block;
+end
+
+function shared_block = getSharedPlainMobilityBlock( ...
+    rbase_in_c,rbase_out_c,N_c,nout,Rp_c,rad0,self_tol)
+%GETSHAREDPLAINMOBILITYBLOCK Cache the plain 1B mobility block.
+%
+% Bodies without ellipse-segment enhancement all share the same translated
+% proxy/collocation geometry, so their mobility one-body pseudoinverse
+% factors are identical as well. Reusing this block avoids repeated SVDs in
+% the enhanced 1B mobility solver.
+
+persistent cache
+
+if isempty(cache)
+    cache = struct('N_c',{},'nout',{},'Rp_c',{},'rad0',{},'self_tol',{}, ...
+        'Ksrc',{},'Aii',{},'U',{},'Y',{});
+end
+
+for idx = 1:numel(cache)
+    same_block = cache(idx).N_c == N_c && ...
+        cache(idx).nout == nout && ...
+        abs(cache(idx).Rp_c - Rp_c) < 1e-14 && ...
+        abs(cache(idx).rad0 - rad0) < 1e-14 && ...
+        abs(cache(idx).self_tol - self_tol) < 1e-14;
+    if same_block
+        shared_block = cache(idx);
+        return;
+    end
+end
+
+Ksrc = getKmat2D(rbase_in_c,0);
+Ktar = getKmat2D(rbase_out_c,0);
+Nio = stokSLPmat(rbase_in_c,rbase_out_c,1);
+L = Ksrc*((Ksrc'*Ksrc)\Ksrc');
+Aii = Nio*(eye(size(L)) - L);
+[Yplain,Uplain] = getPseudoFactors(Aii + Ktar*Ksrc',self_tol,0);
+
+shared_block = struct();
+shared_block.N_c = N_c;
+shared_block.nout = nout;
+shared_block.Rp_c = Rp_c;
+shared_block.rad0 = rad0;
+shared_block.self_tol = self_tol;
+shared_block.Ksrc = Ksrc;
+shared_block.Aii = Aii;
+shared_block.U = Uplain';
+shared_block.Y = Yplain;
+
+cache(end+1) = shared_block;
 end
