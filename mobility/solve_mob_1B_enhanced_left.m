@@ -203,7 +203,7 @@ close all;
 
 delta = 0.001;
 q = [0; 2+delta];
-P = 5; 
+P = 4; 
 warning(['delta small and P e.g 10 will require a lot of iterations, ' ...
     'particularly for resistance!'])
 q = grow_cluster(P,delta,2);

@@ -1,13 +1,21 @@
 # StokesMFS2D
-Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary value problems on geometries of close-to-touching disks in free space. This research code demonstrates pair-based preconditioning. In the _2B solvers, this is implemented using a fine set of sources for each pair of disks. Solvers with the _peanut extension utilise compression of this two-body fine discretisation to an equivalent coarse set of proxy nodes within each body. Greater gains are achieved from pair-based preconditioning for Stokes BVPs than for Laplace, owing to the stronger singularities in close-to-touching geometries.
+Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary value problems on geometries of close-to-touching disks in free space. This research code implements both one-body (1B) and pair-based (2B) preconditioning strategies.
+
+The 1B solvers use left- or right-preconditioning based on single-body solves. The 2B solvers extend the right preconditioners by incorporating pair corrections. These generalise an idea of Cheng and Greengard[^cheng-greengard] and use a fine set of sources for each pair of disks. Solvers with the _peanut extension compress this two-body discretisation to an equivalent coarse set of proxy nodes within each body. With pair corrections, both the number of GMRES unknowns and the number of iterations are significantly reduced compared to one-body preconditioning.
+
+Throughout, 1B serves as a baseline preconditioner, while 2B and peanut variants progressively incorporate near-pair interactions and their compression.
+
+Greater gains are achieved for Stokes BVPs than for Laplace, owing to the stronger singularities in close-to-touching geometries.
 
 ## Repository overview
 - `mobility/`
   Stokes mobility solvers (input force/torque, output rigid-body velocities), including:
-  `solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`.
+  `solve_mob_1B_enhanced`, `solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`
+  (1B: one-body preconditioning; 2B: pair corrections; peanut: compressed 2B).
 - `resistance/`
   Stokes resistance solvers (input rigid-body velocities, output force/torque), including:
-  `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`.
+  `solve_res_1B_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`
+  (1B: one-body preconditioning; 2B: pair corrections; peanut: compressed 2B).
 - `laplace/`
   Scalar Laplace solvers for capacitance and elastance problems, where the capacitance formulation corresponds to a modified BVP.[^stein-barnett-2022]
   - Capacitance (`solve_cap_1B`, `solve_cap_2B`, `solve_cap_peanut`):
@@ -39,14 +47,16 @@ Run the function with no input arguments, for example:
 - `solve_cap_2B()`
 - `solve_elast_peanut()`
 
-
 ## Highlighted demos
 
 ### Solver overview
 
 - `demo/test_mob_res.m`
-  - Compared stokeslet-only enhanced solvers based on pair-corrections `solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`.
-  - Optional comparison agains one-body (1B) image enhanced solvers (`solve_mob_1B`, `solve_res_1B`), based on mixed source types.
+  - Compares Stokeslet-only enhanced solvers with pair corrections:
+    `solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`,
+    `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`.
+  - Optional comparison against one-body (1B) solvers with left/right preconditioning
+    (currently: `solve_mob_1B`, `solve_res_1B`, based on mixed source types).
   - Supports line, dumbbell, cluster, and hexagonal particle layouts.
   - Two-way check: solve the mobility problem from `(F,T)` to obtain `(U,W)`, then solve the resistance problem using that `(U,W)` and compare the recovered `(F,T)` with the original input (and vice versa).
 
@@ -54,6 +64,7 @@ Run the function with no input arguments, for example:
   - Capacitance: prescribed `v_body`, solve for net charge `Q_body`.
   - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
   - Two-way check: solve the capacitance problem from `v_body` to obtain `Q_body`, then solve the elastance problem using that `Q_body` and compare the recovered `v_body` with the original input (and vice versa).
+
 ---
 
 ### Capacitance on a hexagonal grid
@@ -64,7 +75,7 @@ The figure shows prescribed body voltages and the corresponding net charges reco
 
 GMRES converges to a tolerance of $10^{-8}$ in 89 iterations. The relative boundary residual on independent check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.3 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $6.2\times 10^{-7}$.
 
-For comparison, a 1B preconditioned solve using the same fine discretisation requires 25,998 unknowns on a smaller 61-disk geometry (the four inner rings of the lattice), versus 19,512 unknowns for the larger peanut-compressed example. With GMRES tolerance $10^{-8}$, the 1B solve requires 378 iterations and stalls at a relative boundary residual of $8.0\times 10^{-3}$.
+For comparison, a 1B preconditioned solve using the same fine discretisation requires 25,998 unknowns on a smaller 61-disk geometry (the four inner rings of the lattice), compared with 19,512 unknowns for the larger peanut-compressed example. With GMRES tolerance $10^{-8}$, the 1B solve requires 378 iterations and stalls at a relative boundary residual of $8.0\times 10^{-3}$.
 
 Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also visualises additional diagnostics.
 
@@ -81,74 +92,28 @@ Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also v
   - Sweeps the same line geometry for the elastance solve.
   - Optional `capacitance = true` branch solves the corresponding capacitance problem.
 
-  **Note:** For the capacitance branch, a larger pair-detection parameter `delta_pair` is required than in the mobility demo, so that pair corrections capture longer-range interactions (even skipping a particle).
-<!-- ### Solver overview
-- `demo/test_mob_res.m`
-  - Stokeslet-only enhanced comparisons (`solve_mob_2B_enhanced`, `solve_mob_peanut_enhanced`, `solve_res_2B_enhanced`, `solve_res_peanut_enhanced`).
-  - Optional 1B image-based comparisons (`solve_mob_1B`, `solve_res_1B`) that still use mixed source types.
-  - Demos support line, dumbbell, and cluster particle layouts. Hexagonal packing is also available.
-  - Two-way check means: solve mobility from `(F,T)` to get `(U,W)`, then solve resistance using that `(U,W)` and compare recovered `(F,T)` to the original input (and vice versa).
-- `demo/test_cap_elast.m`
-  - Capacitance: prescribed `v_body`, solve for net charge `Q_body`.
-  - Elastance: prescribed net charge `Q_body`, solve for `v_body`.
-  - Two-way check means: solve capacitance from `v_body` to get `Q_body`, then solve elastance using that `Q_body` and compare recovered `v_body` to the original input (and vice versa).
+  **Note:** For the capacitance branch, a larger pair-detection parameter `delta_pair` is required than in the mobility demo, so that pair corrections capture longer-range interactions (including interactions beyond nearest neighbours).
 
+## Implementation notes
+### Source-types 
+- The `dev_image_based/` folders under `mobility/`, `resistance/`, and `common/` contain older and less polished helper functions for Stokes close-interaction resolution based on multiple source types.
+- Outside these `dev_image_based/` paths, the Stokes solvers used in the main comparisons are Stokeslet-only.
 
-### Capacitance on a hexagonal grid
-![Capacitance example on a hexagonal disk geometry](demo/hexagonal_volt_charge.png)
+### Precomputations
+The method avoids reconstructing fine source discretisations for every particle pair. Instead, a canonical pair problem is solved for each unique inter-particle distance. For any given pair with this separation, the corresponding source strength vector is interpolated (via FFT-based interpolation) to the canonical configuration, where the pair solution is evaluated. The resulting corrected coarse source strengths are then rotated back to the physical pair frame.
 
-The figure shows prescribed body voltages together with the corresponding net charges recovered by a peanut-compressed capacitance solve on a 271-disk hexagonal geometry with 756 near-contact pairs at a separation of $10^{-3}$. GMRES reaches the target tolerance of $10^{-8}$ in 89 iterations, and the relative boundary residual on a new set of check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.3 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $6.2\times 10^{-7}$.
+In addition, rotation-compatible coarse-to-body mapping operators are constructed during setup. These enable efficient recovery of physical quantities, such as forces and torques (resistance problems), velocities (mobility problems), charges (capacitance problems), and voltages (elastance problems).
 
-For comparison, a one-body preconditioned solve using the same fine discretisation as in the pair solves requires 25,998 unknowns on a 61-disk geometry (the four inner rings of the lattice), compared with 19,512 unknowns for the larger peanut-compressed example. The one-body solve with GMRES tolerance $10^{-8}$ requires 378 iterations and attains only a relative boundary residual of $8.0\times 10^{-3}$.
+With these mappings in place, fine sources are only recovered if the solution field is evaluated at or near the particle boundaries.
 
-The example may be recreated by running `demo/capacitance_on_hexagonal_pack.m`, which also visualises some additional diagnostics.
-
-### Mobility/resistance and elastance/capacitance for aligned particles
-- `demo/particle_line_mob.m`
-  - Solves the mobility problem for P particles in a line separated by delta. Records the relative residual and GMRES iterations for a sweep over delta and P.
-  - An optional `resistance = true` branch solves the matching resistance problem on the same geometries and reports those results in separate figures.
-- `demo/particle_line_elast.m`
-  - Sweeps the same line geometry for the elastance solve.
-  - An optional `capacitance = true` branch solves the matching capacitance problem on the same geometries.
-  - NB: For the capacitance branch, a larger pair-detection parameter `delta_pair` is needed than in the mobility demo so that the pair corrections resolve some long range effects.  -->
-
-## Source-type note
-- The `dev_image_based/` folders under `mobility/`, `resistance/`, and `common/` contain older and not as polished helper functions for Stokes close interaction resolution based on multiple source types.
-- Outside these `dev_image_based/` paths, the Stokes solver paths used in the main comparisons are Stokeslet-only.
+**Note:** A remaining task is to assess the impact of interpolation error on the overall accuracy.
 
 ## Dependencies
 - [fmm2d](https://github.com/flatironinstitute/fmm2d) for fast 2D kernel summation.
 
+### References in footnotes
+[^cheng-greengard]:
+  Cheng, H., and Greengard, L. (1998). *A method of images for the evaluation of electrostatic fields in systems of closely spaced conducting cylinders.* SIAM Journal on Applied Mathematics.
 
 [^stein-barnett-2022]:
   Stein, D. B., and Barnett, A. H. (2022). *Quadrature by fundamental solutions: kernel-independent layer potential evaluation for large collections of simple objects.* Advances in Computational Mathematics (ACOM). The capacitance formulation here follows the lemma introducing the modified Laplace exterior 2D BVP.
-
-
-<!--
-## Previous README (commented for comparison)
-# StokesMFS2D
-Solves the Stokes resistance and mobility BVPs in 2D using the method of fundamental solutions.
-
-## Close-to-touching disks
-We investigate preconditioning ideas based on pair corrections and peanut compression.
-Test examples in demo/ and by running solver functions without arguments.
-
-
-***To do***
-- Introduce effective mapping \mu -> \lambda
-- Compare timings w/o peanut compression
-- Speedup of transformation \mu -> \lambda, beta: determine in parallel
-- Write direct Stokeslet eval in fortran / C. Same for pot. dipole and stresslet.
-- Later: Make sure Krylov precond can be switched on to compare #GMRES iterations, most interesting with time-stepping (mobility).
-
-## Other geometries
-The `experiments/` folder contains test cases for a variety of non-circular geometries:
-- Stars
-- Ellipses
-- Objects with corners
-
-## Dependencies
-
-- [fmm2d](https://github.com/flatironinstitute/fmm2d) — Fast Multipole Method library for 2D kernels
-- [Chebfun](https://www.chebfun.org/) — Needed for testing with non-circular geometries
--->
