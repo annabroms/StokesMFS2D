@@ -1,9 +1,9 @@
-function [UW,sol] = solve_mob_1B_enhanced(q,F,T,opt)
-%SOLVE_MOB_1B_ENHANCED Solve a 2D Stokes mobility problem with 1-body
-%preconditioning and Stokeslet-only ellipse-segment enhancement.
+function [UW,sol] = solve_mob_1B_enhanced_left(q,F,T,opt)
+%SOLVE_MOB_1B_ENHANCED_LEFT Solve a 2D Stokes mobility problem with
+%left-preconditioned 1-body ellipse-segment enhancement.
 %
 % Syntax:
-%   [UW,sol] = solve_mob_1B_enhanced(q,F,T,opt)
+%   [UW,sol] = solve_mob_1B_enhanced_left(q,F,T,opt)
 %
 % Inputs:
 %   q   - Complex particle centers (P x 1).
@@ -15,10 +15,10 @@ function [UW,sol] = solve_mob_1B_enhanced(q,F,T,opt)
 %   UW  - 3P x 1 rigid-body velocity vector [Ux; Uy; W] per particle.
 %   sol - Struct with source data and residual information.
 
-if nargin==0, test_solve_mob_1B_enhanced; return; end
+if nargin==0, test_solve_mob_1B_enhanced_left; return; end
 
 if nargin < 4 || ~isstruct(opt)
-    error('solve_mob_1B_enhanced requires q, F, T, and an options struct opt.');
+    error('solve_mob_1B_enhanced_left requires q, F, T, and an options struct opt.');
 end
 
 q = q(:);
@@ -47,7 +47,7 @@ opt.maxit = maxit;
 opt.get_bndry_field = get_bndry_field;
 opt.surface_error_mode = surface_error_mode;
 opt.solve_resistance = false;
-opt.self_tol = 1e-9; 
+opt.self_tol = 1e-9;
 
 fprintf('==== START: %s ====\n', mfilename);
 
@@ -56,10 +56,11 @@ P = numel(q);
 
 %% Right-hand side from completion flow
 [urhs,~,~] = getRecompletionFlowStokes1BEnhanced(q,F,T,geom);
+rleft = applyStokes1BEnhancedPseudo(urhs,geom,basis);
 
 %% Optional matrix inspection
 if debug
-    ncols = 2*geom.total_target_count;
+    ncols = 2*geom.total_source_count;
     CC = zeros(ncols);
     x = zeros(ncols,1);
     fprintf('== Debug mode: building system matrix ==\n');
@@ -67,7 +68,7 @@ if debug
         fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
-        CC(:,k) = matvecStokes1BEnhanced(x,geom,basis);
+        CC(:,k) = matvecStokes1BEnhancedMobilityLeft(x,geom,basis);
     end
     figure();
     imagesc(log10(abs(CC)))
@@ -75,17 +76,21 @@ if debug
     title([mfilename ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
+
+    e = eig(CC);
+    figure()
+    scatter(real(e),imag(e),'+');
+    title('Eigenvalues of left-preconditioned mobility system matrix')
 end
 
 %% Solve
 disp(' == Solving... == ');
-[tau,it,resvec,real_res] = helsing_gmres( ...
-    @(x) matvecStokes1BEnhanced(x,geom,basis), ...
-    urhs,2*geom.total_target_count,maxit,gmres_tol,gmres_verbose,geom.rout);
+[lambda,it,resvec,real_res] = helsing_gmres( ...
+    @(x) matvecStokes1BEnhancedMobilityLeft(x,geom,basis), ...
+    rleft,2*geom.total_source_count,maxit,gmres_tol,gmres_verbose,geom.rvec_in);
 
-%% Recover source strengths
 [lambda_x_raw,lambda_y_raw,lambda_body,lambda_px,lambda_py] = ...
-    mapStokes1BEnhancedSources(tau,geom,basis);
+    unpackProjectedMobilityLambda(lambda,geom);
 
 UW = zeros(3*P,1);
 for k = 1:P
@@ -146,7 +151,12 @@ if visualise_sol
     grid on
     xlabel('iteration number','interpreter','latex');
     ylabel('Estimated relative residual','interpreter','latex');
-    title('GMRES convergence, mobility 1B enhanced','interpreter','latex')
+    title('GMRES convergence, mobility 1B enhanced left','interpreter','latex')
+
+    figure()
+    plot([lambda_x_raw; lambda_y_raw]);
+    axis tight
+    title('Raw source strength magnitude')
 
     if get_bndry_field
         if strcmp(surface_error_mode,'rel')
@@ -167,13 +177,13 @@ if visualise_sol
 end
 
 sol = struct();
-% lambda_proj is used in the matvec; lambda_raw and lambda_body keep the
-% non-projected densities for rigid-motion postprocessing.
-sol.lambda = [lambda_px; lambda_py];
-sol.lambda_raw = [lambda_x_raw; lambda_y_raw];
+% The left solve uses the raw source density as the GMRES unknown while the
+% projected density is the one used in the physical Stokeslet field.
+sol.lambda = lambda;
+sol.lambda_raw = lambda;
 sol.lambda_proj = [lambda_px; lambda_py];
-sol.lambda_x = lambda_px;
-sol.lambda_y = lambda_py;
+sol.lambda_x = lambda_x_raw;
+sol.lambda_y = lambda_y_raw;
 sol.lambda_x_raw = lambda_x_raw;
 sol.lambda_y_raw = lambda_y_raw;
 sol.lambda_px = lambda_px;
@@ -188,13 +198,15 @@ sol.real_res = real_res;
 
 end
 
-function test_solve_mob_1B_enhanced
+function test_solve_mob_1B_enhanced_left
 close all;
 
 delta = 0.001;
 q = [0; 2+delta];
-F = [1 0; -1 0];
-T = [1; -1];
+P = 3; 
+q = grow_cluster(P,delta,2);
+F = rand(P,2);
+T = rand(P,1);
 rad = ones(numel(q),1);
 
 opt = get2Dparams(numel(q));
@@ -209,21 +221,116 @@ opt.debug = 0;
 opt.maxit = 800;
 opt.use_fmm = true;
 
-[UW_new,sol_new] = solve_mob_1B_enhanced(q,F,T,opt);
-[U_new,W_new] = unpackUW(UW_new);
-[FT_back,sol_res] = solve_res_1B_enhanced(q,U_new,W_new,opt);
-[F_ref,T_ref] = deal(F,T);
-two_way_mob_res = relerr_inf(FT_back,packFT(F_ref,T_ref));
-[UW_img,~,it_img,~,rel_img,abs_img] = ...
-    solve_mob_1B(q,F,T,rad,1,0,0,opt.gmres_tol,0,'rel',0);
+[field_err,identity_err] = run_left_preconditioner_sanity(opt);
+[UW_left,sol_left] = solve_mob_1B_enhanced_left(q,F,T,opt);
+[UW_right,sol_right] = solve_mob_1B_enhanced(q,F,T,opt);
+left_right_err = relerr(UW_left,UW_right);
+FT_ref = packFT(F,T);
 
-fprintf('Mobility 1B enhanced: rel_res = %.3e, it = %d\n',sol_new.rel_res,sol_new.it);
-fprintf('Resistance 1B enhanced (from mobility): rel_res = %.3e, it = %d\n', ...
-    sol_res.rel_res,sol_res.it);
-fprintf('Legacy image 1B     : rel_res = %.3e, abs_res = %.3e, it = %d\n',rel_img,abs_img,it_img);
-fprintf('  physical output relerr (UW) = %.3e\n',relerr(UW_new,UW_img));
-fprintf('  two-way error (mob -> res)  = %.3e\n',two_way_mob_res);
+[U_left,W_left] = unpackUW(UW_left);
+[FT_back_left,sol_res_left] = solve_res_1B_enhanced_left(q,U_left,W_left,opt);
+two_way_mob_res_left = relerr_inf(FT_back_left,FT_ref);
 
+[U_right,W_right] = unpackUW(UW_right);
+[FT_back_right,sol_res_right] = solve_res_1B_enhanced_left(q,U_right,W_right,opt);
+two_way_mob_res_right = relerr_inf(FT_back_right,FT_ref);
+
+fprintf('Left mobility pseudo sanity: rel_field = %.3e, rel_id = %.3e\n', ...
+    field_err,identity_err);
+fprintf('Mobility 1B left         : rel_res = %.3e, it = %d\n', ...
+    sol_left.rel_res,sol_left.it);
+fprintf('Mobility 1B right        : rel_res = %.3e, it = %d\n', ...
+    sol_right.rel_res,sol_right.it);
+fprintf('Resistance 1B left (from left mob)  : rel_res = %.3e, it = %d\n', ...
+    sol_res_left.rel_res,sol_res_left.it);
+fprintf('Resistance 1B left (from right mob) : rel_res = %.3e, it = %d\n', ...
+    sol_res_right.rel_res,sol_res_right.it);
+fprintf('  physical output relerr (left vs right) = %.3e\n', ...
+    left_right_err);
+fprintf('  two-way error   (left mob -> left res) = %.3e\n', ...
+    two_way_mob_res_left);
+fprintf('  two-way error  (right mob -> left res) = %.3e\n', ...
+    two_way_mob_res_right);
+
+
+end
+
+function [field_err,identity_err] = run_left_preconditioner_sanity(opt)
+opt_local = opt;
+opt_local.visualise_sol = 0;
+opt_local.visualise_grid = 0;
+opt_local.get_bndry_field = 0;
+opt_local.debug = 0;
+opt_local.use_fmm = false;
+opt_local.solve_resistance = false;
+
+[geom,basis] = prepareStokes1BEnhanced(0,opt_local);
+rng(1);
+u_rand = randn(2*geom.total_target_count,1);
+lambda_ref = basis.Y{1}*(basis.U{1}*u_rand);
+u_self = buildLeftMobilityBoundaryField(lambda_ref,geom);
+lambda_rec = applyStokes1BEnhancedPseudo(u_self,geom,basis);
+
+[~,~,lambda_body] = unpackStokes1BEnhancedLambda(lambda_ref,geom);
+mom = bodyMomentsStokes2D(geom.rin_body{1},geom.q(1),lambda_body{1});
+u_direct = basis.Aii{1}*lambda_body{1} + ...
+    evaluateRigidMotion2D(geom.q(1),mom(1:2).',mom(3),geom.rout_body{1});
+
+field_err = relerr(u_self,u_direct);
+identity_err = relerr(lambda_rec,lambda_ref);
+end
+
+function res = matvecStokes1BEnhancedMobilityLeft(lambda,geom,basis)
+u = buildLeftMobilityBoundaryField(lambda,geom);
+res = applyStokes1BEnhancedPseudo(u,geom,basis);
+end
+
+function u = buildLeftMobilityBoundaryField(lambda,geom)
+[~,~,lambda_body,lambda_px,lambda_py] = unpackProjectedMobilityLambda(lambda,geom);
+
+u = getVelocityField(geom.rvec_in,geom.rout,lambda_px,lambda_py, ...
+    [],[],[],[],[],[],[],geom.use_fmm);
+
+for k = 1:numel(geom.q)
+    mom = bodyMomentsStokes2D(geom.rin_body{k},geom.q(k),lambda_body{k});
+    u_k = evaluateRigidMotion2D(geom.q(k),mom(1:2).',mom(3),geom.rout_body{k});
+    nt = geom.target_count(k);
+    u(geom.target_x_ind{k}) = u(geom.target_x_ind{k}) + u_k(1:nt);
+    u(geom.target_y_ind{k}) = u(geom.target_y_ind{k}) + u_k(nt+1:end);
+end
+end
+
+function [lambda_x_raw,lambda_y_raw,lambda_body,lambda_px,lambda_py] = ...
+    unpackProjectedMobilityLambda(lambda,geom)
+[lambda_x_raw,lambda_y_raw,lambda_body] = unpackStokes1BEnhancedLambda(lambda,geom);
+
+lambda_px = zeros(geom.total_source_count,1);
+lambda_py = zeros(geom.total_source_count,1);
+
+for k = 1:numel(geom.q)
+    ns = geom.source_count(k);
+    sx = geom.source_x_ind{k};
+    lambda_k_proj = projectOutRigid2D(lambda_body{k},geom.rin_body{k},geom.q(k));
+    lambda_px(sx) = lambda_k_proj(1:ns);
+    lambda_py(sx) = lambda_k_proj(ns+1:end);
+end
+end
+
+function [lambda_x,lambda_y,lambda_body] = unpackStokes1BEnhancedLambda(lambda,geom)
+lambda = lambda(:);
+ns_tot = geom.total_source_count;
+if numel(lambda) ~= 2*ns_tot
+    error('unpackStokes1BEnhancedLambda:badInputSize', ...
+        'lambda must have length 2*geom.total_source_count.');
+end
+
+lambda_x = lambda(1:ns_tot);
+lambda_y = lambda(ns_tot+1:end);
+lambda_body = cell(numel(geom.q),1);
+for k = 1:numel(geom.q)
+    sx = geom.source_x_ind{k};
+    lambda_body{k} = [lambda_x(sx); lambda_y(sx)];
+end
 end
 
 function e = relerr(a,b)

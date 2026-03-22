@@ -1,24 +1,26 @@
 %LEFT_RIGHT_PRECOND Compare left- vs right-preconditioned enhanced 1-body
-%resistance solves on randomized clusters of P disks with separation delta.
+%Stokes solves on randomized clusters of P disks with separation delta.
 %
 % For each geometry/BC case, both solvers use the same enhanced
 % discretisation (same sources/targets and boundary data); only the side on
 % which the 1-body preconditioner is applied differs.
 %
+% The boolean flag solve_resistance selects the formulation:
+%   solve_resistance = true   -> compare resistance solvers
+%   solve_resistance = false  -> compare mobility solvers
+%
 % The script sweeps over:
 %   delta = [0.5, 1, 5]
 %   P     = 10:10:100
 %
-% For each (delta,P) pair, 5 randomized cluster/velocity samples are
-% generated. The same geometry and boundary data are passed to both
-% solvers:
-%   solve_res_1B_enhanced_left
-%   solve_res_1B_enhanced
+% For each (delta,P) pair, 5 randomized cluster samples are generated. The
+% same geometry and boundary data are passed to the left- and
+% right-preconditioned enhanced 1B solvers in the selected formulation.
 %
 % Three figures are produced:
 %   1. GMRES iteration counts
 %   2. Relative boundary residuals
-%   3. Relative force/torque mismatch between the two solves
+%   3. Relative physical-output mismatch between the two solves
 %
 % In each plot, the shaded band spans the trialwise min/max values and the
 % solid line shows the trial mean.
@@ -29,8 +31,12 @@ clear;
 close all;
 clc;
 
+%% Mode selection
+solve_resistance = false;
+mode = getDemoMode(solve_resistance);
+
 %% Sweep configuration
-delta_vec = [0.5, 1, 5];
+delta_vec = [0.01, 0.5, 1, 5];
 P_vec = 10:10:100;
 %P_vec = [10 50];
 %P_vec = 2:1:5;
@@ -49,9 +55,10 @@ iter_left = nan(n_delta,n_P,n_repeat);
 iter_right = nan(n_delta,n_P,n_repeat);
 res_left = nan(n_delta,n_P,n_repeat);
 res_right = nan(n_delta,n_P,n_repeat);
-ft_err = nan(n_delta,n_P,n_repeat);
+phys_err = nan(n_delta,n_P,n_repeat);
 
 %% Main sweep
+fprintf('=== comparing %s solvers ===\n',lower(mode.formulation_name));
 for id = 1:n_delta
     delta = delta_vec(id);
     fprintf('=== delta = %.3g ===\n',delta);
@@ -63,16 +70,16 @@ for id = 1:n_delta
 
         for ir = 1:n_repeat
             seed = base_seed + 10000*id + 100*P + ir;
-            [q,U,W] = buildRandomCase(P,delta,seed);
+            [q,data1,data2] = buildRandomCase(P,delta,seed);
 
-            [FT_left,sol_left] = runSolverQuietly(@solve_res_1B_enhanced_left,q,U,W,opt);
-            [FT_right,sol_right] = runSolverQuietly(@solve_res_1B_enhanced,q,U,W,opt);
+            [out_left,sol_left] = runSolverQuietly(mode.left_solver,q,data1,data2,opt);
+            [out_right,sol_right] = runSolverQuietly(mode.right_solver,q,data1,data2,opt);
 
             iter_left(id,ip,ir) = sol_left.it;
             iter_right(id,ip,ir) = sol_right.it;
             res_left(id,ip,ir) = sol_left.rel_res;
             res_right(id,ip,ir) = sol_right.rel_res;
-            ft_err(id,ip,ir) = relerr(FT_left,FT_right);
+            phys_err(id,ip,ir) = relerr(out_left,out_right);
         end
     end
 end
@@ -84,16 +91,16 @@ err_color = [0.20, 0.60, 0.25];
 
 plotSolverMetricFigure(P_vec,delta_vec,iter_left,iter_right, ...
     left_color,right_color, ...
-    'GMRES Iterations: Left vs Right 1B Enhanced Resistance', ...
+    ['GMRES Iterations: Left vs Right 1B Enhanced ' mode.formulation_name], ...
     'GMRES iterations',false);
 
 plotSolverMetricFigure(P_vec,delta_vec,res_left,res_right, ...
     left_color,right_color, ...
-    'Relative Boundary Residual: Left vs Right 1B Enhanced Resistance', ...
+    ['Relative Boundary Residual: Left vs Right 1B Enhanced ' mode.formulation_name], ...
     'relative residual',true);
 
-plotErrorFigure(P_vec,delta_vec,ft_err,err_color, ...
-    'Relative Force/Torque Error: Left vs Right 1B Enhanced Resistance');
+plotErrorFigure(P_vec,delta_vec,phys_err,err_color, ...
+    mode.error_fig_title,mode.error_ylabel,mode.error_legend);
 
 
 function opt = buildDemoOptions(P,gmres_tol,maxit)
@@ -110,16 +117,39 @@ opt.maxit = maxit;
 opt.use_fmm = true;
 end
 
-function [q,U,W] = buildRandomCase(P,delta,seed)
-rng(seed);
-evalc('q = grow_cluster(P,delta,2);');
-q = q(:);
-U = randn(P,2);
-W = randn(P,1);
+function mode = getDemoMode(solve_resistance)
+if solve_resistance
+    mode = struct( ...
+        'formulation_name','Resistance', ...
+        'left_solver',@solve_res_1B_enhanced_left, ...
+        'right_solver',@solve_res_1B_enhanced, ...
+        'error_fig_title','Relative Force/Torque Error: Left vs Right 1B Enhanced Resistance', ...
+        'error_ylabel','relative FT error', ...
+        'error_legend','left/right FT error');
+else
+    mode = struct( ...
+        'formulation_name','Mobility', ...
+        'left_solver',@solve_mob_1B_enhanced_left, ...
+        'right_solver',@solve_mob_1B_enhanced, ...
+        'error_fig_title','Relative Rigid-Velocity Error: Left vs Right 1B Enhanced Mobility', ...
+        'error_ylabel','relative UW error', ...
+        'error_legend','left/right UW error');
+end
 end
 
-function [FT,sol] = runSolverQuietly(solver_fun,q,U,W,opt)
-evalc('[FT,sol] = solver_fun(q,U,W,opt);');
+function [q,data1,data2] = buildRandomCase(P,delta,seed)
+rng(seed);
+q = [];
+captured_output = evalc('q = grow_cluster(P,delta,2);'); %#ok<NASGU>
+q = q(:);
+data1 = randn(P,2);
+data2 = randn(P,1);
+end
+
+function [out,sol] = runSolverQuietly(solver_fun,q,data1,data2,opt)
+out = [];
+sol = struct();
+captured_output = evalc('[out,sol] = solver_fun(q,data1,data2,opt);'); %#ok<NASGU>
 end
 
 function plotSolverMetricFigure(P_vec,delta_vec,left_data,right_data, ...
@@ -152,7 +182,7 @@ end
 sgtitle(fig_title,'Interpreter','none');
 end
 
-function plotErrorFigure(P_vec,delta_vec,err_data,err_color,fig_title)
+function plotErrorFigure(P_vec,delta_vec,err_data,err_color,fig_title,y_label,legend_label)
 figure('Color','w','Name',fig_title);
 tiledlayout(numel(delta_vec),1,'TileSpacing','compact','Padding','compact');
 
@@ -160,13 +190,13 @@ for id = 1:numel(delta_vec)
     ax = nexttile;
     hold(ax,'on');
 
-    plotBand(ax,P_vec,squeeze(err_data(id,:,:)),err_color,'left/right FT error');
+    plotBand(ax,P_vec,squeeze(err_data(id,:,:)),err_color,legend_label);
 
     grid(ax,'on');
     box(ax,'on');
     set(ax,'YScale','log');
     title(ax,sprintf('\\delta = %.3g',delta_vec(id)));
-    ylabel(ax,'relative FT error');
+    ylabel(ax,y_label);
     if id == numel(delta_vec)
         xlabel(ax,'number of particles P');
     end

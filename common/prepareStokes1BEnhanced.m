@@ -168,7 +168,7 @@ for k = 1:P
         Aii{k} = Nio;
         [Yk,Uk] = getPseudoFactors(Nio,self_tol,0);
     else
-        Ktar = getKmat2D(rout_body{1},q(1));
+        Ktar = getKmat2D(rout_body{k},q(k));
         L = Ksrc{k}*((Ksrc{k}'*Ksrc{k})\Ksrc{k}');
         A = Nio*(eye(size(L)) - L);
         [Yk,Uk] = getPseudoFactors(A+Ktar*Ksrc{k}',self_tol,0);

@@ -192,10 +192,10 @@ end
 function test_solve_res_1B_enhanced_left
 close all;
 
-delta = 0.5;
+delta = 0.01;
 q = [0; 2+delta];
 q = 0; 
-P = 50;
+P = 3;
 q = grow_cluster(P,delta,2);
 
 U = rand(P,2);
