@@ -71,7 +71,7 @@ opt_mob.surface_error_mode = surface_error_mode;
 opt_mob.gmres_verbose = gmres_verbose;
 opt_mob.rad = rad(1);
 opt_mob.visualise_grid = 1; 
-opt_mob.reuse_pair_basis_by_sep = 1;
+opt_mob.reuse_pair_basis_by_sep = 0;
 
 %% Mobility comparison (input F,T, compare UW)
 printDivider('Mobility comparison (input F,T -> output U,W)');

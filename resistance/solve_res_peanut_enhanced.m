@@ -390,7 +390,30 @@ close all;
 test = 2; 
 delta_pair = 0.2;
 N_peanut = 400; 
+N_c = 150; 
+N_f = 150; 
+visualise = 1; 
+debug = 0;
 
+opt = get2Dparams(1,N_c,N_f);
+opt.delta_pair = delta_pair;
+opt.N_peanut = N_peanut;
+opt.visualise_sol = visualise;
+opt.debug = debug;
+opt.cmap = 1; 
+opt.reuse_pair_basis_by_sep = 1;
+opt.rotation_mode = 'oversampled_fft';
+opt.rotation_oversample = 8;
+opt.visualise_sol = visualise;
+opt.gmres_tol = 1e-8;
+opt.debug = debug;
+%opt.Nclust = 200; 
+%opt.beta = 0.5;
+
+%% Check that parameters make sense
+report = test_pair_corrections_stokes(opt,@solve_mob_peanut_enhanced,@solve_res_peanut_enhanced);
+
+%% Setup test and solve
 if test == 1
     delta = 0.001;
     q = [0; 2+delta; (2+delta)*1i]; %center coordinates
@@ -415,18 +438,10 @@ if test == 1
     W = W(1:2); 
     rad = rad(1:2); 
 
-    gmres_tol = 1e-10;
-    debug = 1; 
 
+    opt.P = 3;
 
-    opt = get2Dparams(P);
-    opt.rad = rad;
-    opt.delta_pair = delta_pair;
-    opt.N_peanut = N_peanut;
-    opt.visualise_sol = visualise;
-    opt.gmres_tol = gmres_tol;
-    opt.debug = debug;
-    opt.cmap = 0; 
+    
     [FT1,sol1] = solve_res_peanut_enhanced(q,U,W,opt);
     debug = 0; 
     [FT2,lambda2,it2,gmres_res2, err2] = solve_res_peanut_images(q,U,W,rad,delta_pair,N_peanut,visualise,0,gmres_tol,debug);
@@ -459,28 +474,15 @@ else
     y = sqrt((2+delta)^2-(1+delta/2)^2);
     q = [0; 2+delta; x+1i*y];
    % P = length(q); 
-    
-    visualise = 1; 
-    %delta = 1;
+
     q = grow_cluster(P,delta,2);
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); 
     %W = zeros(P,1); 
-    gmres_tol = 1e-8;
-    debug = 0;
+    
+    opt.P = P; 
 
-    N_c = 150; 
-    opt = get2Dparams(P,N_c);
-    opt.delta_pair = delta_pair;
-    opt.N_peanut = N_peanut;
-    opt.visualise_sol = visualise;
-    opt.gmres_tol = gmres_tol;
-    opt.debug = debug;
-    opt.cmap = 1; 
-    opt.reuse_pair_basis_by_sep = 1;
-    opt.rotation_mode = 'oversampled_fft';
-    opt.rotation_oversample = 8;
    % opt.rotation_mode = 'fft';
     [FT1p,sol1p] = solve_res_peanut_enhanced(q,U,W,opt);
     opt.reuse_pair_basis_by_sep = 0;

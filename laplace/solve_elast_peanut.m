@@ -313,16 +313,18 @@ opt.visualise_sol = 0;
 opt.debug = 0; % determine system matrix by using matvec with columns of the identity matrix as input
 opt.use_fmm = true;
 opt.gmres_verbose = 0; %no output from gmres
-opt.delta_pair = 0.2; % largest distance where pair corrections are triggered
+opt.delta_pair = 0.5; % largest distance where pair corrections are triggered
 opt.N_peanut = 400; % nodes on peanut separation surface
-opt.gmres_tol = 1e-10;
+opt.gmres_tol = 1e-8;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
-opt.cmap_tol = 1e-8; 
+opt.cmap_tol = 1e-10; 
 opt.reuse_pair_basis_by_sep = 1;
 opt.check_rotations = 0; 
 opt.rotation_mode = 'fft'; 
 opt.rotation_oversample = 8; 
 opt.cmap = 1;
+%% Check that parameters make sense
+report = test_pair_corrections_laplace(opt,@solve_cap_peanut,@solve_elast_peanut);
 
 %% Solve
 [vp,solp] = solve_elast_peanut(q,Q_body,opt);
