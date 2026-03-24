@@ -56,5 +56,6 @@ opt.use_matrix_free_Lc_pair = true; % matrix-free pair rigid projection; set fal
 opt.show_counter = 1; % show progress for pair compressions
 opt.self_correct = 1; % enforce identity diagonal matrices in system matrix
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
+opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares problem
 
 end

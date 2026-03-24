@@ -186,6 +186,17 @@ if debug
     xlabel('Re \lambda')
     ylabel('Im \lambda')
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
+
+    num_min = 3;
+    [e_min,ind] = mink(abs(D),num_min);
+    V_min = V(:,ind);
+    figure()   
+    for k = 1:num_min
+        subplot(num_min,1,k);
+        scatter(real(rout),imag(rout),10,log10(abs(V_min(:,k))),"filled");
+        colorbar
+        axis equal
+    end
 end
 
 disp(' == Solving... == ');
@@ -287,7 +298,7 @@ rng(8);
 
 % Set geometry and data
 R = 2;
-P = 30;
+P = 10;
 delta = 1e-3;
 q = grow_cluster(P,delta,2,R);
 q = (2*R+delta*R)*(0:P-1);
@@ -307,7 +318,7 @@ check_multi_compress = 0;
 N_c = 60; 
 N_f = 60; 
 opt = getLaplace2Dparams(P,R,N_c,N_f);
-opt.delta_pair = 2*R+0.6;
+%opt.delta_pair = 2*R+0.6;
 %opt.delta_pair = 4*R+0.6; %not better
 %opt.delta_pair = 0.4;
 opt.Nclust = 100;
@@ -315,12 +326,12 @@ opt.N_peanut = 400;
 opt.visualise_sol = 1;
 opt.visualise_grid = 0; 
 opt.gmres_tol = 1e-8;
-opt.debug = 0;
+opt.debug = 1;
 opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.compress_cmap = 0; %use low rank approximation of coarse-coarse map
 opt.cmap_tol = 1e-8; % tolerance used in the low-rank compression
-opt.reuse_pair_basis_by_sep = 1;
+opt.reuse_pair_basis_by_sep = 0;
 opt.get_bndry_field = 1; 
 
 %tic

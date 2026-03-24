@@ -39,6 +39,8 @@ if ~any(strcmp(surface_error_mode,{'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.');
 end
 
+solver_name = 'res_1B_right';
+
 opt.visualise_sol = visualise_sol;
 opt.gmres_tol = gmres_tol;
 opt.gmres_verbose = gmres_verbose;
@@ -79,6 +81,23 @@ if debug
     title([mfilename ': log_{10} |matvec system matrix|'],'interpreter','none')
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
+
+    figure();
+    [V,D] = eig(CC);
+    D = diag(D); 
+    plot(real(D),imag(D),'b+')
+    title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
+
+    rout = geom.rout;
+    num_min = 2;
+    [e_sel,ind] = mink(real(D),num_min);
+    V_sel = V(:,ind);
+    figure()   
+    for k = 1:num_min
+        subplot(num_min,1,k);
+        quiver(real(rout),imag(rout),V_sel(1:end/2,k),V_sel(end/2+1:end,k));
+        axis equal
+    end
 end
 
 %% Solve
@@ -188,13 +207,20 @@ end
 function test_solve_res_1B_enhanced
 close all;
 
-delta = 0.001; 
-q = [0; 2+delta];
-U = [1 0; -1 0];
-W = [1; -1];
+delta = 10; 
+q = [0; 2+delta; (2+delta)*1i];
+U = [1 0; -1 0; 1 1];
+W = [1; -1; 1];
+
+P = 5;
+q = grow_cluster(P,delta,2);
+U = rand(P,2); 
+W = rand(P,1); 
 rad = ones(numel(q),1);
 
-opt = get2Dparams(numel(q));
+N_c = 60; 
+N_f = 60; 
+opt = get2Dparams(numel(q),N_c,N_f);
 opt.rad = rad(1);
 opt.delta_pair = 0.2;
 opt.visualise_sol = 1;
@@ -202,7 +228,7 @@ opt.visualise_grid = 1;
 opt.get_bndry_field = 1;
 opt.gmres_tol = 1e-10;
 opt.gmres_verbose = 0;
-opt.debug = 0;
+opt.debug = 1;
 opt.maxit = 800;
 opt.use_fmm = true;
 %opt.beta = 0.5;

@@ -200,10 +200,21 @@ if debug
     cc = skeel(CC);
     fprintf('Estimated condition number of system matrix: %1.3e \n',cc);
     figure();
-    [~,D] = eig(CC);
+    [V,D] = eig(CC);
     D = diag(D); 
     plot(real(D),imag(D),'b+')
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
+
+
+    num_min = 3;
+    [e_max,ind] = maxk(D,num_min);
+    V_min = V(:,ind);
+    figure()   
+    for k = 1:num_min
+        subplot(num_min,1,k);
+        quiver(real(rout),imag(rout),V_min(1:end/2,k),V_min(end/2+1:end,k));
+        axis equal
+    end
 end
 
 disp(' == Solving... == ');
@@ -389,11 +400,12 @@ function test_solve_res
 close all; 
 test = 2; 
 delta_pair = 0.2;
+%delta_pair = 2+0.4; 
 N_peanut = 400; 
 N_c = 150; 
 N_f = 150; 
 visualise = 1; 
-debug = 0;
+debug = 1;
 
 opt = get2Dparams(1,N_c,N_f);
 opt.delta_pair = delta_pair;
@@ -468,7 +480,7 @@ if test == 1
 else
 
     rng(9);
-    P = 20;
+    P = 5;
     delta = 0.001; %P = 5
     x = 1+delta/2;
     y = sqrt((2+delta)^2-(1+delta/2)^2);
@@ -476,12 +488,14 @@ else
    % P = length(q); 
 
     q = grow_cluster(P,delta,2);
+    q = (2+delta)*(0:P-1); 
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); 
     %W = zeros(P,1); 
     
     opt.P = P; 
+
 
    % opt.rotation_mode = 'fft';
     [FT1p,sol1p] = solve_res_peanut_enhanced(q,U,W,opt);

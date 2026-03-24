@@ -231,6 +231,19 @@ if debug
     xlabel('Re \lambda')
     ylabel('Im \lambda')
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
+
+    num_min = 3;
+    [e_min,ind] = mink(abs(D),num_min);
+    V_min = V(:,ind);
+    figure()   
+    for k = 1:num_min
+        subplot(num_min,1,k);
+        quiver(real(rout),imag(rout),V_min(1:end/2,k),V_min(end/2+1:end,k));
+        axis equal
+    end
+   
+
+
 end
 
 disp(' == Solving... == ');
@@ -427,24 +440,26 @@ close all;
 q = [0; 2.001; 2.001i]; %center coordinates
 
 delta = 1e-3;
-P = 80;
+%delta = 0.5; 
+P = 20;
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
 %P = 20; 
 side = 2 + delta;               % neighbor center distance
 R = side / (2*sin(pi/P));         % ring radius
-q = R * exp(1i * (0:P-1).' * (2*pi/P));
+%q = R * exp(1i * (0:P-1).' * (2*pi/P));
 
 %q(1) = 8;
 %q = q+5; 
 %q = q-q(1);´
 
 rng(8);
-q = grow_cluster(P,delta,2);
+%q = grow_cluster(P,delta,2);
 %q = [0; 2+delta]*1i;
-rings = 2;
+rings = 1;
 q = hexagonal_lattice(delta,rings,1);
+%q = [q(4);q(end-1:end)];
 
 P = length(q);
 F = [real(q) imag(q)];
@@ -458,10 +473,11 @@ rad = ones(size(q));
 %T = [1; 1; 1; -1]; %torques on the particles
 %rad = [1; 1; 1; 1]; 
 
-%F = F-mean(F); %zero total force
+F = F-mean(F); %zero total force
 
 
 delta_pair = 0.2;
+%delta_pair = 2+0.4;
 visualise = 1; % one-body solve specific
 %% Solve
 %[UW1,lambdahat,it1,gmres_tol, err1] = solve_mob_2B_images(q,F,T,rad,delta_pair,visualise);
@@ -476,11 +492,13 @@ debug = 0;
 %[UW1,lambda_mob,it1,gmres_tol,err1] = solve_mob_1B(q,F,T,rad,images, lr, visualise);
 N_c = 150;
 N_f = 150;
+N_c = 60;
+N_f = 60;
 opt = get2Dparams(P,N_c,N_f);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
 opt.visualise_sol = 1;
-opt.visualise_grid = 0; 
+opt.visualise_grid = 1; 
 opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
@@ -489,7 +507,9 @@ opt.reuse_pair_basis_by_sep = 1;
 opt.cmap = 1; % coarse to coarse compression?
 opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
-opt.beta = 0.3;
+opt.pair_basis_debug = 0; 
+% opt.beta = 0.5;
+% opt.Nclust = 200;
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 
 % opt.reuse_pair_basis_by_sep = 0;
 % [UWp2,solp2] = solve_mob_peanut_enhanced(q,F,T,opt); 

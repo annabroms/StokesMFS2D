@@ -17,13 +17,23 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c
 
 q = q(:);
 P = opt.P;
-N_peanut = getOptField(opt,'N_peanut',0);
-use_pair_observable_map = logical(getOptField(opt,'cmap',false));
-get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
-reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
-use_dense = logical(getOptField(opt,'use_dense',false));
 
-shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-2);
+N_peanut = opt.N_peanut; % number of peanut collocation nodes
+use_pair_map = opt.cmap; % use coarse-to-coarse compression?
+get_bndry_field = opt.get_bndry_field; % evaluate flow field on boundary? 
+% If so, the mapping to recover fine sources must be stored
+reuse_pair_basis = opt.reuse_pair_basis_by_sep; % determine one compression per separation?
+shared_sep_tol = opt.shared_sep_tol; % tolerance for what is considered the same separation.
+use_dense = opt.use_dense; 
+
+%Draw pair discretisation for debugging purpose?
+debug = opt.pair_basis_debug;
+%Show progress for building pair basis?
+show_counter = opt.show_counter; 
+% Need fine sources explicitly?
+need_explicit_pair_sources = (N_peanut == 0) || ~use_pair_map || get_bndry_field;
+
+
 pair_rad = getOptField(opt,'rad',1);
 if numel(pair_rad) > 1
     pair_rad = pair_rad(1);
@@ -37,18 +47,6 @@ if ~isempty(rout_base_c)
 end
 
 
-%Draw pair discretisation for debugging?
-if isfield(opt,'pair_basis_debug') && ~isempty(opt.pair_basis_debug)
-    debug = logical(opt.pair_basis_debug);
-else
-    debug = false;
-end
-
-%Show progress for building pair basis?
-show_counter = opt.show_counter; 
-
-% Need fine sources explicitly?
-need_explicit_pair_sources = (N_peanut == 0) || ~use_pair_observable_map || get_bndry_field;
 
 if reuse_pair_basis
     Uf = [];
@@ -58,7 +56,7 @@ if reuse_pair_basis
     Cmap = [];
     Cmap_FU = [];
 else
-    [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs(P,N_peanut,use_pair_observable_map,need_explicit_pair_sources);
+    [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs(P,N_peanut,use_pair_map,need_explicit_pair_sources);
 end
 
 pair_cache = init_pair_cache();
@@ -85,13 +83,13 @@ if ~reuse_pair_basis
             Uf{i,p2} = pair.Upf;
             Yf{i,p2} = pair.Ypf;
         end
-        if N_peanut && ~use_pair_observable_map
+        if N_peanut && ~use_pair_map
             Up{i,p2} = pair.DC;
             Yp{i,p2} = pair.YC;
-        elseif N_peanut && use_pair_observable_map
+        elseif N_peanut && use_pair_map
             Cmap{i,p2} = pair.Cmap;
         end
-        if use_pair_observable_map
+        if use_pair_map
             Cmap_FU{i,p2} = pair.Cmap_FU;
         end
 
@@ -123,7 +121,7 @@ covered_pairs = 0;
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
         q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
-        need_explicit_pair_sources,debug);
+        need_explicit_pair_sources,false);
 
     if show_counter
         rep_i = pairs(rep_rows(gg),1);
@@ -133,6 +131,15 @@ for gg = 1:n_groups
         fprintf(['getPairBasisStokes: processed canonical group %d/%d ', ...
             'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
             gg,n_groups,rep_i,rep_j,group_sep(gg)-2*pair_rad,n_rep,covered_pairs,total_pairs);
+    end
+end
+
+if debug
+    % In reuse mode, canonical groups are only built for representative
+    % pairs. Run the debug LS checks on every actual pair as requested.
+    for row = 1:size(pairs,1)
+        build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs, ...
+            opt,Lc,row,debug,false);
     end
 end
 
@@ -154,7 +161,7 @@ end
 
 end
 
-function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs(P,N_peanut,use_pair_observable_map,need_explicit_pair_sources)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs(P,N_peanut,use_pair_map,need_explicit_pair_sources)
 if need_explicit_pair_sources
     Uf = cell(P);
     Yf = cell(P);
@@ -163,7 +170,7 @@ else
     Yf = [];
 end
 
-if N_peanut && ~use_pair_observable_map
+if N_peanut && ~use_pair_map
     Up = cell(P);
     Yp = cell(P);
 else
@@ -171,13 +178,13 @@ else
     Yp = [];
 end
 
-if N_peanut && use_pair_observable_map
+if N_peanut && use_pair_map
     Cmap = cell(P);
 else
     Cmap = [];
 end
 
-if use_pair_observable_map
+if use_pair_map
     Cmap_FU = cell(P);
 else
     Cmap_FU = [];
@@ -433,6 +440,11 @@ if logical(getOptField(opt,'cmap',false))
     pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);
 end
 
+if debug
+    run_pair_lsq_debug_test(i,j,row,q_pair,rbase_in_c,rin_pair,Upf,Yf_pair, ...
+        Lf_pair,Kf1,Kf2,Lc_pair,pair.DC,pair.YC,rout_f,Npair,opt);
+end
+
 pair.Upair_colloc = [];
 pair.Ucross_colloc = [];
 pair.Ecolloc = [];
@@ -443,6 +455,245 @@ if project_force
     pair.Ecolloc = stokSLPmat(rin_pair_c,rout_pair_c,1);
     pair.Ucross_colloc = build_cross_pair_velocity_map(pair.Ecolloc,N_c,numel(rout_base_c));
 end
+end
+
+function run_pair_lsq_debug_test(i,j,row,q_pair,rbase_in_c,rin_pair,Upf,Yf_pair, ...
+    Lf_pair,Kf1,Kf2,Lc_pair,DC,YC,rout_pair,Npair_colloc,opt)
+% Debug-only check of the two LS problems used in getPairBasisStokes.
+%
+% LS1 right-hand side is denoted r_pair in this file:
+%   r_pair = -Npair * [lambda_1x; lambda_2x; lambda_1y; lambda_2y]
+% where lambda_1 and lambda_2 are coarse source vectors on each particle.
+%
+% LS2 uses Ntot:
+%   Ntot = Nf - Nf*Lf_pair  (mobility)
+%   Ntot = Nf               (resistance)
+
+N_c = opt.N_c;
+[lambda_1,lambda_2] = build_pair_debug_rhs(N_c,row,opt);
+rhs_pair = [lambda_1(1:N_c); lambda_2(1:N_c); ...
+    lambda_1(N_c+1:end); lambda_2(N_c+1:end)];
+
+pair_mapped = Upf*rhs_pair;
+beta = Yf_pair*pair_mapped;
+
+nout_test = 2*length(rout_pair);
+ntest_half = nout_test/2;
+rout_pair_test = build_gap_refined_pair_boundary_nodes(q_pair,ntest_half);
+
+S_test = stokSLPmat(rin_pair,rout_pair_test,1);
+if isempty(Lf_pair)
+    A_test = S_test;
+else
+    B1_test = getKmat2D(rout_pair_test(1:ntest_half),q_pair(1));
+    B2_test = getKmat2D(rout_pair_test(ntest_half+1:end),q_pair(2));
+    Lr_test = getLrPair(B1_test,B2_test,Kf1,Kf2);
+    A_test = S_test-S_test*Lf_pair+Lr_test;
+end
+
+Npair_test = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_pair_test);
+r_pair_test = -Npair_test*rhs_pair;
+ls1_res = A_test*beta-r_pair_test;
+[ls1_abs_inf,ls1_abs_pw,ls1_rel,ls1_rel_pw] = pairwise_error_metrics(ls1_res,r_pair_test);
+
+S_colloc = stokSLPmat(rin_pair,rout_pair,1);
+if isempty(Lf_pair)
+    A_colloc = S_colloc;
+else
+    B1_colloc = getKmat2D(rout_pair(1:end/2),q_pair(1));
+    B2_colloc = getKmat2D(rout_pair(end/2+1:end),q_pair(2));
+    Lr_colloc = getLrPair(B1_colloc,B2_colloc,Kf1,Kf2);
+    A_colloc = S_colloc-S_colloc*Lf_pair+Lr_colloc;
+end
+r_pair_colloc = -Npair_colloc*rhs_pair;
+ls1_res_colloc = A_colloc*beta-r_pair_colloc;
+[ls1_abs_inf_colloc,ls1_abs_pw_colloc,ls1_rel_colloc,ls1_rel_pw_colloc] = ...
+    pairwise_error_metrics(ls1_res_colloc,r_pair_colloc);
+
+fig1 = 8400 + 2*(row-1) + 1;
+plot_abs_rel_error_compare(fig1,ls1_abs_pw,ls1_abs_pw_colloc, ...
+    ls1_rel_pw,ls1_rel_pw_colloc,'Boundary node number', ...
+    sprintf(['Pair (%d,%d) LSQ for fine sources: abs_{inf} off/coll = %.3e / %.3e, ', ...
+    'rel_{inf} off/coll = %.3e / %.3e'], ...
+    i,j,ls1_abs_inf,ls1_abs_inf_colloc,ls1_rel,ls1_rel_colloc));
+
+ls2_rel = NaN;
+ls2_rel_colloc = NaN;
+ls2_abs_inf = NaN;
+ls2_abs_inf_colloc = NaN;
+if ~isempty(DC) && ~isempty(YC) && (getOptField(opt,'N_peanut',0) > 0)
+    rout_peanut_colloc = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
+    n_peanut_test = 2*length(rout_peanut_colloc);
+    rout_peanut_test = createPeanut(q_pair(1),q_pair(2),n_peanut_test,0);
+
+    rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
+    Nf_test = stokSLPmat(rin_pair,rout_peanut_test,1);
+    if isempty(Lf_pair)
+        Ntot_test = Nf_test;
+    else
+        Ntot_test = Nf_test-Nf_test*Lf_pair;
+    end
+
+    Npeanut_test = stokSLPmat(rin_pair_c,rout_peanut_test,1);
+    if ~isempty(Lc_pair)
+        Npeanut_test = Npeanut_test*Lc_pair;
+    end
+
+    tau_peanut = YC*(DC*beta);
+    rhs2 = Ntot_test*beta;
+    ls2_res = Npeanut_test*tau_peanut-rhs2;
+    [ls2_abs_inf,ls2_abs_pw,ls2_rel,ls2_rel_pw] = pairwise_error_metrics(ls2_res,rhs2);
+
+    Nf_colloc = stokSLPmat(rin_pair,rout_peanut_colloc,1);
+    if isempty(Lf_pair)
+        Ntot_colloc = Nf_colloc;
+    else
+        Ntot_colloc = Nf_colloc-Nf_colloc*Lf_pair;
+    end
+    Npeanut_colloc = stokSLPmat(rin_pair_c,rout_peanut_colloc,1);
+    if ~isempty(Lc_pair)
+        Npeanut_colloc = Npeanut_colloc*Lc_pair;
+    end
+    rhs2_colloc = Ntot_colloc*beta;
+    ls2_res_colloc = Npeanut_colloc*tau_peanut-rhs2_colloc;
+    [ls2_abs_inf_colloc,ls2_abs_pw_colloc,ls2_rel_colloc,ls2_rel_pw_colloc] = ...
+        pairwise_error_metrics(ls2_res_colloc,rhs2_colloc);
+
+    fig2 = fig1 + 1;
+    plot_abs_rel_error_compare(fig2,ls2_abs_pw,ls2_abs_pw_colloc, ...
+        ls2_rel_pw,ls2_rel_pw_colloc,'boundary node number', ...
+        sprintf(['Pair (%d,%d) peanut LSQ problem: abs_{inf} off/coll = %.3e / %.3e, ', ...
+        'rel_{inf} off/coll = %.3e / %.3e'], ...
+        i,j,ls2_abs_inf,ls2_abs_inf_colloc,ls2_rel,ls2_rel_colloc));
+end
+
+fprintf(['getPairBasisStokes debug pair (%d,%d): ', ...
+    'LSQ fine absinf off/coll = %.3e / %.3e, LS1 relinf off/coll = %.3e / %.3e, ', ...
+    'LSQ peanut absinf off/coll = %.3e / %.3e, LS2 relinf off/coll = %.3e / %.3e\n'], ...
+    i,j,ls1_abs_inf,ls1_abs_inf_colloc,ls1_rel,ls1_rel_colloc, ...
+    ls2_abs_inf,ls2_abs_inf_colloc,ls2_rel,ls2_rel_colloc);
+end
+
+function [lambda_1,lambda_2] = build_pair_debug_rhs(N_c,row,opt)
+has_lam1 = isfield(opt,'pair_basis_lambda_1') && ~isempty(opt.pair_basis_lambda_1);
+has_lam2 = isfield(opt,'pair_basis_lambda_2') && ~isempty(opt.pair_basis_lambda_2);
+if has_lam1 || has_lam2
+    if ~(has_lam1 && has_lam2)
+        error(['pair_basis_lambda_1 and pair_basis_lambda_2 must be set ', ...
+            'together when debug is enabled.']);
+    end
+    lambda_1 = opt.pair_basis_lambda_1(:);
+    lambda_2 = opt.pair_basis_lambda_2(:);
+    if numel(lambda_1) ~= 2*N_c || numel(lambda_2) ~= 2*N_c
+        error('pair_basis_lambda_1 and pair_basis_lambda_2 must each have length 2*N_c.');
+    end
+    return
+end
+
+t = linspace(0,2*pi,N_c+1)';
+t = t(1:end-1);
+phi = 0.37*row;
+
+lambda1_x = cos(t+phi) + 0.35*sin(2*t-0.2) + 0.15*cos(3*t+0.7);
+lambda1_y = 0.8*lambda1_x - 0.3*sin(3*t+phi);
+lambda2_x = sin(t-0.3*phi) - 0.25*cos(2*t+0.4) + 0.12*sin(4*t-0.9);
+lambda2_y = -0.6*lambda2_x + 0.2*cos(2*t-phi);
+
+lambda_1 = [lambda1_x; lambda1_y];
+lambda_2 = [lambda2_x; lambda2_y];
+end
+
+function rout_pair = build_gap_refined_pair_boundary_nodes(q_pair,nout)
+% Build off-collocation check nodes with:
+% 1) a uniform set over the whole boundary, and
+% 2) an extra local cluster near the pair gap using a Mobius angle map.
+% Gap point on each particle is the point facing the other center.
+delta = q_pair(2)-q_pair(1);
+if abs(delta) == 0
+    gap_theta_1 = 0;
+else
+    gap_theta_1 = angle(delta);
+end
+gap_theta_2 = mod(gap_theta_1+pi,2*pi);
+
+% Split between globally uniform nodes and locally clustered nodes.
+n_uniform = max(8,round(0.45*nout));
+n_uniform = min(n_uniform,nout);
+n_cluster = nout - n_uniform;
+
+tu = linspace(0,2*pi,n_uniform+1)';
+tu = tu(1:end-1) + pi/n_uniform;
+tu = mod(tu,2*pi);
+
+tc = zeros(0,1);
+if n_cluster > 0
+    % Build a Mobius-mapped angle pool and keep the nodes closest to 0,
+    % i.e. closest to the local gap direction.
+    r_mob = 0.88;
+    npool = max(8*n_cluster,128);
+    tseed = linspace(0,2*pi,npool+1)';
+    tseed = tseed(1:end-1);
+    tmob = sort(mobius_angle_map(tseed,r_mob));
+    dgap = min(abs(tmob),2*pi-abs(tmob));
+    [~,ord] = sort(dgap,'ascend');
+    tc = tmob(ord(1:n_cluster));
+end
+
+t_local = sort(mod([tu; tc],2*pi));
+
+t1 = mod(gap_theta_1 + t_local,2*pi);
+t2 = mod(gap_theta_2 + t_local,2*pi);
+rout_1 = q_pair(1) + exp(1i*t1);
+rout_2 = q_pair(2) + exp(1i*t2);
+rout_pair = [rout_1; rout_2];
+end
+
+function theta = mobius_angle_map(t,r)
+% Same Mobius map form used in geometry/pair_clusters_ellipse.m.
+z = exp(1i*t);
+w = (z-r)./(1-r*z);
+theta = mod(angle(w),2*pi);
+end
+
+function [abs_inf,abs_pw,rel_inf,rel_pw] = pairwise_error_metrics(err_vec,ref_vec)
+n = numel(err_vec)/2;
+err_x = err_vec(1:n);
+err_y = err_vec(n+1:end);
+ref_x = ref_vec(1:n);
+ref_y = ref_vec(n+1:end);
+
+abs_pw = hypot(err_x,err_y);
+abs_inf = max(abs_pw);
+ref_mag = hypot(ref_x,ref_y);
+ref_scale = max(ref_mag);
+den = max(ref_mag,1e-14*max(1,ref_scale));
+rel_pw = abs_pw./den;
+rel_inf = norm(err_vec,inf)/max(1,norm(ref_vec,inf));
+end
+
+function plot_abs_rel_error_compare(fig_id,abs_off,abs_coll,rel_off,rel_coll,xlab,tstr)
+figure(fig_id);
+clf;
+subplot(2,1,1);
+semilogy(abs_off + eps,'b-','LineWidth',1.2);
+hold on;
+semilogy(abs_coll + eps,'k--','LineWidth',1.2);
+grid on;
+ylabel('Absolute error');
+legend('new nodes','collocation','Location','best');
+title(tstr,'Interpreter','none');
+axis tight;
+
+subplot(2,1,2);
+semilogy(rel_off + eps,'r-','LineWidth',1.2);
+hold on;
+semilogy(rel_coll + eps,'m--','LineWidth',1.2);
+grid on;
+xlabel(xlab);
+ylabel('Relative error');
+legend('new nodes','collocation','Location','best');
+axis tight;
+
 end
 
 function pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
