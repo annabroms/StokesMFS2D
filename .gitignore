@@ -4,8 +4,12 @@
 
 # folders to ignore
 data/
-visuals/
 anna_test/
+visuals/*
+!visuals/tikz/
+!visuals/tikz/**
+!visuals/matlab_gen/
+!visuals/matlab_gen/**
 
 ## Core latex/pdflatex auxiliary files:
 *.aux
