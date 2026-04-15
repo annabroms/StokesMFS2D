@@ -1,9 +1,10 @@
-function [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair)
+function [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair, svd_opts)
 %GETPEANUTBLOCKSTOKES Computes factorization for peanut compression for two circular particles
 % in Stokes flow using the method of fundamental solutions (MFS)
 %
 % Syntax:
 %   [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair)
+%   [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair, svd_opts)
 %
 % Inputs:
 %   rin_pair_c  - Complex vector of proxy source coordinates on both particles (coarse grid)
@@ -41,6 +42,10 @@ function [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_
 %
 % Anna Broms, Feb 12, 2026
 
+if nargin < 6 || isempty(svd_opts)
+    svd_opts = struct();
+end
+
 mu = 1; 
 
 %% Get fine representation: fine proxy grid of Stokeslets, evaluated on peanut boundary 
@@ -73,8 +78,13 @@ tol = 1e-14;
 %tol = eps; 
 %tol = 1e-8; 
 
+svd_opts_local = svd_opts;
+if logical(getOptField(svd_opts,'left_weight',false))
+    svd_opts_local.row_weights = getPeriodicCurveWeights(rout_peanut);
+end
+
 %Determine factors for the pseudoinverse of the coarse evaluation
-[Y,U]  = getPseudoFactors(Npeanut,tol,0);
+[Y,U]  = getPseudoFactors(Npeanut,tol,0,svd_opts_local);
 %Get mapping to determine (coarse sources) lambda <- beta (fine sources) 
 DC = U'*Ntot;
 

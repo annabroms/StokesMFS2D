@@ -13,7 +13,7 @@ geom_seed = 1;
 load_seed = 11;
 
 % Geometry
-P = 100;
+P = 20;
 rad = 1;
 domain = 'boxed';
 phi = 0.65;
@@ -22,7 +22,7 @@ n_sweeps = 30;
 visualise_geometry = false;
 
 % Solver
-N_c = 80;
+N_c = 60;
 N_f = 150;
 N_peanut = 400;
 delta_pair = 0.2;
@@ -98,7 +98,7 @@ fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
 FT_ref = packFT(F,T);
 UW_ref = packUW(U,W);
 
-for k = 1:numel(methods)
+for k = 2:numel(methods)
     results(k).name = methods(k).name;
     results(k).label = methods(k).label;
 
@@ -108,19 +108,19 @@ for k = 1:numel(methods)
     results(k).mob_time = toc;
     results(k).mob_gmres_residual = final_gmres_residual(results(k).mob_sol);
 
-    % fprintf('Running %s resistance...\n',methods(k).label);
-    % tic;
-    % [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
-    % results(k).res_time = toc;
-    % results(k).res_gmres_residual = final_gmres_residual(results(k).res_sol);
-    % 
-    % [Uk,Wk] = unpackUW(results(k).UW);
-    % [FT_back,~] = methods(k).res_solver(q,Uk,Wk,opt);
-    % results(k).two_way_mob_to_res = relerr_inf(FT_back,FT_ref);
-    % 
-    % [Fk,Tk] = unpackFT(results(k).FT);
-    % [UW_back,~] = methods(k).mob_solver(q,Fk,Tk,opt);
-    % results(k).two_way_res_to_mob = relerr_inf(UW_back,UW_ref);
+    fprintf('Running %s resistance...\n',methods(k).label);
+    tic;
+    [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
+    results(k).res_time = toc;
+    results(k).res_gmres_residual = final_gmres_residual(results(k).res_sol);
+
+    [Uk,Wk] = unpackUW(results(k).UW);
+    [FT_back,~] = methods(k).res_solver(q,Uk,Wk,opt);
+    results(k).two_way_mob_to_res = relerr_inf(FT_back,FT_ref);
+
+    [Fk,Tk] = unpackFT(results(k).FT);
+    [UW_back,~] = methods(k).mob_solver(q,Fk,Tk,opt);
+    results(k).two_way_res_to_mob = relerr_inf(UW_back,UW_ref);
 end
 
 fprintf('\nMobility results:\n');

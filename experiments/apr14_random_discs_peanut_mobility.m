@@ -1,6 +1,8 @@
 close all;
 clc;
 
+script_name = mfilename;
+script_date = 'Apr 14, 2026';
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 if ~isempty(repo_root)
     addpath(genpath(repo_root));
@@ -9,7 +11,7 @@ end
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 200;
+geom.P = 400;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -23,6 +25,14 @@ mc.show_generation_plot = false;
 % Applied loads
 loads.rng_seed = 11;
 
+% Data I/O
+% Use io.save_results = true together with plots.make_figure = false to
+% run the solve and store raw data without plotting. Later, set
+% io.load_results = true to load the saved data and plot without rerunning.
+io.load_results = false;
+io.save_results = false;
+io.data_filename = [script_name '_results.mat'];
+
 % Solver
 solver.N_c = 60;
 solver.N_f = 150;
@@ -30,6 +40,7 @@ solver.N_peanut = 400;
 solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-8;
 solver.maxit = 1000;
+solver.get_precomp_time = true;
 
 % Reporting and visualisation
 report.count_close_pairs = (geom.P <= 3000) && strcmp(geom.domain,'boxed');
@@ -54,68 +65,133 @@ else
     plots.disk_points_full = 18;
 end
 
-geom_opt = struct();
-geom_opt.domain = geom.domain;
-geom_opt.phi = geom.phi;
-geom_opt.rad = geom.rad;
-geom_opt.min_gap = geom.min_gap;
-geom_opt.n_sweeps = mc.n_sweeps;
-geom_opt.rng_seed = mc.rng_seed;
-geom_opt.visualise = mc.show_generation_plot;
-
-[q, geom_meta] = random_discs_mc(geom.P, geom_opt);
-
-n_close = nan;
-if report.count_close_pairs
-    n_close = count_close_pairs(q, solver.delta_pair, geom.rad);
-elseif strcmp(geom.domain,'periodic')
-    fprintf('Close-pair count skipped: count_close_pairs is not periodic-image aware.\n');
-else
-    fprintf('Close-pair count skipped.\n');
+if io.load_results && io.save_results
+    error('apr14_random_discs_peanut_mobility:ConflictingIO', ...
+        'Choose either io.load_results or io.save_results, not both.');
 end
 
-opt = get2Dparams(geom.P, solver.N_c, solver.N_f);
-opt.rad = geom.rad;
-opt.delta_pair = solver.delta_pair;
-opt.N_peanut = solver.N_peanut;
-opt.gmres_tol = solver.gmres_tol;
-opt.maxit = solver.maxit;
-opt.visualise_sol = 0;
-opt.visualise_grid = 0;
-opt.debug = 0;
-opt.gmres_verbose = 0;
-opt.surface_error_mode = 'rel';
-opt.reuse_pair_basis_by_sep = false;
-opt.show_counter = 1;
-opt.cmap = 1;
-opt.self_correct = 1;
-opt.use_dense = 1;
-opt.get_bndry_field = 1;
+data_path = fullfile(repo_root,'data',io.data_filename);
 
-rng(loads.rng_seed,'twister');
-F = randn(geom.P,2);
-F = F - mean(F,1);
-T = randn(geom.P,1);
-T = ones(geom.P,1);
-F = zeros(geom.P,2);
+if io.load_results
+    if ~isfile(data_path)
+        error('apr14_random_discs_peanut_mobility:MissingDataFile', ...
+            'Could not find saved results file: %s', data_path);
+    end
+    loaded = load(data_path,'results');
+    if ~isfield(loaded,'results')
+        error('apr14_random_discs_peanut_mobility:BadDataFile', ...
+            'The data file %s does not contain a ''results'' struct.', data_path);
+    end
+    results = loaded.results;
+    fprintf('Loaded results from %s\n', data_path);
+else
+    geom_opt = struct();
+    geom_opt.domain = geom.domain;
+    geom_opt.phi = geom.phi;
+    geom_opt.rad = geom.rad;
+    geom_opt.min_gap = geom.min_gap;
+    geom_opt.n_sweeps = mc.n_sweeps;
+    geom_opt.rng_seed = mc.rng_seed;
+    geom_opt.visualise = mc.show_generation_plot;
 
-tic;
-[UW, sol] = solve_mob_peanut_enhanced(q, F, T, opt);
-solve_time = toc;
+    [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
-[U, W] = unpack_UW(UW);
-body_forcing = sqrt(sum(F.^2,2) + (T/geom.rad).^2);
-body_speed = sqrt(sum(U.^2,2)) + geom.rad*abs(W);
-body_residual = sol.body_rel_res_max;
-gmres_residual = final_gmres_residual(sol);
+    n_close = nan;
+    if report.count_close_pairs
+        n_close = count_close_pairs(q, solver.delta_pair, geom.rad);
+    elseif strcmp(geom.domain,'periodic')
+        fprintf('Close-pair count skipped: count_close_pairs is not periodic-image aware.\n');
+    else
+        fprintf('Close-pair count skipped.\n');
+    end
+
+    opt = get2Dparams(geom.P, solver.N_c, solver.N_f);
+    opt.rad = geom.rad;
+    opt.delta_pair = solver.delta_pair;
+    opt.N_peanut = solver.N_peanut;
+    opt.gmres_tol = solver.gmres_tol;
+    opt.maxit = solver.maxit;
+    opt.visualise_sol = 0;
+    opt.visualise_grid = 0;
+    opt.debug = 0;
+    opt.gmres_verbose = 0;
+    opt.surface_error_mode = 'rel';
+    opt.reuse_pair_basis_by_sep = false;
+    opt.show_counter = 1;
+    opt.cmap = 1;
+    opt.self_correct = 1;
+    opt.use_dense = 1;
+    opt.get_bndry_field = 1;
+    opt.get_precomp_time = solver.get_precomp_time;
+
+    rng(loads.rng_seed,'twister');
+    F = randn(geom.P,2);
+    F = F - mean(F,1);
+    T = randn(geom.P,1);
+    T = ones(geom.P,1);
+    F = zeros(geom.P,2);
+
+    tic;
+    [UW, sol] = solve_mob_peanut_enhanced(q, F, T, opt);
+    solve_time = toc;
+
+    [U, W] = unpack_UW(UW);
+    body_forcing = sqrt(sum(F.^2,2) + (T/geom.rad).^2);
+    body_speed = sqrt(sum(U.^2,2)) + geom.rad*abs(W);
+    body_residual = sol.body_rel_res_max;
+    gmres_residual = final_gmres_residual(sol);
+
+    results = struct();
+    results.script_name = script_name;
+    results.script_date = script_date;
+    results.geom = geom;
+    results.mc = mc;
+    results.loads = loads;
+    results.solver = solver;
+    results.report = report;
+    results.geom_meta = geom_meta;
+    results.q = q;
+    results.n_close = n_close;
+    results.F = F;
+    results.T = T;
+    results.UW = UW;
+    results.sol = sol;
+    results.solve_time = solve_time;
+    results.body_forcing = body_forcing;
+    results.body_speed = body_speed;
+    results.body_residual = body_residual;
+    results.gmres_residual = gmres_residual;
+    results.opt = opt;
+
+    if io.save_results
+        save(data_path,'results');
+        fprintf('Saved results to %s\n', data_path);
+    end
+end
+
+geom_run = results.geom;
+solver_run = results.solver;
+geom_meta = results.geom_meta;
+q = results.q;
+n_close = results.n_close;
+F = results.F;
+T = results.T;
+UW = results.UW;
+sol = results.sol;
+solve_time = results.solve_time;
+body_forcing = results.body_forcing;
+body_speed = results.body_speed;
+body_residual = results.body_residual;
+gmres_residual = results.gmres_residual;
+opt = results.opt;
 
 fprintf('Geometry:\n');
 fprintf('  domain=%s, P=%d, phi_target=%.6f, phi=%.6f, L=%.6f\n', ...
-    geom_meta.domain, geom.P, geom_meta.phi_target, geom_meta.phi, geom_meta.L);
+    geom_meta.domain, geom_run.P, geom_meta.phi_target, geom_meta.phi, geom_meta.L);
 fprintf('  min allowed gap=%.3e, measured min gap=%.3e\n', ...
     geom_meta.min_gap, geom_meta.min_surface_gap);
-if report.count_close_pairs
-    fprintf('  close pairs below delta_pair=%.3f: %d\n', solver.delta_pair, n_close);
+if isfinite(n_close)
+    fprintf('  close pairs below delta_pair=%.3f: %d\n', solver_run.delta_pair, n_close);
 end
 
 fprintf('Solver:\n');
@@ -123,6 +199,13 @@ fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
     opt.N_c, opt.N_f, opt.N_peanut, opt.gmres_tol);
 fprintf('  iterations=%d, unknowns=%d, gmres_res=%.3e, surf_rel=%.3e, time=%.2fs\n', ...
     sol.it, sol.gmres_unknowns, gmres_residual, sol.rel_res, solve_time);
+if isfield(sol,'precomp_time') && isstruct(sol.precomp_time) && isfinite(sol.precomp_time.total)
+    fprintf(['  precomp total=%.2fs, one-body=%.2fs, ', ...
+        'two-body/peanut=%.2fs\n'], ...
+        sol.precomp_time.total, ...
+        sol.precomp_time.one_body, ...
+        sol.precomp_time.two_body_or_peanut);
+end
 
 if isempty(body_residual)
     error('apr14_random_discs_peanut_mobility:MissingResiduals', ...
@@ -141,9 +224,9 @@ if plots.make_figure
 
     fig = figure('Name','apr14 applied forcing','Color','w');
     ax = axes('Parent',fig);
-    plot_disk_field(ax, q, geom.rad, body_forcing, plots.disk_points_full, ...
+    plot_disk_field(ax, q, geom_run.rad, body_forcing, plots.disk_points_full, ...
         plots.full_edge_color, plots.line_width_full);
-    draw_domain_boundary(ax, geom_meta.L, geom.domain);
+    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     apply_colormap_and_clim(ax, plots.force_colormap, plots.force_clim);
     style_colorbar(cbar, plots.font_size);
@@ -155,9 +238,9 @@ if plots.make_figure
 
     fig = figure('Name','apr14 maximum boundary speed','Color','w');
     ax = axes('Parent',fig);
-    plot_disk_field(ax, q, geom.rad, body_speed, plots.disk_points_full, ...
+    plot_disk_field(ax, q, geom_run.rad, body_speed, plots.disk_points_full, ...
         plots.full_edge_color, plots.line_width_full);
-    draw_domain_boundary(ax, geom_meta.L, geom.domain);
+    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     apply_colormap_and_clim(ax, plots.speed_colormap, plots.speed_clim);
     style_colorbar(cbar, plots.font_size);
@@ -169,11 +252,11 @@ if plots.make_figure
 
     fig = figure('Name','apr14 max boundary residual','Color','w');
     ax = axes('Parent',fig);
-    plot_disk_field(ax, q, geom.rad, residual_log, plots.disk_points_full, ...
+    plot_disk_field(ax, q, geom_run.rad, residual_log, plots.disk_points_full, ...
         plots.full_edge_color, plots.line_width_full);
     apply_colormap_and_clim(ax, plots.residual_colormap, ...
         choose_clim(plots.residual_clim, default_residual_clim));
-    draw_domain_boundary(ax, geom_meta.L, geom.domain);
+    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     style_colorbar(cbar, plots.font_size);
     ylabel(cbar, '$\log_{10}$ max relative boundary residual', ...

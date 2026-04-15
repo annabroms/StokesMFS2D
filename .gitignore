@@ -5,6 +5,7 @@
 # folders to ignore
 data/
 anna_test/
+notes/
 visuals/*
 !visuals/tikz/
 !visuals/tikz/**

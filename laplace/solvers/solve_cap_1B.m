@@ -108,6 +108,20 @@ if debug
     xlabel('Re \lambda')
     ylabel('Im \lambda')
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
+
+    num_min = 4;
+    [e_min,ind] = mink(real(D),num_min);
+    V_min = V(:,ind);
+    figure()   
+    for k = 1:num_min
+        % subplot(num_min,1,k);
+        % scatter(real(geom.rout),imag(geom.rout),10,abs(V_min(:,k)),"filled");
+        % colorbar
+        % axis equal
+        plot(V_min(:,k));
+        hold on;
+    end
+
 end
 
 disp(' == Solving... == ');
@@ -230,6 +244,11 @@ v_body = [1; -0.7; 0.25];
 mode = 4; 
 delta = 1e-3; 
 q = hexagonal_lattice(delta,mode,R);
+
+P = 8;
+delta = 100; 
+q = grow_cluster(P,delta,2,R); 
+
 P = length(q);
 v_body = buildAlternatingVoltages(q,R);
 
@@ -237,7 +256,7 @@ opt = getLaplace2Dparams(P,R);
 opt.visualise_sol = 1;
 opt.visualise_grid = 1; 
 opt.gmres_tol = 1e-8;
-opt.debug = 0;
+opt.debug = 1;
 opt.use_fmm = true;
 opt.N_c = 150; 
 opt.gmres_verbose = 0;

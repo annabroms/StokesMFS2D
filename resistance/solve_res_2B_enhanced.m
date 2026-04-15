@@ -66,7 +66,9 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 lr = getOptField(opt,'lr',0);
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 rad = ones(P,1); %assume for now all are identical
+precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -138,15 +140,28 @@ for k = 1:P
     rout = [rout; rbase_out_c+q(k)];
 end
  
+if get_precomp_time
+    pair_timer = tic;
+end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 %Get pair basis
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c);
+if get_precomp_time
+    precomp_time.two_body_or_peanut = toc(pair_timer);
+end
 
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body (everybody has the same coarse grid).
+if get_precomp_time
+    one_body_timer = tic;
+end
 [UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+    precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
+end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -551,6 +566,7 @@ sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.resvec = resvec;
+sol.precomp_time = precomp_time;
 
 end
 

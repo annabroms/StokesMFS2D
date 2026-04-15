@@ -1,8 +1,9 @@
-function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
+function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair,svd_opts)
 %GETPAIRBLOCKSTOKES Build pseudoinverse factors for a 2-body Stokes pair block.
 %
 % Syntax:
 %   [U,Y] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
+%   [U,Y] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair,svd_opts)
 %
 % Inputs:
 %   rin_pair  - complex source locations for the pair fine basis (body 1
@@ -28,6 +29,10 @@ function [U,Y,Atot] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair)
 % See also: getPseudoFactors, stokSLPmat, getLrPair, getLfPair
 %
 % Anna Broms Feb 12, 2026
+
+if nargin < 5 || isempty(svd_opts)
+    svd_opts = struct();
+end
 
 mu = 1; 
 
@@ -60,7 +65,7 @@ end
 
 tol = 1e-11; %SVD truncation level
 visualise = 0; 
-[Y,U] = getPseudoFactors(Atot,tol,visualise); 
+[Y,U] = getPseudoFactors(Atot,tol,visualise,svd_opts);
 
 
 end

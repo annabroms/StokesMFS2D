@@ -1,4 +1,4 @@
-function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c)
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c,svd_opts)
 %GETPAIRBASISSTOKES Build Stokes pair-basis pseudoinverse factors.
 %
 % Syntax:
@@ -8,6 +8,8 @@ function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes(q,rbase_in_c
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc)
 %   [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes( ...
 %       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c)
+%   [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_cache] = getPairBasisStokes( ...
+%       q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,rout_base_c,svd_opts)
 %
 % If opt.use_dense is enabled and rout_base_c is supplied, pair_cache.meta
 % also stores the actual dense Stokeslet blocks on the solver collocation
@@ -41,6 +43,9 @@ end
 
 if nargin < 9
     rout_base_c = [];
+end
+if nargin < 10 || isempty(svd_opts)
+    svd_opts = struct();
 end
 if ~isempty(rout_base_c)
     rout_base_c = rout_base_c(:);
@@ -78,7 +83,7 @@ if ~reuse_pair_basis
         i = pairs(ii,1);
         p2 = pairs(ii,2);
 
-        pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,ii,debug);
+        pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,ii,debug,svd_opts);
         if need_explicit_pair_sources
             Uf{i,p2} = pair.Upf;
             Yf{i,p2} = pair.Ypf;
@@ -121,7 +126,7 @@ covered_pairs = 0;
 for gg = 1:n_groups
     pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
         q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
-        need_explicit_pair_sources,false);
+        need_explicit_pair_sources,false,svd_opts);
 
     if show_counter
         rep_i = pairs(rep_rows(gg),1);
@@ -139,7 +144,7 @@ if debug
     % pairs. Run the debug LS checks on every actual pair as requested.
     for row = 1:size(pairs,1)
         build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs, ...
-            opt,Lc,row,debug,false);
+            opt,Lc,row,debug,svd_opts,false);
     end
 end
 
@@ -279,8 +284,8 @@ group_id = zeros(size(sep));
 group_id(order) = group_id_sorted;
 end
 
-function group = build_pair_group(group_id,row,group_sep,q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,need_explicit_pair_sources,debug)
-pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,true);
+function group = build_pair_group(group_id,row,group_sep,q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,need_explicit_pair_sources,debug,svd_opts)
+pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,true);
 group = init_pair_group();
 group.group_id = group_id;
 group.sep = group_sep;
@@ -304,8 +309,11 @@ if need_explicit_pair_sources
 end
 end
 
-function pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,use_canonical)
-if nargin < 11
+function pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,use_canonical)
+if nargin < 11 || isempty(svd_opts)
+    svd_opts = struct();
+end
+if nargin < 12
     use_canonical = false;
 end
 
@@ -360,6 +368,13 @@ rout_f = [q_pair(1)+rout_base; refine_i; q_pair(2)+rout_base; refine_j];
 rin_pair = [rin_1_f; rimage_i; rin_2_f; rimage_j];
 pair.rin_pair = rin_pair;
 
+svd_pair = svd_opts;
+if logical(getOptField(svd_opts,'left_weight',false))
+    row_weights_1 = getPeriodicCurveWeights([q_pair(1)+rout_base; refine_i],q_pair(1));
+    row_weights_2 = getPeriodicCurveWeights([q_pair(2)+rout_base; refine_j],q_pair(2));
+    svd_pair.row_weights = [row_weights_1; row_weights_2];
+end
+
 if debug
     figure(801);
     clf;
@@ -407,7 +422,7 @@ else
     Lf_pair = [];
 end
 
-[Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair);
+[Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair,svd_pair);
 Npair = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_f);
 Upf = -Uf_pair'*Npair; %
 
@@ -424,7 +439,7 @@ pair.Cmap_FU = [];
 if getOptField(opt,'N_peanut',0)
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
-    [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair);
+    [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair,svd_opts);
     pair.DC = DC;
     pair.YC = YC;
     if logical(getOptField(opt,'cmap',false))

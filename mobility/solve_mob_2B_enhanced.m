@@ -62,7 +62,9 @@ debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','abs');
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 opt.rad = 1;
+precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
 
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
@@ -104,6 +106,9 @@ tin_f = linspace(0,2*pi,N_f+1);
 tin_f = tin_f(1:end-1)';
 rbase_in_f =  Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f);
  
+if get_precomp_time
+    pair_timer = tic;
+end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 rin = [];
@@ -158,13 +163,23 @@ end
 % coarse proxy grid + basic grid of collocation points only. We assume
 % everyone has the same discretisation, so it's enough to do this once.
 rimage_in = []; 
+if get_precomp_time
+    one_body_timer = tic;
+end
 [U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+end
 
 %Get pair basis
 opt.project = true;
 opt.N_peanut = 0; %no peanut compression here!
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c);
+if get_precomp_time
+    precomp_time.two_body_or_peanut = toc(pair_timer);
+    precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
+end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -518,6 +533,7 @@ sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
+sol.precomp_time = precomp_time;
 
 end
 

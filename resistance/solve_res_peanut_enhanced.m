@@ -39,6 +39,11 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       get_bndry_field
 %                     if true, evaluate and report boundary velocity residuals
 %       cmap          if true, use coarse-to-coarse pair map for FT updates
+%       column_weight if true, scale least-squares matrix columns before
+%                     SVD in the one-body, pair, and peanut factor builds
+%       left_weight   if true, scale least-squares matrix rows by local
+%                     arclength weights before SVD in the one-body, pair,
+%                     and peanut factor builds
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
@@ -82,6 +87,11 @@ gmres_tol = getOptField(opt,'gmres_tol',1e-10);
 debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
 rad = getOptField(opt,'rad',1);
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
+column_weight = logical(getOptField(opt,'column_weight',false));
+left_weight = logical(getOptField(opt,'left_weight',false));
+svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
+precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -126,17 +136,29 @@ for k = 1:P
     rout = [rout; rbase_out_c+q(k)];
 end
  
+if get_precomp_time
+    pair_timer = tic;
+end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 
 
 %Get pair basis 
 opt.project_force = false;
-opt.show_counter = true;
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c);
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c,svd_opts);
+if get_precomp_time
+    precomp_time.two_body_or_peanut = toc(pair_timer);
+end
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
-[UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c);
+if get_precomp_time
+    one_body_timer = tic;
+end
+[UU,YY] = getSelfPseudo(1,rbase_in_c,rbase_out_c,[],[],[0,numel(rbase_out_c)],0,svd_opts);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+    precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
+end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -206,8 +228,8 @@ if debug
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 
 
-    num_min = 3;
-    [e_max,ind] = maxk(D,num_min);
+    num_min = 4;
+    [e,ind] = mink(real(D),num_min);
     V_min = V(:,ind);
     figure()   
     for k = 1:num_min
@@ -388,9 +410,11 @@ end
 sol = struct();
 sol.lambda_proxy = lambda_proxy;
 sol.it = it;
+sol.gmres_unknowns = 2*size(rout,1);
 sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.resvec = resvec;
+sol.precomp_time = precomp_time;
 
 end
 
@@ -488,7 +512,10 @@ else
    % P = length(q); 
 
     q = grow_cluster(P,delta,2);
-    q = (2+delta)*(0:P-1); 
+    q = (2+delta)*(0:P-1);
+    rings = 1;
+    q = hexagonal_lattice(delta,rings,1);
+    P = length(q);
    % q = [q; -6+1.5i; -2-4i]; P = P+2;
     %q = q([1,2,4],:); P = 3; 
     U = rand(P,2); W = rand(P,1); 

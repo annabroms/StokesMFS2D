@@ -39,12 +39,18 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       cmap          if true, use coarse-to-coarse pair map without
 %                     recovering fine sources (other than for evaluating the 
 %                     field at or near the boundaries)
+%       column_weight if true, scale least-squares matrix columns before
+%                     SVD in the one-body, pair, and peanut factor builds
+%       left_weight   if true, scale least-squares matrix rows by local
+%                     arclength weights before SVD in the one-body, pair,
+%                     and peanut factor builds
 %
 %
 % Outputs:
 %   UW         - Rigid-body motion vector [Ux1; Uy1; W1; ...; UxP; UyP; WP].
 %   sol        - Struct with fields:
-%                lambda_c, it, gmres_tol, rel_res, abs_res, resvec.
+%                lambda_c, it, gmres_tol, rel_res, abs_res, resvec,
+%                body_rel_res_max.
 %
 % Notes:
 %   - Call with no inputs to run the built-in test.
@@ -74,7 +80,13 @@ surface_error_mode = getOptField(opt,'surface_error_mode','rel');
 maxit = getOptField(opt,'maxit',800);
 rad = getOptField(opt,'rad',1);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 N_peanut = getOptField(opt,'N_peanut',400);
+column_weight = logical(getOptField(opt,'column_weight',false));
+left_weight = logical(getOptField(opt,'left_weight',false));
+svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
+precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
+pair_setup_time = 0;
 if N_peanut <= 0
     error('solve_mob_peanut_enhanced:InvalidNPeanut', ...
         ['solve_mob_peanut_enhanced requires opt.N_peanut > 0 ', ...
@@ -114,7 +126,13 @@ tin_f = linspace(0,2*pi,N_f+1);
 tin_f = tin_f(1:end-1)';
 rbase_in_f =  Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f);
 
+if get_precomp_time
+    pair_timer = tic;
+end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+if get_precomp_time
+    pair_setup_time = toc(pair_timer);
+end
 
 rvec_in_c = [];
 rout = [];
@@ -130,17 +148,26 @@ end
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
 rimage_in = []; 
-[U,Y,Lc] = getSelfPseudoMobilityStokes(1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)]);
+if get_precomp_time
+    one_body_timer = tic;
+end
+[U,Y,Lc] = getSelfPseudoMobilityStokes( ...
+    1,q,rbase_in_c,rbase_out_c,rimage_in,[0,ceil(a_c*N_c)],svd_opts);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+end
 
 %Get pair basis
 plot_grid = 0; %debug option: visualise each close pair 
 opt.project_force = true;
 opt.project = true;
 opt.pair_basis_debug = plot_grid;
-opt.show_counter = true;
 opt.rad = ones(P,1);
+if get_precomp_time
+    pair_timer = tic;
+end
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c);
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c,svd_opts);
                      
 
 % TODO: update visualisation:
@@ -149,6 +176,10 @@ opt.rad = ones(P,1);
 %viewPairBasis(q,rbase_in_c,rbase_in_f,rimage_vec,nimage,refine,Upf,Ypf,U,Y,[],[],N_c, N_f,a_c,a_f,rad)
 
 Lc_pair = getILpair(Lc{1}); % Dense pair projector kept for fallback/comparison.
+if get_precomp_time
+    precomp_time.two_body_or_peanut = pair_setup_time + toc(pair_timer);
+    precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
+end
 
 %% Construct check boundaries
 % Create new grid points, for which the accuracy of the solution is
@@ -372,7 +403,13 @@ else
     abs_res = nan;
     rel_vec = [];
     res = [];
+    body_rel_res_max = [];
     fprintf('Boundary field evaluation skipped (opt.get_bndry_field=0)\n');
+end
+
+if get_bndry_field
+    rel_grid = reshape(rel_vec,n_bound,P);
+    body_rel_res_max = max(rel_grid,[],1).';
 end
 
  
@@ -423,10 +460,13 @@ end
 sol = struct();
 sol.lambda_c = lambda_c;
 sol.it = it;
+sol.gmres_unknowns = 2*length(rout);
 sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
+sol.body_rel_res_max = body_rel_res_max;
+sol.precomp_time = precomp_time;
 
 
 end

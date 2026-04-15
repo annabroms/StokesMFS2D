@@ -1,4 +1,4 @@
-function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = getPairTransformationStokes(tau,geom,basis)
+function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr,rimage_k] = getPairTransformationStokes(tau,geom,basis)
 %GETPAIRTRANSFORMATIONSTOKES Map coarse boundary data to interior coarse and fine Stokes source strengths.
 %
 % Syntax:
@@ -18,6 +18,7 @@ function [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = getPairTransfor
 %   tau_stokes_x - x-strengths at rvec_in.
 %   tau_stokes_y - y-strengths at rvec_in.
 %   u_corr       - Pair/self correction used to create identity blocks in the system matrix.
+%   rimage_k     - Cell array with all extra/image source locations per particle.
 
 rvec_out = geom.rvec_out;
 q = geom.q;

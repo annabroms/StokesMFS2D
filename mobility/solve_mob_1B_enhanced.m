@@ -34,10 +34,12 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 surface_error_mode = lower(char(getOptField(opt,'surface_error_mode','rel')));
 if ~any(strcmp(surface_error_mode,{'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.');
 end
+precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
 
 opt.visualise_sol = visualise_sol;
 opt.gmres_tol = gmres_tol;
@@ -51,7 +53,15 @@ opt.self_tol = 1e-9;
 
 fprintf('==== START: %s ====\n', mfilename);
 
+if get_precomp_time
+    one_body_timer = tic;
+end
 [geom,basis,~,~] = prepareStokes1BEnhanced(q,opt);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+    precomp_time.two_body_or_peanut = 0;
+    precomp_time.total = precomp_time.one_body;
+end
 P = numel(q);
 
 %% Right-hand side from completion flow
@@ -180,11 +190,13 @@ sol.lambda_px = lambda_px;
 sol.lambda_py = lambda_py;
 sol.lambda_body = lambda_body;
 sol.it = it;
+sol.gmres_unknowns = 2*geom.total_target_count;
 sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
+sol.precomp_time = precomp_time;
 
 end
 

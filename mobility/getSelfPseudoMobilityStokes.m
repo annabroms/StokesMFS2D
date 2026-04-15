@@ -1,8 +1,9 @@
-function [Uii,Yii,Lii,Lr] = getSelfPseudoMobilityStokes(P,q,rin_vec,rout_vec,rimage,pair_points)
+function [Uii,Yii,Lii,Lr] = getSelfPseudoMobilityStokes(P,q,rin_vec,rout_vec,rimage,pair_points,svd_opts)
 %getSelfPseudoMobilityStokes computes two blocks per particle to build the MFS mobility single body pseudoinverse 
 % based on the SVD factorisaiton of the single body matrix.          
 %
 % Syntax: [Uii,Yii,Lii] = getSelfPseudoMobilityStokes(P,q,rin_vec,rout_vec,rimage,pair_points)
+%         [Uii,Yii,Lii] = getSelfPseudoMobilityStokes(P,q,rin_vec,rout_vec,rimage,pair_points,svd_opts)
 %
 % Input: 
 % P         - Number of particles to compute pseudoinverse for 
@@ -35,6 +36,9 @@ function [Uii,Yii,Lii,Lr] = getSelfPseudoMobilityStokes(P,q,rin_vec,rout_vec,rim
 if nargin == 0
     test_projection;
     return
+end
+if nargin < 7 || isempty(svd_opts)
+    svd_opts = struct();
 end
     
 mu = 1;
@@ -122,7 +126,11 @@ for i = 1:P
       
 
     %Compute SVD
-    [Y,Bi1]  = getPseudoFactors(Nii,tol,visualise);
+    svd_opts_body = svd_opts;
+    if logical(getOptField(svd_opts,'left_weight',false))
+        svd_opts_body.row_weights = getPeriodicCurveWeights(rout);
+    end
+    [Y,Bi1]  = getPseudoFactors(Nii,tol,visualise,svd_opts_body);
 
     %Store factors
     Uii{i} = Bi1';

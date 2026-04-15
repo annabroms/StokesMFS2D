@@ -50,6 +50,13 @@ opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing
 opt.project_force = false; % project out net force/torque-producing modes in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated separations
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs
+opt.reuse_triplet_basis_by_shape = true; % reuse canonical triplet bases for repeated shapes
+opt.shared_triplet_tol = 1e-4; % triplet-shape tolerance for grouping repeated triplets
+opt.triplet_basis_debug = 0; % visualise LSQ error in triplet local solves
+opt.triplet_lsq_mode = 'full'; % actual solver triplet basis: 'full' | 'rhs_subtracted' | 'pair_complement' | 'rhs_subtracted_pair_complement'; complement modes project the RHS off the pair field space
+opt.triplet_lsq_test_mode = 'full'; % 'full' | 'rhs_subtracted' | 'pair_complement' | 'rhs_subtracted_pair_complement' | 'compare_all'
+opt.triplet_pair_subspace_tol = 1e-10; % tolerance used when building the pair-complement basis Z
+opt.triplet_accumulation_mode = 'edge_weighted'; % 'sum' | 'edge_weighted' | 'pair_subtracted'
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
 opt.use_matrix_free_Lc_pair = true; % matrix-free pair rigid projection; set false for dense comparison
@@ -57,5 +64,7 @@ opt.show_counter = 1; % show progress for pair compressions
 opt.self_correct = 1; % enforce identity diagonal matrices in system matrix
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
 opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares problem
+opt.column_weight = false; % scale LS operator columns before SVD in peanut solvers
+opt.left_weight = false; % scale LS operator rows by local arclength weights in peanut solvers
 
 end

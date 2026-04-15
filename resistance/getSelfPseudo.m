@@ -1,8 +1,9 @@
-function [Uii,Yii] = getSelfPseudo(P,rin_vec,rout_vec,rimage,nimage,pair_points,s)
+function [Uii,Yii] = getSelfPseudo(P,rin_vec,rout_vec,rimage,nimage,pair_points,s,svd_opts)
 %getSelfPseudo computes two blocks per 2D particle to build the MFS single body pseudoinverse 
 % based on the SVD factorisaiton of the single body Stokes target-from-source matrix.          
 %
 % Syntax: [Uii,Yii] = getSelfPseudo(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s)
+%         [Uii,Yii] = getSelfPseudo(P,q,rin_vec,rout_vec,rimage,nimage,pair_points,s,svd_opts)
 %
 % Input: 
 % P         - Number of particles to compute pseudoinverse for 
@@ -42,6 +43,9 @@ if nargin < 4
     pair_points = [0,length(rout_vec)]; %no images
     s = 0; 
     solve_xy = 1; 
+end
+if nargin < 8 || isempty(svd_opts)
+    svd_opts = struct();
 end
 
 solve_xy = 1; %order unknowns as x, then y globally
@@ -117,7 +121,11 @@ for i = 1:P
     Nii = [Nio Nimage];
 
     %Compute SVD
-    [Y,Bi]  = getPseudoFactors(Nii,tol,visualise);
+    svd_opts_body = svd_opts;
+    if logical(getOptField(svd_opts,'left_weight',false))
+        svd_opts_body.row_weights = getPeriodicCurveWeights(rout);
+    end
+    [Y,Bi]  = getPseudoFactors(Nii,tol,visualise,svd_opts_body);
 
     %Store factors
     Uii{i} = Bi';
@@ -128,6 +136,3 @@ for i = 1:P
 end
 
 end
-
-
-
