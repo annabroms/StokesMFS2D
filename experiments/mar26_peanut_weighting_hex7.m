@@ -2,6 +2,9 @@ clear;
 close all;
 clc;
 
+% Test for row and column scaling on a hexagonal packing of 7 disks. 
+% Conclusion: no real gain! 
+
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 if ~isempty(repo_root)
     addpath(genpath(repo_root));
