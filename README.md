@@ -110,6 +110,7 @@ With these mappings in place, fine sources are only recovered if the solution fi
 
 ## Dependencies
 - [fmm2d](https://github.com/flatironinstitute/fmm2d) for fast 2D kernel summation.
+- [memorygraph](https://github.com/ahbarnett/memorygraph) for RAM estimation when `opt.RAM_check = true`.
 
 ### References in footnotes
 [^cheng-greengard]:

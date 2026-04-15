@@ -23,8 +23,10 @@ function [v_body,sol] = solve_elast_1B(q,Q_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol plot postprocessing diagnostics
 %
 % Outputs:
 %   v_body    - Recovered constant boundary values per body (P x 1).
@@ -34,6 +36,7 @@ function [v_body,sol] = solve_elast_1B(q,Q_body,opt)
 %               gmres_tol  : GMRES tolerance used
 %               maxres     : max relative equipotential residual
 %               resvec     : GMRES convergence history
+%               ram_estimate : raw-byte RAM summary for the solver phases
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -54,6 +57,8 @@ end
 if nargin < 3 || ~isstruct(opt)
     error('solve_elast_1B requires q, Q_body, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -106,9 +111,12 @@ if debug
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_elast_1B(x,geom,basis), ...
     u_rhs,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure(); semilogy(resvec)
@@ -166,6 +174,7 @@ sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;
 sol.resvec = resvec;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

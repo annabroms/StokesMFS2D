@@ -9,17 +9,21 @@ function [UW,sol] = solve_mob_1B_enhanced_left(q,F,T,opt)
 %   q   - Complex particle centers (P x 1).
 %   F   - Px2 net force vectors.
 %   T   - Px1 torque vector.
-%   opt - Options struct, matching the enhanced solver style.
+%   opt - Options struct, matching the enhanced solver style. Supports
+%         opt.RAM_check for memorygraph-based RAM estimates.
 %
 % Outputs:
 %   UW  - 3P x 1 rigid-body velocity vector [Ux; Uy; W] per particle.
-%   sol - Struct with source data and residual information.
+%   sol - Struct with source data, residual information, and
+%         sol.ram_estimate.
 
 if nargin==0, test_solve_mob_1B_enhanced_left; return; end
 
 if nargin < 4 || ~isstruct(opt)
     error('solve_mob_1B_enhanced_left requires q, F, T, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 T = T(:);
@@ -83,11 +87,14 @@ if debug
     title('Eigenvalues of left-preconditioned mobility system matrix')
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 %% Solve
 disp(' == Solving... == ');
 [lambda,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvecStokes1BEnhancedMobilityLeft(x,geom,basis), ...
     rleft,2*geom.total_source_count,maxit,gmres_tol,gmres_verbose,geom.rvec_in);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 [lambda_x_raw,lambda_y_raw,lambda_body,lambda_px,lambda_py] = ...
     unpackProjectedMobilityLambda(lambda,geom);
@@ -195,6 +202,7 @@ sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

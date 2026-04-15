@@ -9,17 +9,21 @@ function [FT,sol] = solve_res_1B_enhanced_left(q,U,W,opt)
 %   q   - Complex particle centers (P x 1).
 %   U   - Px2 translational velocities.
 %   W   - Px1 angular velocities.
-%   opt - Options struct, matching the enhanced solver style.
+%   opt - Options struct, matching the enhanced solver style. Supports
+%         opt.RAM_check for memorygraph-based RAM estimates.
 %
 % Outputs:
 %   FT  - 3P x 1 force/torque vector per particle.
-%   sol - Struct with source data and residual information.
+%   sol - Struct with source data, residual information, and
+%         sol.ram_estimate.
 
 if nargin==0, test_solve_res_1B_enhanced_left; return; end
 
 if nargin < 4 || ~isstruct(opt)
     error('solve_res_1B_enhanced_left requires q, U, W, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 W = W(:);
@@ -88,11 +92,14 @@ if debug
     title('Eigenvalues of left-preconditioned system matrix')
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 %% Solve
 disp(' == Solving... == ');
 [lambda,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvecStokes1BEnhancedLeft(x,geom,basis), ...
     rleft,2*geom.total_source_count,maxit,gmres_tol,gmres_verbose,geom.rvec_in);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 [lambda_x,lambda_y,lambda_body] = unpackStokes1BEnhancedLambda(lambda,geom);
 
@@ -186,6 +193,7 @@ sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

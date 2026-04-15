@@ -25,12 +25,14 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol plot postprocessing diagnostics
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse to coarse map
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol plot postprocessing diagnostics
 %       body_plot_font_size
 %                     base font size used in the voltage/charge subplot figure
 %
@@ -43,6 +45,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                 maxres       : max relative residual on independent boundary points
 %                                (NaN if opt.get_bndry_field = 0)
 %                 resvec       : GMRES convergence history
+%                 ram_estimate : raw-byte RAM summary for the solver phases
 %
 % Notes:
 %   The radius parameter should be chosen with rad ~= 1 to avoid unit logarithmic
@@ -63,6 +66,8 @@ end
 if nargin < 3 || ~isstruct(opt)
     error('solve_cap_peanut requires q, v_body, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -222,9 +227,12 @@ if debug
     end
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure(); semilogy(resvec)
@@ -312,6 +320,7 @@ sol.maxres = maxres;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

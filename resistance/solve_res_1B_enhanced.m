@@ -9,17 +9,21 @@ function [FT,sol] = solve_res_1B_enhanced(q,U,W,opt)
 %   q   - Complex particle centers (P x 1).
 %   U   - Px2 translational velocities.
 %   W   - Px1 angular velocities.
-%   opt - Options struct, matching the enhanced solver style.
+%   opt - Options struct, matching the enhanced solver style. Supports
+%         opt.RAM_check for memorygraph-based RAM estimates.
 %
 % Outputs:
 %   FT  - 3P x 1 force/torque vector per particle.
-%   sol - Struct with source data and residual information.
+%   sol - Struct with source data, residual information, and
+%         sol.ram_estimate.
 
 if nargin==0, test_solve_res_1B_enhanced; return; end
 
 if nargin < 4 || ~isstruct(opt)
     error('solve_res_1B_enhanced requires q, U, W, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 W = W(:);
@@ -110,11 +114,14 @@ if debug
     end
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 %% Solve
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvecStokes1BEnhanced(x,geom,basis), ...
     fout,2*geom.total_target_count,maxit,gmres_tol,gmres_verbose,geom.rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 %% Recover source strengths
 [lambda_x_raw,lambda_y_raw,lambda_body,lambda_px,lambda_py] = ...
@@ -213,6 +220,7 @@ sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
 sol.precomp_time = precomp_time;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

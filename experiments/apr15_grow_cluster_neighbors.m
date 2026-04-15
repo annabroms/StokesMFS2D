@@ -3,21 +3,18 @@ close all;
 clc;
 
 % Check number of close neighbours (with separation < delta_pair) in a
-% random packing suspension created with Monte Carlo.
+% random suspension created with grow_cluster.
 
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 if ~isempty(repo_root)
     addpath(genpath(repo_root));
 end
 
-fprintf('=== Random MC Close Neighbors (Apr 14, 2026) ===\n');
+fprintf('=== Random cluster Neighbors (Apr 15, 2026) ===\n');
 
-phi = 0.55;
-domain = 'boxed';
 rad = 1;
 min_gap = 1e-3;
 delta_pair = 0.2;
-n_sweeps = 20;
 
 P_values = 20:20:500;
 P_values = 50:50:1000;
@@ -29,29 +26,20 @@ close_pair_counts = nan(nP,nruns);
 close_neighbors_per_particle = nan(nP,nruns);
 min_gaps = nan(nP,nruns);
 
-fprintf('phi = %.3f, domain = %s, delta_pair = %.3f, nruns = %d\n', ...
-    phi,domain,delta_pair,nruns);
+fprintf('delta_pair = %.3f, nruns = %d\n', ...
+    delta_pair,nruns);
 
 for ip = 1:nP
     P = P_values(ip);
     fprintf('\nP = %d\n',P);
 
     for irun = 1:nruns
-        geom_opt = struct();
-        geom_opt.domain = domain;
-        geom_opt.phi = phi;
-        geom_opt.rad = rad;
-        geom_opt.min_gap = min_gap;
-        geom_opt.n_sweeps = n_sweeps;
-        geom_opt.rng_seed = seed0 + 1000*ip + irun;
-        geom_opt.visualise = false;
-
-        [q, meta] = random_discs_mc(P, geom_opt);
+        q = grow_cluster(P,min_gap,2,rad); 
         n_close = count_close_pairs(q, delta_pair, rad);
 
         close_pair_counts(ip,irun) = n_close;
         close_neighbors_per_particle(ip,irun) = 2*n_close / P;
-        min_gaps(ip,irun) = meta.min_surface_gap;
+        min_gaps(ip,irun) = min_gap;
 
         fprintf('  run %d/%d: close pairs = %d, close neighbors/particle = %.3f, min gap = %.3e\n', ...
             irun,nruns,n_close,close_neighbors_per_particle(ip,irun),min_gaps(ip,irun));
@@ -92,7 +80,7 @@ plot(P_values,pair_mean,'-o','Color',[0.00 0.45 0.74], ...
 grid on;
 xlabel('P');
 ylabel('Number of close pairs');
-title(sprintf('Close pairs with gap < %.3f at \\phi = %.3f',delta_pair,phi), ...
+title(sprintf('Close pairs with gap < %.3f',delta_pair), ...
     'Interpreter','none');
 legend('Location','northwest');
 
@@ -109,7 +97,7 @@ ylabel('Close neighbors per particle');
 title('Average close-neighbor count per particle','Interpreter','none');
 legend('Location','northwest');
 
-title(t,'Random MC close-neighbor statistics','Interpreter','none');
+title(t,'Statistics for geometry generated with grow cluster','Interpreter','none');
 
 function plot_band(x,ymin,ymax,color)
 xx = [x(:); flipud(x(:))];

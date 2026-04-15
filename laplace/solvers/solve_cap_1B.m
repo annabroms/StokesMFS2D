@@ -24,8 +24,10 @@ function [Q,sol] = solve_cap_1B(q,v_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol plot after postprocessing (boundary values, proxy strengths) 
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol plot after postprocessing (boundary values, proxy strengths)
 %       
 % Outputs:
 %   Q          - Net charges: per-body sums of all source strengths belonging to each body.
@@ -35,6 +37,7 @@ function [Q,sol] = solve_cap_1B(q,v_body,opt)
 %                gmres_tol  : GMRES tolerance used
 %                maxres     : max relative residual on independent boundary points
 %                resvec     : GMRES convergence history
+%                ram_estimate : raw-byte RAM summary for the solver phases
 %
 % Notes: what is solved is what is referred to as the modified exterior Laplace 
 % BVP in the Stein & Barnett QFS paper from 2022. 
@@ -56,6 +59,8 @@ end
 if nargin < 3 || ~isstruct(opt)
     error('solve_cap_1B requires q, v_body, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -124,9 +129,12 @@ if debug
 
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_laplace_1B(x,geom,basis), ...
     fout,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure(); semilogy(resvec)
@@ -179,6 +187,7 @@ sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;
 sol.resvec = resvec;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

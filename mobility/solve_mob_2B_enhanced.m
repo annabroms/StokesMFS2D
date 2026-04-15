@@ -14,14 +14,16 @@ function [UW,sol] = solve_mob_2B_enhanced(q,F,T,opt)
 %   T          - Px1 column vector of torques acting on the particles
 %   opt        - Options struct. Common fields:
 %                delta_pair, visualise_sol, gmres_tol,opt.gmres_verbose,
-%                surface_error_mode, use_fmm, N_c, N_f, a_c, a_f, tol_c.
+%                surface_error_mode, use_fmm, N_c, N_f, a_c, a_f, tol_c,
+%                RAM_check.
 %       debug    build/plot/investigate system matrix corresponding to
 %                matvec.
 %
 % Outputs:
 %   UW         - 3P×1 vector of computed rigid-body motion (RBM) velocities
 %   sol        - Struct with fields:
-%                lambda, it, gmres_tol, rel_res, abs_res, resvec.
+%                lambda, it, gmres_tol, rel_res, abs_res, resvec,
+%                ram_estimate.
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
@@ -48,6 +50,8 @@ if nargin==0, test_solve_mob;
 if nargin < 4 || ~isstruct(opt)
     error('solve_mob_2B_enhanced requires q, F, T, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 T = T(:);
@@ -375,8 +379,11 @@ if debug
 
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_2B_enhanced(x,geom,basis),urhs,2*length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 plot_gmres = visualise_sol;
 
 %Modify to build with krylov preconditioning
@@ -543,6 +550,7 @@ sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

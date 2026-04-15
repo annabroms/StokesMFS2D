@@ -30,7 +30,6 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       maxit         maximum GMRES iterations
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol show diagnostic plots in postprocessing
 %       surface_error_mode
 %                     'rel' plots relative boundary errors, 'abs' plots
 %                     absolute boundary errors
@@ -44,13 +43,16 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       left_weight   if true, scale least-squares matrix rows by local
 %                     arclength weights before SVD in the one-body, pair,
 %                     and peanut factor builds
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol show diagnostic plots in postprocessing
 %
 %
 % Outputs:
 %   UW         - Rigid-body motion vector [Ux1; Uy1; W1; ...; UxP; UyP; WP].
 %   sol        - Struct with fields:
 %                lambda_c, it, gmres_tol, rel_res, abs_res, resvec,
-%                body_rel_res_max.
+%                body_rel_res_max, ram_estimate.
 %
 % Notes:
 %   - Call with no inputs to run the built-in test.
@@ -65,6 +67,8 @@ if nargin==0, test_solve_mob;
 if nargin < 4 || ~isstruct(opt)
     error('solve_mob_peanut_enhanced requires q, F, T, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 T = T(:);
@@ -88,7 +92,7 @@ svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
     'pair_basis',nan,'two_body_or_peanut',nan);
 pair_setup_time = 0;
-pair_basis_time = 0;
+
 if N_peanut <= 0
     error('solve_mob_peanut_enhanced:InvalidNPeanut', ...
         ['solve_mob_peanut_enhanced requires opt.N_peanut > 0 ', ...
@@ -282,9 +286,12 @@ if debug
 
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob),...
     urhs,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure()
@@ -473,6 +480,7 @@ sol.resvec = resvec;
 sol.body_rel_res_max = body_rel_res_max;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 
 end
@@ -554,6 +562,7 @@ opt.cmap = 1; % coarse to coarse compression?
 opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
 opt.pair_basis_debug = 0; 
+opt.RAM_check = 1; 
 % opt.beta = 0.5;
 % opt.Nclust = 200;
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 

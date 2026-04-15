@@ -25,13 +25,15 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol plot postprocessing diagnostics
-%       body_plot_font_size font size for the bodywise scalar plots
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse-to-coarse map
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol plot postprocessing diagnostics
+%       body_plot_font_size font size for the bodywise scalar plots
 %
 % Outputs:
 %   v_body      - Recovered constant voltage values per body (P x 1).
@@ -42,6 +44,7 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                 maxres       : max relative equipotential residual
 %                                (NaN if opt.get_bndry_field = 0)
 %                 resvec       : GMRES convergence history
+%                 ram_estimate : raw-byte RAM summary for the solver phases
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -62,6 +65,8 @@ end
 if nargin < 3 || ~isstruct(opt)
     error('solve_elast_peanut requires q, Q_body, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -195,7 +200,6 @@ basis.Nii = lapSLPmat(rbase_in_c,rbase_out_c);
 [lambda0_c,u_rhs] = getChargeCompletionFlowLaplace(rvec_in_c,rout,coarse_source_ind,Q_body,use_fmm);
 
 %% Solve
-
 % Build system matrix via matvec with columns of the identity matrix as input, for debugging
 if debug
     x = zeros(length(rout),1);
@@ -219,9 +223,12 @@ if debug
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure(); semilogy(resvec)
@@ -311,6 +318,7 @@ sol.maxres = maxres;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

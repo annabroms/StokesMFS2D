@@ -33,7 +33,6 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       maxit         maximum GMRES iterations
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
-%       visualise_sol show diagnostic plots in postprocessing
 %       use_fmm       use FMM-accelerated Stokeslet evaluation in field
 %                     evaluation paths that support it
 %       get_bndry_field
@@ -44,11 +43,14 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       left_weight   if true, scale least-squares matrix rows by local
 %                     arclength weights before SVD in the one-body, pair,
 %                     and peanut factor builds
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
+%       visualise_sol show diagnostic plots in postprocessing
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
 %   sol        - Struct with fields:
-%                lambda_proxy, it, gmres_tol, rel_res, resvec.
+%                lambda_proxy, it, gmres_tol, rel_res, resvec, ram_estimate.
 %
 % Description:
 %   The FMM is used for Stokeslet evaluation. No other source types are
@@ -74,6 +76,8 @@ if nargin==0, test_solve_res;
 if nargin < 4 || ~isstruct(opt)
     error('solve_res_peanut_enhanced requires q, U, W, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 W = W(:);
@@ -247,10 +251,13 @@ if debug
     end
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
     fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure()
@@ -424,6 +431,7 @@ sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

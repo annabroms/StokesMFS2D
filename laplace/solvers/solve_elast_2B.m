@@ -24,9 +24,11 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %                     2 = per-iteration estimated residuals + final summary
 %       debug         build/plot/investigate system matrix corresponding to
 %                     matvec.
+%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
+%       RAM_check     estimate/report RAM usage for precomp, solve, and
+%                     postprocessing using memorygraph
 %       visualise_sol plot postprocessing diagnostics
 %       body_plot_font_size font size for the bodywise scalar plots
-%       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %
 % Outputs:
 %   v_body    - Recovered constant boundary values per body (P x 1).
@@ -36,6 +38,7 @@ function [v_body,sol] = solve_elast_2B(q,Q_body,opt)
 %               gmres_tol  : GMRES tolerance used
 %               maxres     : max relative equipotential residual
 %               resvec     : GMRES convergence history
+%               ram_estimate : raw-byte RAM summary for the solver phases
 %
 % Notes:
 %   The radius parameter is chosen with rad ~= 1 to avoid unit logarithmic
@@ -56,6 +59,8 @@ end
 if nargin < 3 || ~isstruct(opt)
     error('solve_elast_2B requires q, Q_body, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -190,9 +195,12 @@ if debug
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_2B_enhanced(x,geom,basis,rout), ...
     u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
     figure(); semilogy(resvec)
@@ -254,6 +262,7 @@ sol.maxres = maxres;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 

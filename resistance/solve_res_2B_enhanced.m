@@ -15,14 +15,14 @@ function [FT,sol] = solve_res_2B_enhanced(q,U,W,opt)
 %   W          - Px1 column vector of angular velocities
 %   opt        - Options struct. Common fields:
 %                rad, delta_pair, lr, visualise_sol, gmres_tol,opt.gmres_verbose,
-%                use_fmm, N_c, N_f, a_c, a_f, tol_c.
+%                use_fmm, N_c, N_f, a_c, a_f, tol_c, RAM_check.
 %       debug    build/plot/investigate system matrix corresponding to
 %                matvec.
 %
 % Outputs:
 %   FT         - 3P×1 vector of computed net forces and torques 
 %   sol        - Struct with fields:
-%                lambda, it, gmres_tol, rel_res, resvec.
+%                lambda, it, gmres_tol, rel_res, resvec, ram_estimate.
 %
 % Description:
 %   This function applies a 2-body preconditioner (using pair corrections via local fine BVPs)
@@ -51,6 +51,8 @@ if nargin==0, test_solve_res;
 if nargin < 4 || ~isstruct(opt)
     error('solve_res_2B_enhanced requires q, U, W, and an options struct opt.');
 end
+
+[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
 
 q = q(:);
 W = W(:);
@@ -321,8 +323,11 @@ if lr
     tau_coarse = getCoarseSource(fout,Sinv,Nx,Ny,Mx,Z,Y,db,P,opt.N_c,opt.a_c);
 end
 
+ram_check = markRamCheckPhase(ram_check,'precomp_end');
+
 disp(' == Solving... == ');
 [tau,it,resvec,real_res] = helsing_gmres(@(x) matvec_res_2B_enhanced(x,geom,basis),fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
+ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 plot_gmres = visualise_sol;
 
@@ -576,6 +581,7 @@ sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.ram_estimate = finishRamCheck(ram_check);
 
 end
 
