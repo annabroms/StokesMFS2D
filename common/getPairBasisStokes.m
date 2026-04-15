@@ -25,6 +25,7 @@ use_pair_map = opt.cmap; % use coarse-to-coarse compression?
 get_bndry_field = opt.get_bndry_field; % evaluate flow field on boundary? 
 % If so, the mapping to recover fine sources must be stored
 reuse_pair_basis = opt.reuse_pair_basis_by_sep; % determine one compression per separation?
+parallel_precomp = opt.parallel_precomp; % parallelise pair precomputation?
 shared_sep_tol = opt.shared_sep_tol; % tolerance for what is considered the same separation.
 use_dense = opt.use_dense; 
 
@@ -67,6 +68,7 @@ end
 pair_cache = init_pair_cache();
 pair_cache.enabled = reuse_pair_basis;
 pair_cache.shared_sep_tol = shared_sep_tol;
+pair_cache.stats.requested_parallel = parallel_precomp;
 
 if isempty(pairs)
     return
@@ -74,34 +76,76 @@ end
 
 N_f = opt.N_f;
 pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),N_f,opt);
+pair_cache.stats.n_pairs = size(pairs,1);
 
 if ~reuse_pair_basis
     total_pairs = size(pairs,1);
-    processed_pairs = 0;
+    pair_cache.stats.branch = 'per_pair';
+    use_parallel_pairs = parallel_precomp && total_pairs > 1 && ~debug;
+    [use_parallel_pairs,pool_size] = resolve_parallel_precomp(use_parallel_pairs, ...
+        'getPairBasisStokes');
+    pair_cache.stats.used_parallel = use_parallel_pairs;
+    pair_cache.stats.pool_size = pool_size;
 
-    for ii = 1:total_pairs
-        i = pairs(ii,1);
-        p2 = pairs(ii,2);
-
-        pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,ii,debug,svd_opts);
-        if need_explicit_pair_sources
-            Uf{i,p2} = pair.Upf;
-            Yf{i,p2} = pair.Ypf;
-        end
-        if N_peanut && ~use_pair_map
-            Up{i,p2} = pair.DC;
-            Yp{i,p2} = pair.YC;
-        elseif N_peanut && use_pair_map
-            Cmap{i,p2} = pair.Cmap;
-        end
-        if use_pair_map
-            Cmap_FU{i,p2} = pair.Cmap_FU;
-        end
-
-        processed_pairs = processed_pairs + 1;
+    if use_parallel_pairs
         if show_counter
-            fprintf('getPairBasisStokes: processed pair %d/%d (%d,%d)\n', ...
-                processed_pairs,total_pairs,i,p2);
+            fprintf('getPairBasisStokes: parallel pair build for %d pairs\n', total_pairs);
+        end
+        pair_results = cell(total_pairs,1);
+        parfor ii = 1:total_pairs
+            pair_results{ii} = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs, ...
+                refine,pairs,opt,Lc,ii,false,svd_opts);
+        end
+        pair_cache.stats.pool_size = get_parallel_pool_size();
+        for ii = 1:total_pairs
+            i = pairs(ii,1);
+            p2 = pairs(ii,2);
+            pair = pair_results{ii};
+            if need_explicit_pair_sources
+                Uf{i,p2} = pair.Upf;
+                Yf{i,p2} = pair.Ypf;
+            end
+            if N_peanut && ~use_pair_map
+                Up{i,p2} = pair.DC;
+                Yp{i,p2} = pair.YC;
+            elseif N_peanut && use_pair_map
+                Cmap{i,p2} = pair.Cmap;
+            end
+            if use_pair_map
+                Cmap_FU{i,p2} = pair.Cmap_FU;
+            end
+        end
+        if show_counter
+            fprintf('getPairBasisStokes: finished parallel pair build for %d pairs\n', ...
+                total_pairs);
+        end
+    else
+        processed_pairs = 0;
+        for ii = 1:total_pairs
+            i = pairs(ii,1);
+            p2 = pairs(ii,2);
+
+            pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs, ...
+                opt,Lc,ii,debug,svd_opts);
+            if need_explicit_pair_sources
+                Uf{i,p2} = pair.Upf;
+                Yf{i,p2} = pair.Ypf;
+            end
+            if N_peanut && ~use_pair_map
+                Up{i,p2} = pair.DC;
+                Yp{i,p2} = pair.YC;
+            elseif N_peanut && use_pair_map
+                Cmap{i,p2} = pair.Cmap;
+            end
+            if use_pair_map
+                Cmap_FU{i,p2} = pair.Cmap_FU;
+            end
+
+            processed_pairs = processed_pairs + 1;
+            if show_counter
+                fprintf('getPairBasisStokes: processed pair %d/%d (%d,%d)\n', ...
+                    processed_pairs,total_pairs,i,p2);
+            end
         end
     end
 
@@ -119,23 +163,45 @@ pair_cache.n_groups = n_groups;
 pair_cache.group_id = group_id;
 pair_cache.group_sep = group_sep;
 pair_cache.representative_rows = rep_rows;
-pair_cache.groups = repmat(init_pair_group(),n_groups,1);
 total_pairs = size(pairs,1);
-covered_pairs = 0;
+pair_cache.stats.branch = 'canonical_group';
+pair_cache.stats.n_groups = n_groups;
+use_parallel_groups = parallel_precomp && n_groups > 1;
+[use_parallel_groups,pool_size] = resolve_parallel_precomp(use_parallel_groups, ...
+    'getPairBasisStokes');
+pair_cache.stats.used_parallel = use_parallel_groups;
+pair_cache.stats.pool_size = pool_size;
 
-for gg = 1:n_groups
-    pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
-        q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
-        need_explicit_pair_sources,false,svd_opts);
-
+if use_parallel_groups
     if show_counter
-        rep_i = pairs(rep_rows(gg),1);
-        rep_j = pairs(rep_rows(gg),2);
-        n_rep = sum(group_id == gg);
-        covered_pairs = covered_pairs + n_rep;
-        fprintf(['getPairBasisStokes: processed canonical group %d/%d ', ...
-            'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
-            gg,n_groups,rep_i,rep_j,group_sep(gg)-2*pair_rad,n_rep,covered_pairs,total_pairs);
+        fprintf(['getPairBasisStokes: parallel canonical build for %d groups ', ...
+            'covering %d pairs\n'], n_groups,total_pairs);
+    end
+    groups = repmat(init_pair_group(),n_groups,1);
+    parfor gg = 1:n_groups
+        groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
+            q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
+            need_explicit_pair_sources,false,svd_opts);
+    end
+    pair_cache.groups = groups;
+    pair_cache.stats.pool_size = get_parallel_pool_size();
+else
+    pair_cache.groups = repmat(init_pair_group(),n_groups,1);
+    covered_pairs = 0;
+    for gg = 1:n_groups
+        pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
+            q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
+            need_explicit_pair_sources,false,svd_opts);
+
+        if show_counter
+            rep_i = pairs(rep_rows(gg),1);
+            rep_j = pairs(rep_rows(gg),2);
+            n_rep = sum(group_id == gg);
+            covered_pairs = covered_pairs + n_rep;
+            fprintf(['getPairBasisStokes: processed canonical group %d/%d ', ...
+                'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
+                gg,n_groups,rep_i,rep_j,group_sep(gg)-2*pair_rad,n_rep,covered_pairs,total_pairs);
+        end
     end
 end
 
@@ -210,6 +276,38 @@ pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
 pair_cache.representative_rows = zeros(0,1);
 pair_cache.n_groups = 0;
+pair_cache.stats = init_pair_stats();
+end
+
+function stats = init_pair_stats()
+stats = struct('requested_parallel',false,'used_parallel',false, ...
+    'branch','','n_pairs',0,'n_groups',0,'pool_size',0);
+end
+
+function [use_parallel,pool_size] = resolve_parallel_precomp(requested_parallel,caller_name)
+use_parallel = requested_parallel;
+pool_size = 0;
+if ~requested_parallel
+    return
+end
+
+if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox') || ...
+        exist('gcp','file') ~= 2
+    error([caller_name ':ParallelToolboxRequired'], ...
+        ['opt.parallel_precomp requires Parallel Computing Toolbox. ', ...
+         'Open a pool before benchmarking warm-pool speedups if you want ', ...
+         'to exclude startup overhead.']);
+end
+
+pool_size = get_parallel_pool_size();
+end
+
+function pool_size = get_parallel_pool_size()
+pool_size = 0;
+pool = gcp('nocreate');
+if ~isempty(pool)
+    pool_size = pool.NumWorkers;
+end
 end
 
 function group = init_pair_group()
@@ -436,13 +534,13 @@ pair.YC = [];
 pair.Cmap = [];
 pair.Cmap_FU = [];
 
-if getOptField(opt,'N_peanut',0)
+if opt.N_peanut
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
     [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair,svd_opts);
     pair.DC = DC;
     pair.YC = YC;
-    if logical(getOptField(opt,'cmap',false))
+    if opt.cmap
         pair.Cmap = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
     end
 else
@@ -450,7 +548,7 @@ else
 end
 
 
-if logical(getOptField(opt,'cmap',false))
+if opt.cmap
     Kft_pair = getKftPair(Kf1,Kf2);
     pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);
 end

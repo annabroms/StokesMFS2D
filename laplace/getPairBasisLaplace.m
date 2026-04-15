@@ -19,21 +19,13 @@ R = opt.rad;
 if numel(R) > 1
     R = R(1);
 end
-reuse_pair_basis = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
-check_rotations = logical(getOptField(opt,'check_rotations',false));
-shared_sep_tol = getOptField(opt,'shared_sep_tol',1e-12*max(1,R));
-
-if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
-    project_charge = logical(opt.project_charge);
-else
-    project_charge = false;
-end
-
-if isfield(opt,'show_counter') && ~isempty(opt.show_counter)
-    show_counter = logical(opt.show_counter);
-else
-    show_counter = false;
-end
+reuse_pair_basis = opt.reuse_pair_basis_by_sep;
+parallel_precomp = opt.parallel_precomp;
+check_rotations = opt.check_rotations;
+shared_sep_tol = opt.shared_sep_tol;
+project_charge = opt.project_charge;
+show_counter = opt.show_counter;
+use_pair_map = opt.cmap;
 
 if reuse_pair_basis
     Uf = [];
@@ -47,7 +39,7 @@ else
     Yf = cell(P);
 
     if N_peanut
-        if isfield(opt,'cmap') && opt.cmap
+        if use_pair_map
             Up = [];
             Yp = [];
             Cmap = cell(P);
@@ -71,73 +63,59 @@ pair_cache.enabled = reuse_pair_basis;
 pair_cache.check_rotations = check_rotations;
 pair_cache.shared_sep_tol = shared_sep_tol;
 pair_cache.rout_base_f = rout_base_f(:);
+pair_cache.stats.requested_parallel = parallel_precomp;
 
 if isempty(pairs)
     return
 end
 
 pair_cache.meta = build_pair_meta(q,pairs,numel(rbase_in_c),numel(rbase_in_f),opt);
+pair_cache.stats.n_pairs = size(pairs,1);
 
 if ~reuse_pair_basis
     total_pairs = size(pairs,1);
-    processed_pairs = 0;
+    pair_cache.stats.branch = 'per_pair';
+    use_parallel_pairs = parallel_precomp && total_pairs > 1;
+    [use_parallel_pairs,pool_size] = resolve_parallel_precomp(use_parallel_pairs, ...
+        'getPairBasisLaplace');
+    pair_cache.stats.used_parallel = use_parallel_pairs;
+    pair_cache.stats.pool_size = pool_size;
 
-    for ii = 1:total_pairs
-        i = pairs(ii,1);
-        p2 = pairs(ii,2);
-
-        fine_1 = refine{i,p2};
-        fine_2 = refine{p2,i};
-        rout_f = [q(i)+pair_cache.rout_base_f; fine_1; q(p2)+pair_cache.rout_base_f; fine_2];
-
-        rimage_i = rimage_vec{i,p2};
-        rimage_p2 = rimage_vec{p2,i};
-        rin_pair_f = [q(i)+rbase_in_f; rimage_i; q(p2)+rbase_in_f; rimage_p2];
-        nsrc_f_i = N_f + numel(rimage_i);
-        nsrc_f_p2 = N_f + numel(rimage_p2);
-        ntar_i = numel(pair_cache.rout_base_f) + numel(fine_1);
-        ntar_p2 = numel(pair_cache.rout_base_f) + numel(fine_2);
-        proj_pair = struct('project_charge',project_charge, ...
-            'nsrc',[nsrc_f_i nsrc_f_p2], ...
-            'ntar',[ntar_i ntar_p2]);
-
-        [Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f,proj_pair);
-
-        Npair = evaluateCoarseOnPairLaplace([q(i);q(p2)],rbase_in_c,rout_f);
-        Uf{i,p2} = -Uf_pair'*Npair;
-        Yf{i,p2} = Yf_pair;
-
-        if N_peanut
-            rout_peanut = createPeanut(q(i),q(p2),N_peanut,0,R);
-            rin_pair_c = [q(i)+rbase_in_c; q(p2)+rbase_in_c];
-            proj_peanut = struct('project_charge',project_charge, ...
-                'nsrc_c',[numel(rbase_in_c) numel(rbase_in_c)], ...
-                'nsrc_f',[nsrc_f_i nsrc_f_p2]);
-            [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj_peanut);
-
-            if isfield(opt,'cmap') && opt.cmap
-                C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
-                QV = getPairChargeSumMap(nsrc_f_i,nsrc_f_p2)*Yf_pair*Uf{i,p2};
-                if opt.compress_cmap
-                    [U,S,V] = svd(C);
-                    S = diag(S);
-                    ra = sum(S>max(S)*opt.cmap_tol);
-                    fprintf('Rank of coarse-coarse map is chosen to %u\n',ra);
-                    S = S(1:ra);
-                    C = U(:,1:ra)*diag(S)*V(:,1:ra)';
-                end
-                Cmap{i,p2} = C;
-                Cmap_QV{i,p2} = QV;
-            else
-                Up{i,p2} = DC;
-                Yp{i,p2} = YC;
-            end
-        end
-
-        processed_pairs = processed_pairs + 1;
+    if use_parallel_pairs
         if show_counter
-            fprintf('getPairBasisLaplace: processed pair %d/%d (%d,%d)\n', ...
-                processed_pairs,total_pairs,i,p2);
+            fprintf('getPairBasisLaplace: parallel pair build for %d pairs\n', total_pairs);
+        end
+        pair_entries = cell(total_pairs,1);
+        parfor ii = 1:total_pairs
+            pair_entries{ii} = build_pair_entry(ii,q,rbase_in_c,rbase_in_f,rimage_vec, ...
+                refine,pairs,opt,pair_cache.rout_base_f,project_charge, ...
+                pair_cache.meta(ii).sep);
+        end
+        pair_cache.stats.pool_size = get_parallel_pool_size();
+        for ii = 1:total_pairs
+            [Uf,Yf,Up,Yp,Cmap,Cmap_QV] = assign_pair_entry_outputs( ...
+                Uf,Yf,Up,Yp,Cmap,Cmap_QV,pairs,ii,pair_entries{ii},N_peanut,use_pair_map);
+        end
+        if show_counter
+            fprintf('getPairBasisLaplace: finished parallel pair build for %d pairs\n', ...
+                total_pairs);
+        end
+    else
+        processed_pairs = 0;
+        for ii = 1:total_pairs
+            pair_entry = build_pair_entry(ii,q,rbase_in_c,rbase_in_f,rimage_vec, ...
+                refine,pairs,opt,pair_cache.rout_base_f,project_charge, ...
+                pair_cache.meta(ii).sep);
+            [Uf,Yf,Up,Yp,Cmap,Cmap_QV] = assign_pair_entry_outputs( ...
+                Uf,Yf,Up,Yp,Cmap,Cmap_QV,pairs,ii,pair_entry,N_peanut,use_pair_map);
+
+            processed_pairs = processed_pairs + 1;
+            if show_counter
+                i = pairs(ii,1);
+                p2 = pairs(ii,2);
+                fprintf('getPairBasisLaplace: processed pair %d/%d (%d,%d)\n', ...
+                    processed_pairs,total_pairs,i,p2);
+            end
         end
     end
 
@@ -150,23 +128,45 @@ pair_cache.n_groups = n_groups;
 pair_cache.group_id = group_id;
 pair_cache.group_sep = group_sep;
 pair_cache.representative_rows = rep_rows;
-pair_cache.groups = repmat(init_pair_group(),n_groups,1);
 total_pairs = size(pairs,1);
-covered_pairs = 0;
+pair_cache.stats.branch = 'canonical_group';
+pair_cache.stats.n_groups = n_groups;
+use_parallel_groups = parallel_precomp && n_groups > 1;
+[use_parallel_groups,pool_size] = resolve_parallel_precomp(use_parallel_groups, ...
+    'getPairBasisLaplace');
+pair_cache.stats.used_parallel = use_parallel_groups;
+pair_cache.stats.pool_size = pool_size;
 
-for gg = 1:n_groups
-    pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
-        q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
-        project_charge);
-
+if use_parallel_groups
     if show_counter
-        rep_i = pairs(rep_rows(gg),1);
-        rep_j = pairs(rep_rows(gg),2);
-        n_rep = sum(group_id == gg);
-        covered_pairs = covered_pairs + n_rep;
-        fprintf(['getPairBasisLaplace: processed canonical group %d/%d ', ...
-            'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
-            gg,n_groups,rep_i,rep_j,group_sep(gg)-2*R,n_rep,covered_pairs,total_pairs);
+        fprintf(['getPairBasisLaplace: parallel canonical build for %d groups ', ...
+            'covering %d pairs\n'], n_groups,total_pairs);
+    end
+    groups = repmat(init_pair_group(),n_groups,1);
+    parfor gg = 1:n_groups
+        groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
+            q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
+            project_charge);
+    end
+    pair_cache.groups = groups;
+    pair_cache.stats.pool_size = get_parallel_pool_size();
+else
+    pair_cache.groups = repmat(init_pair_group(),n_groups,1);
+    covered_pairs = 0;
+    for gg = 1:n_groups
+        pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
+            q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,pair_cache.rout_base_f, ...
+            project_charge);
+
+        if show_counter
+            rep_i = pairs(rep_rows(gg),1);
+            rep_j = pairs(rep_rows(gg),2);
+            n_rep = sum(group_id == gg);
+            covered_pairs = covered_pairs + n_rep;
+            fprintf(['getPairBasisLaplace: processed canonical group %d/%d ', ...
+                'from pair (%d,%d), pp_sep = %.3g, covers %d pairs -> %d/%d pairs covered\n'], ...
+                gg,n_groups,rep_i,rep_j,group_sep(gg)-2*R,n_rep,covered_pairs,total_pairs);
+        end
     end
 end
 
@@ -186,7 +186,7 @@ for row = 1:size(pairs,1)
     gid = group_id(row);
     pair_cache.meta(row).group_id = gid;
     pair_cache.meta(row).sep = group_sep(gid);
-    if logical(getOptField(opt,'cmap',false))
+    if use_pair_map
         [Ucross_actual,Ec_actual,Lr_actual] = build_actual_pair_colloc_factors( ...
             pair_cache.meta(row),q,rbase_in_c,rout_base_c);
         pair_cache.meta(row).Ucross_colloc_actual = Ucross_actual;
@@ -219,6 +219,38 @@ pair_cache.group_id = zeros(0,1);
 pair_cache.group_sep = zeros(0,1);
 pair_cache.representative_rows = zeros(0,1);
 pair_cache.n_groups = 0;
+pair_cache.stats = init_pair_stats();
+end
+
+function stats = init_pair_stats()
+stats = struct('requested_parallel',false,'used_parallel',false, ...
+    'branch','','n_pairs',0,'n_groups',0,'pool_size',0);
+end
+
+function [use_parallel,pool_size] = resolve_parallel_precomp(requested_parallel,caller_name)
+use_parallel = requested_parallel;
+pool_size = 0;
+if ~requested_parallel
+    return
+end
+
+if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox') || ...
+        exist('gcp','file') ~= 2
+    error([caller_name ':ParallelToolboxRequired'], ...
+        ['opt.parallel_precomp requires Parallel Computing Toolbox. ', ...
+         'Open a pool before benchmarking warm-pool speedups if you want ', ...
+         'to exclude startup overhead.']);
+end
+
+pool_size = get_parallel_pool_size();
+end
+
+function pool_size = get_parallel_pool_size()
+pool_size = 0;
+pool = gcp('nocreate');
+if ~isempty(pool)
+    pool_size = pool.NumWorkers;
+end
 end
 
 function group = init_pair_group()
@@ -256,6 +288,30 @@ for row = 1:total_pairs
     meta(row).phase_c_inv = invertUniformCircleRotationSpec(meta(row).phase_c);
     meta(row).phase_f = getUniformCircleRotationSpec(nf,rot,opt);
     meta(row).phase_f_inv = invertUniformCircleRotationSpec(meta(row).phase_f);
+end
+end
+
+function pair_entry = build_pair_entry(row,q,rbase_in_c,rbase_in_f,rimage_vec, ...
+    refine,pairs,opt,rout_base_f,project_charge,sep)
+pair_entry = build_pair_group([],row,sep,q,rbase_in_c,rbase_in_f,rimage_vec, ...
+    refine,pairs,opt,rout_base_f,project_charge,false);
+end
+
+function [Uf,Yf,Up,Yp,Cmap,Cmap_QV] = assign_pair_entry_outputs( ...
+    Uf,Yf,Up,Yp,Cmap,Cmap_QV,pairs,row,pair_entry,N_peanut,use_pair_map)
+i = pairs(row,1);
+j = pairs(row,2);
+Uf{i,j} = pair_entry.Upf;
+Yf{i,j} = pair_entry.Ypf;
+
+if N_peanut
+    if use_pair_map
+        Cmap{i,j} = pair_entry.Cmap;
+        Cmap_QV{i,j} = pair_entry.Cmap_QV;
+    else
+        Up{i,j} = pair_entry.DC;
+        Yp{i,j} = pair_entry.YC;
+    end
 end
 end
 
@@ -346,7 +402,7 @@ if opt.N_peanut
         'nsrc_f',[nsrc_f_i nsrc_f_j]);
     [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj_peanut);
 
-    if isfield(opt,'cmap') && opt.cmap
+    if opt.cmap
         C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
         QV = getPairChargeSumMap(nsrc_f_i,nsrc_f_j)*Ypf*Upf;
         if opt.compress_cmap

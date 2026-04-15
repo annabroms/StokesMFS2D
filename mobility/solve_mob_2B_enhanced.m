@@ -64,7 +64,8 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 maxit = getOptField(opt,'maxit',800);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 opt.rad = 1;
-precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
+precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
+    'pair_basis',nan,'two_body_or_peanut',nan);
 
 surface_error_mode = lower(char(surface_error_mode));
 if ~any(strcmp(surface_error_mode, {'abs','rel'}))
@@ -107,9 +108,12 @@ tin_f = tin_f(1:end-1)';
 rbase_in_f =  Rp_f*cos(tin_f)+Rp_f*1i*sin(tin_f);
  
 if get_precomp_time
-    pair_timer = tic;
+    pair_setup_timer = tic;
 end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+if get_precomp_time
+    precomp_time.pair_setup = toc(pair_setup_timer);
+end
 
 rin = [];
 rout = [];
@@ -174,10 +178,14 @@ end
 %Get pair basis
 opt.project = true;
 opt.N_peanut = 0; %no peanut compression here!
+if get_precomp_time
+    pair_basis_timer = tic;
+end
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c);
 if get_precomp_time
-    precomp_time.two_body_or_peanut = toc(pair_timer);
+    precomp_time.pair_basis = toc(pair_basis_timer);
+    precomp_time.two_body_or_peanut = precomp_time.pair_setup + precomp_time.pair_basis;
     precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
 end
 
@@ -534,6 +542,7 @@ sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
+sol.pair_precomp_stats = pair_cache.stats;
 
 end
 

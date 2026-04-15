@@ -44,6 +44,7 @@ opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
 opt.reuse_pair_basis_by_sep = true; % build one canonical x-axis pair basis per repeated separation
+opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
 opt.check_rotations = false; % store per-pair pair-basis data alongside the canonical cache for debugging
 opt.shared_sep_tol = 1e-2*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations

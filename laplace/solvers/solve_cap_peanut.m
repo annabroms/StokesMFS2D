@@ -71,6 +71,7 @@ use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
+get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 opt_solve = opt;
 opt_solve.get_bndry_field = false;
 
@@ -78,6 +79,8 @@ q = q(:);
 v_body = v_body(:);
 P = numel(q);
 assert(numel(v_body)==P,'v_body must have one entry per particle.');
+precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
+    'pair_basis',nan,'two_body_or_peanut',nan);
 
 %% Parameters
 maxit = 800;
@@ -126,13 +129,33 @@ for k = 1:P
     rout((k-1)*nout+1:k*nout) = q(k)+rbase_out_c;
 end
 
+if get_precomp_time
+    pair_setup_timer = tic;
+end
 [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
+if get_precomp_time
+    precomp_time.pair_setup = toc(pair_setup_timer);
+end
 
 %% Basis factors
+if get_precomp_time
+    pair_basis_timer = tic;
+end
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
     getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
     rimage_vec,refine,pairs,opt);
+if get_precomp_time
+    precomp_time.pair_basis = toc(pair_basis_timer);
+    precomp_time.two_body_or_peanut = precomp_time.pair_setup + precomp_time.pair_basis;
+end
+if get_precomp_time
+    one_body_timer = tic;
+end
 [UU,YY] = getSelfPseudoLaplace(1,rbase_in_c,rbase_out_c,[0 nout]);
+if get_precomp_time
+    precomp_time.one_body = toc(one_body_timer);
+    precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
+end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
@@ -287,6 +310,8 @@ sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;
 sol.resvec = resvec;
+sol.precomp_time = precomp_time;
+sol.pair_precomp_stats = pair_cache.stats;
 
 end
 

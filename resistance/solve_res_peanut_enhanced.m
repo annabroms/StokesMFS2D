@@ -91,7 +91,8 @@ get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 column_weight = logical(getOptField(opt,'column_weight',false));
 left_weight = logical(getOptField(opt,'left_weight',false));
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
-precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
+precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
+    'pair_basis',nan,'two_body_or_peanut',nan);
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -137,17 +138,24 @@ for k = 1:P
 end
  
 if get_precomp_time
-    pair_timer = tic;
+    pair_setup_timer = tic;
 end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+if get_precomp_time
+    precomp_time.pair_setup = toc(pair_setup_timer);
+end
 
 
 %Get pair basis 
 opt.project_force = false;
+if get_precomp_time
+    pair_basis_timer = tic;
+end
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c,svd_opts);
 if get_precomp_time
-    precomp_time.two_body_or_peanut = toc(pair_timer);
+    precomp_time.pair_basis = toc(pair_basis_timer);
+    precomp_time.two_body_or_peanut = precomp_time.pair_setup + precomp_time.pair_basis;
 end
 
 %Get one-body pseduo inverse blocks -- enough to do this for single body.
@@ -415,6 +423,7 @@ sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
+sol.pair_precomp_stats = pair_cache.stats;
 
 end
 

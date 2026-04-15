@@ -68,7 +68,8 @@ use_fmm = logical(getOptField(opt,'use_fmm',true));
 lr = getOptField(opt,'lr',0);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 rad = ones(P,1); %assume for now all are identical
-precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
+precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
+    'pair_basis',nan,'two_body_or_peanut',nan);
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -141,15 +142,22 @@ for k = 1:P
 end
  
 if get_precomp_time
-    pair_timer = tic;
+    pair_setup_timer = tic;
 end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+if get_precomp_time
+    precomp_time.pair_setup = toc(pair_setup_timer);
+end
 
 %Get pair basis
+if get_precomp_time
+    pair_basis_timer = tic;
+end
 [Upf,Ypf,~,~,~,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,[],rbase_out_c);
 if get_precomp_time
-    precomp_time.two_body_or_peanut = toc(pair_timer);
+    precomp_time.pair_basis = toc(pair_basis_timer);
+    precomp_time.two_body_or_peanut = precomp_time.pair_setup + precomp_time.pair_basis;
 end
 
 
@@ -567,6 +575,7 @@ sol.gmres_tol = gmres_tol;
 sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
+sol.pair_precomp_stats = pair_cache.stats;
 
 end
 

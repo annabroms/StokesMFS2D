@@ -85,8 +85,10 @@ N_peanut = getOptField(opt,'N_peanut',400);
 column_weight = logical(getOptField(opt,'column_weight',false));
 left_weight = logical(getOptField(opt,'left_weight',false));
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
-precomp_time = struct('total',nan,'one_body',nan,'two_body_or_peanut',nan);
+precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
+    'pair_basis',nan,'two_body_or_peanut',nan);
 pair_setup_time = 0;
+pair_basis_time = 0;
 if N_peanut <= 0
     error('solve_mob_peanut_enhanced:InvalidNPeanut', ...
         ['solve_mob_peanut_enhanced requires opt.N_peanut > 0 ', ...
@@ -132,6 +134,7 @@ end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
 if get_precomp_time
     pair_setup_time = toc(pair_timer);
+    precomp_time.pair_setup = pair_setup_time;
 end
 
 rvec_in_c = [];
@@ -177,7 +180,9 @@ end
 
 Lc_pair = getILpair(Lc{1}); % Dense pair projector kept for fallback/comparison.
 if get_precomp_time
-    precomp_time.two_body_or_peanut = pair_setup_time + toc(pair_timer);
+    pair_basis_time = toc(pair_timer);
+    precomp_time.pair_basis = pair_basis_time;
+    precomp_time.two_body_or_peanut = pair_setup_time + pair_basis_time;
     precomp_time.total = precomp_time.one_body + precomp_time.two_body_or_peanut;
 end
 
@@ -467,6 +472,7 @@ sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.body_rel_res_max = body_rel_res_max;
 sol.precomp_time = precomp_time;
+sol.pair_precomp_stats = pair_cache.stats;
 
 
 end
