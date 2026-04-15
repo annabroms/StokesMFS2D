@@ -14,9 +14,13 @@ repoRoot = fileparts(fileparts(scriptDir));
 annotationVarName = 'mar26VisualiseCoarseFineAnnotations';
 ann = evalin('base',annotationVarName);
 
+fig1Name = 'mar26 visualise coarse fine - coarse cluster';
 fig2Name = 'mar26 visualise coarse fine - fine chain';
 fig3Name = 'mar26 visualise coarse fine - closest neighbours';
 
+pdfFile1 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig1.pdf');
+annotationTexFile1 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig1_annotations.tex');
+demoTexFile1 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig1_demo.tex');
 pdfFile2 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig2.pdf');
 annotationTexFile2 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig2_annotations.tex');
 demoTexFile2 = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig2_demo.tex');
@@ -24,9 +28,13 @@ pdfFile = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig3.pdf');
 annotationTexFile = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig3_annotations.tex');
 demoTexFile = fullfile(scriptDir,'mar26_visualse_coarse_fine_fig3_demo.tex');
 
-fig3ExportScale = getAxisDataScale(fig3Name,ann.thirdFigureBounds);
-exportCleanFigure(fig2Name,pdfFile2,ann.secondFigureBounds,fig3ExportScale);
+fig1ExportScale = getAxisDataScale(fig1Name,[]);
+exportCleanFullFigure(fig1Name,pdfFile1);
+exportCleanFigure(fig2Name,pdfFile2,ann.secondFigureBounds,fig1ExportScale);
 exportCleanFigure(fig3Name,pdfFile,[],[]);
+writeEmptyAnnotationTex(annotationTexFile1);
+writeDemoTex(demoTexFile1,'mar26_visualse_coarse_fine_fig1.pdf', ...
+    'mar26_visualse_coarse_fine_fig1_annotations.tex');
 writeFigure2AnnotationTex(annotationTexFile2,ann);
 writeDemoTex(demoTexFile2,'mar26_visualse_coarse_fine_fig2.pdf', ...
     'mar26_visualse_coarse_fine_fig2_annotations.tex');
@@ -34,6 +42,9 @@ writeAnnotationTex(annotationTexFile,ann);
 writeDemoTex(demoTexFile,'mar26_visualse_coarse_fine_fig3.pdf', ...
     'mar26_visualse_coarse_fine_fig3_annotations.tex');
 
+fprintf('Wrote figure PDF: %s\n',pdfFile1);
+fprintf('Wrote annotation overlay: %s\n',annotationTexFile1);
+fprintf('Wrote standalone demo: %s\n',demoTexFile1);
 fprintf('Wrote figure PDF: %s\n',pdfFile2);
 fprintf('Wrote annotation overlay: %s\n',annotationTexFile2);
 fprintf('Wrote standalone demo: %s\n',demoTexFile2);
@@ -54,8 +65,18 @@ exportgraphics(ax,pdfFile,'ContentType','vector');
 end
 
 
+function exportCleanFullFigure(figName,pdfFile)
+fig = findFigureByName(figName);
+delete(findall(fig,'Type','text'));
+exportgraphics(fig,pdfFile,'ContentType','vector');
+end
+
+
 function scale = getAxisDataScale(figName,bounds)
 [fig,ax] = findFigureAxes(figName);
+if nargin < 2 || isempty(bounds)
+    bounds = [xlim(ax), ylim(ax)];
+end
 [~,axPos] = getFigureAndAxesPositionInches(fig,ax);
 dx = bounds(2) - bounds(1);
 dy = bounds(4) - bounds(3);
@@ -104,17 +125,21 @@ end
 
 
 function [fig,ax] = findFigureAxes(figName)
-fig = findall(groot,'Type','figure','Name',figName);
-if isempty(fig)
-    error('Could not find figure "%s".',figName);
-end
-fig = fig(1);
-
+fig = findFigureByName(figName);
 ax = findall(fig,'Type','axes');
 if isempty(ax)
     error('Could not find axes in figure "%s".',figName);
 end
 ax = ax(1);
+end
+
+
+function fig = findFigureByName(figName)
+fig = findall(groot,'Type','figure','Name',figName);
+if isempty(fig)
+    error('Could not find figure "%s".',figName);
+end
+fig = fig(1);
 end
 
 
@@ -137,6 +162,17 @@ fprintf(fid,'  x={($(img.south east)-(img.south west)$)},\n');
 fprintf(fid,'  y={($(img.north west)-(img.south west)$)}]\n');
 writeNodeGroup(fid,ann.figure2CircleNumberLabels,'mar26 number',xmin,xmax,ymin,ymax,false,false);
 fprintf(fid,'\\end{scope}\n');
+end
+
+
+function writeEmptyAnnotationTex(filename)
+fid = fopen(filename,'w');
+if fid < 0
+    error('Could not open %s for writing.',filename);
+end
+
+cleanupObj = onCleanup(@() fclose(fid)); %#ok<NASGU>
+fprintf(fid,'%% Auto-generated from mar26_visualse_coarse_fine.m\n');
 end
 
 
@@ -212,8 +248,6 @@ cleanupObj = onCleanup(@() fclose(fid));
 
 fprintf(fid,'\\documentclass[tikz,border=4pt]{standalone}\n');
 fprintf(fid,'\\usepackage{amsmath}\n');
-fprintf(fid,'\\usepackage[T1]{fontenc}\n');
-fprintf(fid,'\\usepackage{courier}\n');
 fprintf(fid,'\\usepackage{graphicx}\n');
 fprintf(fid,'\\usepackage{tikz}\n');
 fprintf(fid,'\\usetikzlibrary{calc}\n');
@@ -231,8 +265,8 @@ fprintf(fid,'  mar26 equals/.style={font=\\marTwentySixFormulaFont,text=black,an
 fprintf(fid,'  mar26 pair title/.style={font=\\marTwentySixFormulaFont,text=black,anchor=center,inner sep=0pt,outer sep=0pt},\n');
 fprintf(fid,'  mar26 pair focus/.style={font=\\marTwentySixFormulaFont,text=black,anchor=center,inner sep=0pt,outer sep=0pt},\n');
 fprintf(fid,'  mar26 pair neighbour/.style={font=\\marTwentySixFormulaFont,text=black,anchor=center,inner sep=0pt,outer sep=0pt},\n');
-fprintf(fid,'  mar26 number/.style={font=\\marTwentySixNumberFont\\ttfamily,text=black,anchor=center,inner sep=0pt,outer sep=0pt,text height=1.5ex,text depth=0.25ex},\n');
-fprintf(fid,'  mar26 neighbour number/.style={font=\\marTwentySixNumberFont\\ttfamily,text={rgb,1:red,0.55;green,0.55;blue,0.55},anchor=center,inner sep=0pt,outer sep=0pt,text height=1.5ex,text depth=0.25ex}\n');
+fprintf(fid,'  mar26 number/.style={font=\\marTwentySixNumberFont,text=black,anchor=center,inner sep=0pt,outer sep=0pt,text height=1.5ex,text depth=0.25ex},\n');
+fprintf(fid,'  mar26 neighbour number/.style={font=\\marTwentySixNumberFont,text={rgb,1:red,0.55;green,0.55;blue,0.55},anchor=center,inner sep=0pt,outer sep=0pt,text height=1.5ex,text depth=0.25ex}\n');
 fprintf(fid,'}\n');
 fprintf(fid,'\n');
 fprintf(fid,'\\begin{document}\n');

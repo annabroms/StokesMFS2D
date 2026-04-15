@@ -32,14 +32,21 @@ nCirclePts = 240;
 fluidColor = [0.82 0.91 0.98];
 bodyColor = [1 1 1];
 bodyEdgeColor = [0.72 0.77 0.82];
+coarseClusterPanelSideMargin = 0.08;
+coarseClusterPanelBottomMargin = 0.08;
+coarseClusterPanelTopMargin = 0.06;
+coarseClusterPanelGap = 0.025;
 
 coarseNodeCount = 10;
 coarseNodeColor = [0.10 0.34 0.82];
 coarseNodeSize = 44;
+figure2NodeCount = coarseNodeCount;
+figure2NodeColor = coarseNodeColor;
+figure2NodeSize = coarseNodeSize;
 
 fineNodeCount = 30;
 fineNodeColor = [0.83 0.21 0.18];
-fineNodeSize = 12;
+fineNodeSize = 5;
 fadedFineNodeColor = blendWithWhite(fineNodeColor,0.68);
 formulaFontSize = 14;
 numberFontSize = 12;
@@ -47,8 +54,8 @@ annotationTextColor = [0 0 0];
 neighbourNumberColor = [0.55 0.55 0.55];
 numberFontName = 'Courier';
 numberBaseOffset = [0.00, 0.00];
-numberSixOffset = [-0.01, 0.00];
-numberSevenOffset = [0.00, 0.00];
+numberSixOffset = [-0.05, 0.00];
+numberSevenOffset = [-0.1, 0.00];
 numberPosition = @(center,label) getCircleNumberPosition( ...
     center,label,numberBaseOffset,numberSixOffset,numberSevenOffset);
 drawNumber = @(ax,center,label,color) drawCircleNumber( ...
@@ -61,9 +68,9 @@ pairLabelXOffset = 0.70;
 pairTitleYOffset = 0.80;
 bottomPairTitleLift = 0.30;
 bottomVerticalPlusLift = 0.35;
-rotate_group = true;
+rotate_group = false;
 showPairVelocityLabels = false;
-drawAnnotations = true;
+drawAnnotations = false;
 exportAnnotationData = true;
 annotationVarName = 'mar26VisualiseCoarseFineAnnotations';
 
@@ -82,7 +89,8 @@ annotationData.neighbourCircleNumberLabels = struct('text',{},'position',{});
 annotationData.figure2CircleNumberLabels = struct('text',{},'position',{});
 
 %% Coarse cluster: exterior fluid and single-body interior
-delta = 1;
+rng(8);
+delta = 2;
 d = rad*(2 + delta);
 a1 = d;
 a2 = d*(0.5 + 1i*sqrt(3)/2);
@@ -93,9 +101,16 @@ P = 8;
 q_cluster = grow_cluster(P,delta,2,1,[],false,false);
 focusIdx = 1;
 
-figure('Color','w','Name','mar26 visualise coarse fine - coarse cluster');
+fig1 = figure('Color','w','Name','mar26 visualise coarse fine - coarse cluster');
+coarseClusterPanelWidth = 1 - 2*coarseClusterPanelSideMargin;
+coarseClusterPanelHeight = (1 - coarseClusterPanelBottomMargin - ...
+    coarseClusterPanelTopMargin - coarseClusterPanelGap)/2;
+coarseClusterBottomY = coarseClusterPanelBottomMargin;
+coarseClusterTopY = coarseClusterPanelBottomMargin + coarseClusterPanelHeight + ...
+    coarseClusterPanelGap;
 
-ax1 = subplot(1,2,1);
+ax1 = axes('Parent',fig1,'Position',[coarseClusterPanelSideMargin, ...
+    coarseClusterTopY, coarseClusterPanelWidth, coarseClusterPanelHeight]);
 setupFluidAxes(ax1,q_cluster,rad,fluidColor,domainPadding);
 hold(ax1,'on');
 for k = 1:numel(q_cluster)
@@ -104,7 +119,8 @@ for k = 1:numel(q_cluster)
 end
 
 
-ax2 = subplot(1,2,2);
+ax2 = axes('Parent',fig1,'Position',[coarseClusterPanelSideMargin, ...
+    coarseClusterBottomY, coarseClusterPanelWidth, coarseClusterPanelHeight]);
 setupFluidAxes(ax2,q_cluster,rad,fluidColor,domainPadding);
 hold(ax2,'on');
 for k = 1:numel(q_cluster)
@@ -136,6 +152,8 @@ if rotate_group
     q_close = 1i*q_close;
     q_far = 1i*q_far;
 end
+[q_close, ~] = sortBodiesTopToBottom(q_close);
+[q_far, ~] = sortBodiesTopToBottom(q_far);
 q_fine = [q_close; q_far];
 
 figure('Color','w','Name','mar26 visualise coarse fine - fine chain');
@@ -147,13 +165,15 @@ for k = 1:numel(q_fine)
     drawDisk(ax3,q_fine(k),rad,bodyColor,'none',1.0,nCirclePts);
 end
 for k = 1:numel(q_close)
-    drawBoundaryNodes(ax3,q_close(k),rad,fineNodeCount,fineNodeColor,fineNodeSize);
+    drawBoundaryNodes(ax3,q_close(k),rad, ...
+        fineNodeCount,fineNodeColor,fineNodeSize);
 end
 for k = 1:numel(q_far)
-    drawBoundaryNodes(ax3,q_far(k),rad,coarseNodeCount,coarseNodeColor,coarseNodeSize);
+    drawBoundaryNodes(ax3,q_far(k),rad, ...
+        figure2NodeCount,figure2NodeColor,figure2NodeSize);
 end
-figure2LabelPositions = [q_close(:); q_far(:)];
-figure2LabelTexts = [{'2','3','4','5','6'},{'1','7'}];
+figure2LabelPositions = [q_far(1); q_close(:); q_far(2)];
+figure2LabelTexts = {'1','2','3','4','5','6','7'};
 for k = 1:numel(figure2LabelPositions)
     annotationData.figure2CircleNumberLabels(k).text = figure2LabelTexts{k};
     annotationData.figure2CircleNumberLabels(k).position = ...
@@ -195,9 +215,6 @@ pairDisplayLists = cell(numel(q_close),1);
 for k = 1:numel(q_close)
     neighbourLists{k} = closestNeighbours(q_close,k);
     pairDisplayLists{k} = neighbourLists{k};
-    if ismember(k,[2 3 4]) && numel(pairDisplayLists{k}) == 2
-        pairDisplayLists{k} = pairDisplayLists{k}([2 1]);
-    end
 end
 
 topPairTitleY = -inf;
@@ -266,7 +283,7 @@ setupFluidAxes(ax4,allPanelCenters,rad,fluidColor,1.7);
 hold(ax4,'on');
 annotationData.thirdFigureBounds = getBounds(allPanelCenters,rad,1.7);
 for k = 1:numel(topDisplayCenters)
-    psiText = ['\boldsymbol{\psi}^{(' num2str(k) ')}'];
+    psiText = ['\psi^{(' num2str(k) ')}'];
     psiDisplayText = ['$\psi^{(' num2str(k) ')}$'];
     psiPos = [real(topDisplayCenters(k)), psiLabelY];
     annotationData.psiLabels(k).text = psiText;
@@ -598,6 +615,13 @@ dist = abs(q - q(k));
 dist(k) = inf;
 minDist = min(dist);
 idx = find(dist <= minDist + 1e-10*max(1,minDist));
+end
+
+
+function [qSorted, order] = sortBodiesTopToBottom(q)
+sortData = [-imag(q(:)), real(q(:))];
+[~, order] = sortrows(sortData,[1 2]);
+qSorted = q(order);
 end
 
 
