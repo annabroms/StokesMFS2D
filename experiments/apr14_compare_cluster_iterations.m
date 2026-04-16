@@ -2,8 +2,8 @@ clear;
 close all;
 clc;
 
-% Compare mobility solves on random P-circle geometries using peanut
-% compression and 1-body preconditioning.
+% Compare mobility or resistance solves on random P-circle geometries
+% using peanut compression and 1-body preconditioning.
 % The residual figure shows the final GMRES estimated relative residual.
 % The postprocessed surface residual is also stored in results.
 % A third figure compares the number of GMRES unknowns.
@@ -22,23 +22,30 @@ fprintf('=== Compare Cluster Iterations (Apr 14, 2026) ===\n');
 rng_seed = 8;
 rng(rng_seed);
 
-P = 100;
+P = 50;
 rad = 1;
 nruns = 5;
 deltavec = logspace(-3,-1,10);
 
-geom.generator = 'random_mc'; % 'cluster_gen' or 'random_mc'
+geom.generator = 'cluster_gen'; % 'cluster_gen' or 'random_mc'
 geom.domain = 'boxed';          % used for random_mc
 geom.phi = 0.65;                % used for random_mc
 geom.n_sweeps = 30;             % used for random_mc
 geom.show_generation_plot = false;
 geom_tag = get_geometry_tag(geom);
 
-N_c = 60; %80
+solve_resistance = false;
+if solve_resistance
+    problem_tag = 'resistance';
+else
+    problem_tag = 'mobility';
+end
+
+N_c = 80;
 N_f = 150;
 N_peanut = 400;
 
-io.run_experiment = 1;
+io.run_experiment = 0;
 
 opt_template = get2Dparams(P,N_c,N_f);
 opt_template.rad = rad;
@@ -57,13 +64,21 @@ opt_template.cmap = 1;
 opt_template.self_correct = 1;
 opt_template.use_dense = 1;
 opt_template.get_bndry_field = 1;
-opt_template.parallel_precomp = 1;
+opt_template.parallel_precomp = 0;
 
-methods = struct( ...
-    'name',{'peanut','one_body'}, ...
-    'label',{'Peanut compression','1-body preconditioning'}, ...
-    'solver',{@solve_mob_peanut_enhanced,@solve_mob_1B_enhanced}, ...
-    'color',{[0.8500 0.3250 0.0980],[0 0.4470 0.7410]});
+if solve_resistance
+    methods = struct( ...
+        'name',{'peanut','one_body'}, ...
+        'label',{'Peanut compression','1-body preconditioning'}, ...
+        'solver',{@solve_res_peanut_enhanced,@solve_res_1B_enhanced}, ...
+        'color',{[0.8500 0.3250 0.0980],[0 0.4470 0.7410]});
+else
+    methods = struct( ...
+        'name',{'peanut','one_body'}, ...
+        'label',{'Peanut compression','1-body preconditioning'}, ...
+        'solver',{@solve_mob_peanut_enhanced,@solve_mob_1B_enhanced}, ...
+        'color',{[0.8500 0.3250 0.0980],[0 0.4470 0.7410]});
+end
 
 % Data I/O and plotting switches.
 % Example 1: run and save without plotting
@@ -81,7 +96,7 @@ else
     io.save_results = false;
     plots.make_figures = true;
 end
-io.data_filename = sprintf('%s_P%d_%s.mat', script_name, P, geom_tag);
+io.data_filename = sprintf('%s_P%d_%s_%s.mat', script_name, P, problem_tag, geom_tag);
 
 if io.run_experiment && io.load_results
     error('apr14_compare_cluster_iterations:ConflictingIO', ...
@@ -120,9 +135,9 @@ else
     velocities = cell(ndelta,nruns);
     rotations = cell(ndelta,nruns);
 
-    fprintf(['Running mobility comparison with geometry=%s, P=%d, nruns=%d, ', ...
+    fprintf(['Running %s comparison with geometry=%s, P=%d, nruns=%d, ', ...
         'N_c=%d, N_f=%d, N_peanut=%d\n'], ...
-        geom.generator,P,nruns,N_c,N_f,N_peanut);
+        problem_tag,geom.generator,P,nruns,N_c,N_f,N_peanut);
 
     for idelta = 1:ndelta
         delta = deltavec(idelta);
@@ -167,6 +182,8 @@ else
     results.P = P;
     results.rad = rad;
     results.nruns = nruns;
+    results.solve_resistance = solve_resistance;
+    results.problem_tag = problem_tag;
     results.geom = geom;
     results.geom_tag = geom_tag;
     results.deltavec = deltavec;
@@ -390,16 +407,16 @@ grid on;
 axis tight;
 xlabel('$\delta$','Interpreter','latex');
 ylabel('GMRES iterations','Interpreter','latex');
-title('Cluster solve iterations','Interpreter','latex');
+%title('Cluster solve iterations','Interpreter','latex');
 legend('Location','best','Interpreter','latex');
 
 figure(2);
 clf;
 hold on;
 for imethod = 1:nmethods
-    gmres_min = clampPositive(summary(imethod).gmres_min);
-    gmres_max = clampPositive(summary(imethod).gmres_max);
-    gmres_mean = clampPositive(summary(imethod).gmres_mean);
+    gmres_min = clampPositive(summary(imethod).surface_min);
+    gmres_max = clampPositive(summary(imethod).surface_max);
+    gmres_mean = clampPositive(summary(imethod).surface_mean);
     plotBand(deltavec,gmres_min,gmres_max,methods(imethod).color);
     plot(deltavec,gmres_mean,'-o', ...
         'Color',methods(imethod).color, ...
@@ -412,8 +429,8 @@ set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
 xlabel('$\delta$','Interpreter','latex');
-ylabel('Final GMRES estimated relative residual','Interpreter','latex');
-title('Cluster solve residuals','Interpreter','latex');
+ylabel('Relative boundary residual','Interpreter','latex');
+%title('Cluster solve residuals','Interpreter','latex');
 legend('Location','best','Interpreter','latex');
 
 figure(3);
@@ -433,7 +450,7 @@ grid on;
 axis tight;
 xlabel('$\delta$','Interpreter','latex');
 ylabel('GMRES unknowns','Interpreter','latex');
-title('Cluster GMRES unknown counts','Interpreter','latex');
+%title('Cluster GMRES unknown counts','Interpreter','latex');
 legend('Location','best','Interpreter','latex');
 
 figure(4);
@@ -450,7 +467,7 @@ set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
 xlabel('$\delta$','Interpreter','latex');
-ylabel('Unknown ratio','Interpreter','latex');
-title('1-body to peanut GMRES unknown ratio','Interpreter','latex');
-legend('Location','best','Interpreter','latex');
+ylabel('Ratio of unknowns:  1-body solve / peanut compression','Interpreter','latex');
+%title('1-body to peanut GMRES unknown ratio','Interpreter','latex');
+%legend('Location','best','Interpreter','latex');
 end

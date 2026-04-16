@@ -13,7 +13,7 @@ geom_seed = 1;
 load_seed = 11;
 
 % Geometry
-P = 20;
+P = 10;
 rad = 1;
 domain = 'boxed';
 phi = 0.65;
@@ -98,7 +98,7 @@ fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
 FT_ref = packFT(F,T);
 UW_ref = packUW(U,W);
 
-for k = 2:numel(methods)
+for k = 1:numel(methods)
     results(k).name = methods(k).name;
     results(k).label = methods(k).label;
 
@@ -113,6 +113,7 @@ for k = 2:numel(methods)
     [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
     results(k).res_time = toc;
     results(k).res_gmres_residual = final_gmres_residual(results(k).res_sol);
+
 
     [Uk,Wk] = unpackUW(results(k).UW);
     [FT_back,~] = methods(k).res_solver(q,Uk,Wk,opt);
@@ -215,9 +216,9 @@ legend({'it','unknowns'},'Location','best');
 grid on;
 
 nexttile;
-hold on;
 for k = 1:numel(results)
     semilogy(results(k).mob_sol.resvec,'LineWidth',1.5,'DisplayName',results(k).label);
+    hold on
 end
 grid on;
 xlabel('iteration');
@@ -226,9 +227,9 @@ title('Mobility GMRES residual history');
 legend('Location','best');
 
 nexttile;
-hold on;
 for k = 1:numel(results)
     semilogy(results(k).res_sol.resvec,'LineWidth',1.5,'DisplayName',results(k).label);
+    hold on
 end
 grid on;
 xlabel('iteration');
