@@ -45,6 +45,7 @@ opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 opt.visualise_sol = 0; % plot postprocessing quantities
 opt.visualise_grid = 0; % plot source/collocation grids during setup
 opt.get_bndry_field = 1; % determine velocity on the boundary in post-processing (at new nodes)?
+opt.get_solve_time = true; % measure GMRES wall-clock solve time and the FMM subset
 opt.RAM_check = false; % estimate/report RAM usage for precomp, solve, and postprocessing
 opt.project_force = false; % project out net force/torque-producing modes, needed in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated pair separations

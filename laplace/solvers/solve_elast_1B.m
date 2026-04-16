@@ -65,6 +65,7 @@ gmres_tol = getOptField(opt,'gmres_tol',1e-7);
 debug = logical(getOptField(opt,'debug',false));
 use_fmm = logical(getOptField(opt,'use_fmm',true));
 gmres_verbose = getOptField(opt,'gmres_verbose',0);
+get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 opt.use_fmm = use_fmm;
 opt.gmres_verbose = gmres_verbose;
 opt.project_charge = true;
@@ -114,8 +115,12 @@ end
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
+solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
+solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_elast_1B(x,geom,basis), ...
     u_rhs,length(geom.rout),maxit,gmres_tol,opt.gmres_verbose,geom.rout);
+solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
+solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -174,6 +179,7 @@ sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;
 sol.resvec = resvec;
+sol.solve_time = solve_time;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

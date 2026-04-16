@@ -22,6 +22,7 @@ rvec_out = geom.rvec_out;
 rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
+use_fmm = logical(getOptField(opt,'use_fmm',true));
 Cmap_FU = basis.Cmap_FU;
 
 % Resuse pair-data for all pairs that share the same separation?
@@ -165,7 +166,7 @@ if on_coarse_grid
 end
 
 %% Evaluate and correct velocity field at those sources
-vel = getVelocityField(rvec_in,rcheck,lam_c_x,lam_c_y);
+vel = getVelocityField(rvec_in,rcheck,lam_c_x,lam_c_y,use_fmm);
 
 
 res = res+vel+u_corr; %Subtraction of the contribution from the peanut compressed basis on the pair itself, 

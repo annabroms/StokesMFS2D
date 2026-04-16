@@ -22,6 +22,7 @@ rvec_out = geom.rvec_out;
 rcheck = geom.rcheck;
 q = geom.q;
 pairs = geom.pairs;
+use_fmm = logical(getOptField(opt,'use_fmm',true));
 is_collocation = isequal(rcheck,rvec_out);
 Cmap_FU = basis.Cmap_FU;
 if isfield(basis,'pair_cache')
@@ -45,7 +46,7 @@ N_f = opt.N_f;
 
 %% Get flow field from all source types
 
-res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y);
+res = getVelocityField(rvec_in,rcheck,tau_stokes_x,tau_stokes_y,use_fmm);
 
 % Away from the collocation grid we just evaluate the recovered source
 % representation directly. The boundary-only BK' and identity terms below

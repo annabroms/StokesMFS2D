@@ -20,6 +20,7 @@ rbase_in_c = geom.rbase_in_c;
 opt = geom.opt;
 rvec_out = geom.rvec_out;
 q = geom.q;
+use_fmm = logical(getOptField(opt,'use_fmm',true));
 
 % Transform data at collocation points to source strengths.
 [rvec_in,coarse_ind,tau_stokes_x,tau_stokes_y,u_corr] = ...
@@ -31,7 +32,7 @@ PM = length(rvec_out);
 mu = 1;
 
 %% Velocity field from all Stokeslet sources
-res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y);
+res = getVelocityField(rvec_in,rvec_out,tau_stokes_x,tau_stokes_y,use_fmm);
 
 two_corr = true; % identity correction for pair blocks
 

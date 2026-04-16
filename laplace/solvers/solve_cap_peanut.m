@@ -77,6 +77,7 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
+get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 opt_solve = opt;
 opt_solve.get_bndry_field = false;
 
@@ -230,8 +231,12 @@ end
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
+solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
+solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
+solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
+solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -320,6 +325,7 @@ sol.maxres = maxres;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.solve_time = solve_time;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

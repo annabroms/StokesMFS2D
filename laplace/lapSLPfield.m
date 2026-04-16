@@ -65,7 +65,9 @@ srcinfo.nd = nd;
 srcinfo.charges = (-sigma.')/(2*pi); % fmm2d (of flatiron) uses log(r)
 
 eps_fmm = 1e-10;
+fmm_timer = tic;
 U = rfmm2d(eps_fmm,srcinfo,0,targ,1);
+manageSolveTimeMeasurement('add_fmm',toc(fmm_timer));
 
 if nd==1
     u = U.pottarg(:);

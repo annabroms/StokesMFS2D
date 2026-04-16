@@ -2,7 +2,7 @@ clear;
 close all;
 clc;
 
-% Compare mobility solves on random P-circle clusters using peanut
+% Compare mobility solves on random P-circle geometries using peanut
 % compression and 1-body preconditioning.
 % The residual figure shows the final GMRES estimated relative residual.
 % The postprocessed surface residual is also stored in results.
@@ -23,14 +23,22 @@ rng_seed = 8;
 rng(rng_seed);
 
 P = 100;
-P = 50;
 rad = 1;
-nruns = 2;
+nruns = 5;
 deltavec = logspace(-3,-1,10);
 
-N_c = 80;
+geom.generator = 'random_mc'; % 'cluster_gen' or 'random_mc'
+geom.domain = 'boxed';          % used for random_mc
+geom.phi = 0.65;                % used for random_mc
+geom.n_sweeps = 30;             % used for random_mc
+geom.show_generation_plot = false;
+geom_tag = get_geometry_tag(geom);
+
+N_c = 60; %80
 N_f = 150;
 N_peanut = 400;
+
+io.run_experiment = 1;
 
 opt_template = get2Dparams(P,N_c,N_f);
 opt_template.rad = rad;
@@ -64,12 +72,16 @@ methods = struct( ...
 % Example 2: load saved results and plot without rerunning
 %   io.run_experiment = false; io.save_results = false;
 %   io.load_results = true;    plots.make_figures = true;
-io.run_experiment = true;
-io.load_results = false;
-io.save_results = true;
-io.data_filename = 'apr14_compare_cluster_iterations.mat';
-
-plots.make_figures = true;
+if io.run_experiment
+    io.load_results = false;
+    io.save_results = true;
+    plots.make_figures = false;
+else
+    io.load_results = true;
+    io.save_results = false;
+    plots.make_figures = true;
+end
+io.data_filename = sprintf('%s_P%d_%s.mat', script_name, P, geom_tag);
 
 if io.run_experiment && io.load_results
     error('apr14_compare_cluster_iterations:ConflictingIO', ...
@@ -104,11 +116,13 @@ else
     gmres_unknowns = nan(ndelta,nruns,nmethods);
     unknown_ratio = nan(ndelta,nruns);
     clusters = cell(ndelta,nruns);
+    geom_meta = cell(ndelta,nruns);
     velocities = cell(ndelta,nruns);
     rotations = cell(ndelta,nruns);
 
-    fprintf('Running mobility comparison with P=%d, nruns=%d, N_c=%d, N_f=%d, N_peanut=%d\n', ...
-        P,nruns,N_c,N_f,N_peanut);
+    fprintf(['Running mobility comparison with geometry=%s, P=%d, nruns=%d, ', ...
+        'N_c=%d, N_f=%d, N_peanut=%d\n'], ...
+        geom.generator,P,nruns,N_c,N_f,N_peanut);
 
     for idelta = 1:ndelta
         delta = deltavec(idelta);
@@ -117,11 +131,12 @@ else
         for irun = 1:nruns
             fprintf('  Run %2d/%2d\n', irun, nruns);
 
-            q = grow_cluster(P,delta,2,rad,[],false,false);
+            [q, geom_meta_run] = generate_geometry_sample(P,delta,rad,geom);
             U = randn(P,2);
             W = randn(P,1);
 
             clusters{idelta,irun} = q;
+            geom_meta{idelta,irun} = geom_meta_run;
             velocities{idelta,irun} = U;
             rotations{idelta,irun} = W;
 
@@ -152,6 +167,8 @@ else
     results.P = P;
     results.rad = rad;
     results.nruns = nruns;
+    results.geom = geom;
+    results.geom_tag = geom_tag;
     results.deltavec = deltavec;
     results.method_names = {methods.name};
     results.method_labels = {methods.label};
@@ -162,6 +179,7 @@ else
     results.gmres_unknowns = gmres_unknowns;
     results.unknown_ratio = unknown_ratio;
     results.clusters = clusters;
+    results.geom_meta = geom_meta;
     results.velocities = velocities;
     results.rotations = rotations;
 
@@ -222,6 +240,83 @@ if ~any(mask)
 end
 floor_val = min(y(mask));
 y(~mask) = floor_val;
+end
+
+function tag = get_geometry_tag(geom)
+generator = lower(char(string(geom.generator)));
+switch generator
+    case 'cluster_gen'
+        tag = 'cluster_gen';
+    case 'random_mc'
+        tag = sprintf('random_mc_phi%.3f', geom.phi);
+    otherwise
+        error('apr14_compare_cluster_iterations:BadGenerator', ...
+            'Unknown geom.generator = %s. Use ''cluster_gen'' or ''random_mc''.', ...
+            geom.generator);
+end
+end
+
+function [q, meta] = generate_geometry_sample(P,delta,rad,geom)
+generator = lower(char(string(geom.generator)));
+
+switch generator
+    case 'cluster_gen'
+        q = grow_cluster(P,delta,2,rad,[],geom.show_generation_plot,false);
+        meta = build_cluster_gen_meta(q,rad,delta);
+
+    case 'random_mc'
+        geom_opt = struct();
+        geom_opt.domain = geom.domain;
+        geom_opt.phi = geom.phi;
+        geom_opt.rad = rad;
+        geom_opt.min_gap = delta;
+        geom_opt.n_sweeps = geom.n_sweeps;
+        geom_opt.visualise = geom.show_generation_plot;
+        [q, meta] = random_discs_mc(P,geom_opt);
+        meta.generator = 'random_mc';
+
+    otherwise
+        error('apr14_compare_cluster_iterations:BadGenerator', ...
+            'Unknown geom.generator = %s. Use ''cluster_gen'' or ''random_mc''.', ...
+            geom.generator);
+end
+end
+
+function meta = build_cluster_gen_meta(q,rad,delta)
+min_center_distance = get_min_center_distance_nonperiodic(q);
+
+meta = struct();
+meta.L = nan;
+meta.phi = nan;
+meta.phi_target = nan;
+meta.phi_error = nan;
+meta.phi_rel_error = nan;
+meta.rad = rad;
+meta.domain = 'cluster_gen';
+meta.min_gap = delta;
+meta.d_min_allowed = 2*rad + delta;
+meta.n_sweeps = nan;
+meta.acceptance_by_sweep = [];
+meta.move_scale_by_sweep = [];
+meta.min_center_distance = min_center_distance;
+meta.min_surface_gap = min_center_distance - 2*rad;
+meta.rng_seed = [];
+meta.target_acceptance = nan;
+meta.move_scale0 = nan;
+meta.final_move_scale = nan;
+meta.final_acceptance = nan;
+meta.initial_layout = 'grow_cluster';
+meta.initial_layout_details = struct();
+meta.d_init_min = min_center_distance;
+meta.generator = 'cluster_gen';
+end
+
+function dmin = get_min_center_distance_nonperiodic(q)
+P = numel(q);
+dmin = inf;
+for j = 2:P
+    dmin = min(dmin, min(abs(q(j) - q(1:j-1))));
+end
 end
 
 function results = ensureDerivedResults(results,methods)

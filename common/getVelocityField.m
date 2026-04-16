@@ -60,7 +60,9 @@ if n_src > 0
         targ = [real(rcheck)'; imag(rcheck)'];
         srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
         srcinfo.stoklet = [stok_x'; stok_y'];
+        fmm_timer = tic;
         U = stfmm2d(fmm_eps, srcinfo, 0, targ, 1);
+        manageSolveTimeMeasurement('add_fmm',toc(fmm_timer));
         res = [U.pottarg(1,:)'; U.pottarg(2,:)']/2/pi;
     else
         [udirect,vdirect] = stokSLPdirect(real(rvec_in),imag(rvec_in),...

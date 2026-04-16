@@ -38,6 +38,7 @@ gmres_verbose = getOptField(opt,'gmres_verbose',0);
 debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
+get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 surface_error_mode = lower(char(getOptField(opt,'surface_error_mode','rel')));
 if ~any(strcmp(surface_error_mode,{'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.');
@@ -91,9 +92,13 @@ ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 %% Solve
 disp(' == Solving... == ');
+solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
+solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [lambda,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvecStokes1BEnhancedMobilityLeft(x,geom,basis), ...
     rleft,2*geom.total_source_count,maxit,gmres_tol,gmres_verbose,geom.rvec_in);
+solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
+solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 [lambda_x_raw,lambda_y_raw,lambda_body,lambda_px,lambda_py] = ...
@@ -202,6 +207,7 @@ sol.rel_res = rel_res;
 sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
+sol.solve_time = solve_time;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

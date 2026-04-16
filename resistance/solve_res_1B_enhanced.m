@@ -39,6 +39,7 @@ debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
+get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 surface_error_mode = lower(char(getOptField(opt,'surface_error_mode','rel')));
 if ~any(strcmp(surface_error_mode,{'abs','rel'}))
     error('surface_error_mode must be ''abs'' or ''rel''.');
@@ -118,9 +119,13 @@ ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 %% Solve
 disp(' == Solving... == ');
+solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
+solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvecStokes1BEnhanced(x,geom,basis), ...
     fout,2*geom.total_target_count,maxit,gmres_tol,gmres_verbose,geom.rout);
+solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
+solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 %% Recover source strengths
@@ -220,6 +225,7 @@ sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.real_res = real_res;
 sol.precomp_time = precomp_time;
+sol.solve_time = solve_time;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

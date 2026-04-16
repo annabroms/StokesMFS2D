@@ -92,6 +92,7 @@ debug = logical(getOptField(opt,'debug',false));
 maxit = getOptField(opt,'maxit',800);
 rad = getOptField(opt,'rad',1);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
+get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 column_weight = logical(getOptField(opt,'column_weight',false));
 left_weight = logical(getOptField(opt,'left_weight',false));
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
@@ -254,9 +255,13 @@ end
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
+solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
+solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres( ...
     @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
     fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
+solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
+solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -431,6 +436,7 @@ sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
+sol.solve_time = solve_time;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

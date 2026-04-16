@@ -59,6 +59,7 @@ opt.gmres_verbose = 0; % 0=silent, 1=final summary, 2=per-iteration
 opt.visualise_sol = 0; % draw solution/postprocessing quantities after solve
 opt.visualise_grid = 0; % draw source and collocation points at setup stage
 opt.get_bndry_field = 1; % reconstruct/evaluate boundary fields in postprocessing?
+opt.get_solve_time = true; % measure GMRES wall-clock solve time and the FMM subset
 opt.RAM_check = false; % estimate/report RAM usage for precomp, solve, and postprocessing
 
 end

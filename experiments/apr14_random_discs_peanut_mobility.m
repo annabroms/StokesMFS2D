@@ -11,7 +11,7 @@ end
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 400;
+geom.P = 1e4;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -29,9 +29,19 @@ loads.rng_seed = 11;
 % Use io.save_results = true together with plots.make_figure = false to
 % run the solve and store raw data without plotting. Later, set
 % io.load_results = true to load the saved data and plot without rerunning.
-io.load_results = false;
-io.save_results = false;
-io.data_filename = [script_name '_results.mat'];
+run_test = 1; 
+if run_test
+    io.load_results = false;
+    io.save_results = true;
+    plots.make_figure = false;
+else
+    io.load_results = true;
+    io.save_results = false;
+    plots.make_figure = true;
+end
+
+io.data_filename = sprintf('%s_P%d_phi%.3f_results.mat', ...
+    script_name, geom.P, geom.phi);
 
 % Solver
 solver.N_c = 60;
@@ -44,7 +54,6 @@ solver.get_precomp_time = true;
 
 % Reporting and visualisation
 report.count_close_pairs = (geom.P <= 3000) && strcmp(geom.domain,'boxed');
-plots.make_figure = true;
 plots.font_size = 16;
 plots.full_edge_color = [0.10 0.10 0.10];
 plots.line_width_full = 0.15;
@@ -54,6 +63,9 @@ plots.residual_colormap = hot(256);
 plots.force_clim = [];
 plots.speed_clim = [];
 plots.residual_clim = [];
+plots.pair_gap_bins = 40;
+plots.pair_gap_face_color = [0.20 0.20 0.24];
+plots.pair_gap_edge_color = [0.05 0.05 0.05];
 
 if geom.P <= 300
     plots.disk_points_full = 56;
@@ -123,6 +135,7 @@ else
     opt.use_dense = 1;
     opt.get_bndry_field = 1;
     opt.get_precomp_time = solver.get_precomp_time;
+    opt.parallel_precomp = 1; 
 
     rng(loads.rng_seed,'twister');
     F = randn(geom.P,2);
@@ -226,7 +239,7 @@ if plots.make_figure
     ax = axes('Parent',fig);
     plot_disk_field(ax, q, geom_run.rad, body_forcing, plots.disk_points_full, ...
         plots.full_edge_color, plots.line_width_full);
-    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
+    %draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     apply_colormap_and_clim(ax, plots.force_colormap, plots.force_clim);
     style_colorbar(cbar, plots.font_size);
@@ -235,12 +248,17 @@ if plots.make_figure
     xlabel(ax, '$x$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     ylabel(ax, '$y$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     style_axes(ax, plots.font_size);
+    axis tight
+    set(gca,'xtick',[])
+    set(gca,'xticklabel',[])
+    set(gca,'ytick',[])
+    set(gca,'yticklabel',[])
 
     fig = figure('Name','apr14 maximum boundary speed','Color','w');
     ax = axes('Parent',fig);
     plot_disk_field(ax, q, geom_run.rad, body_speed, plots.disk_points_full, ...
         plots.full_edge_color, plots.line_width_full);
-    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
+    %draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     apply_colormap_and_clim(ax, plots.speed_colormap, plots.speed_clim);
     style_colorbar(cbar, plots.font_size);
@@ -249,6 +267,11 @@ if plots.make_figure
     xlabel(ax, '$x$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     ylabel(ax, '$y$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     style_axes(ax, plots.font_size);
+    axis tight
+    set(gca,'ytick',[])
+    set(gca,'yticklabel',[])
+    set(gca,'xtick',[])
+    set(gca,'xticklabel',[])
 
     fig = figure('Name','apr14 max boundary residual','Color','w');
     ax = axes('Parent',fig);
@@ -256,7 +279,7 @@ if plots.make_figure
         plots.full_edge_color, plots.line_width_full);
     apply_colormap_and_clim(ax, plots.residual_colormap, ...
         choose_clim(plots.residual_clim, default_residual_clim));
-    draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
+    %draw_domain_boundary(ax, geom_meta.L, geom_run.domain);
     cbar = colorbar(ax);
     style_colorbar(cbar, plots.font_size);
     ylabel(cbar, '$\log_{10}$ max relative boundary residual', ...
@@ -264,6 +287,23 @@ if plots.make_figure
     xlabel(ax, '$x$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     ylabel(ax, '$y$', 'Interpreter', 'latex', 'FontSize', plots.font_size);
     style_axes(ax, plots.font_size);
+    axis tight
+    set(gca,'xtick',[])
+    set(gca,'xticklabel',[])
+    set(gca,'ytick',[])
+    set(gca,'yticklabel',[])
+
+    fig = figure('Name','apr14 pair-separation histogram','Color','w');
+    ax = axes('Parent',fig);
+    plot_pair_gap_histogram(ax, q, geom_run.rad, geom_run.domain, geom_meta.L, ...
+        solver_run.delta_pair, plots.pair_gap_bins, ...
+        plots.pair_gap_face_color, plots.pair_gap_edge_color);
+    xlabel(ax, '$\delta$', ...
+        'Interpreter', 'latex', 'FontSize', plots.font_size);
+    ylabel(ax, '\textnormal{pair count}', ...
+        'Interpreter', 'latex', 'FontSize', plots.font_size);
+    style_axes(ax, plots.font_size);
+    set(ax, 'XScale', 'log', 'XMinorGrid', 'on');
 end
 
 function value = final_gmres_residual(sol)
@@ -356,4 +396,55 @@ hold(ax, 'on');
 plot(ax, [-half_L, half_L, half_L, -half_L, -half_L], ...
     [-half_L, -half_L, half_L, half_L, -half_L], ...
     style, 'LineWidth', 1.0);
+end
+
+function plot_pair_gap_histogram(ax, q, rad, domain, L, delta_pair, n_bins, face_color, edge_color)
+P = numel(q);
+close_gaps = [];
+for j = 2:P
+    diffs = q(j) - q(1:j-1);
+    if strcmp(domain, 'periodic')
+        dx = real(diffs);
+        dy = imag(diffs);
+        dx = dx - L*round(dx/L);
+        dy = dy - L*round(dy/L);
+        distances = hypot(dx, dy);
+    else
+        distances = abs(diffs);
+    end
+    gaps = distances - 2*rad;
+    gaps = gaps(gaps < delta_pair);
+    if ~isempty(gaps)
+        close_gaps = [close_gaps; gaps(:)]; %#ok<AGROW>
+    end
+end
+
+set(ax, 'XScale', 'log');
+box(ax, 'on');
+set(ax, 'Color', 'w');
+
+if isempty(close_gaps)
+    lower_edge = max(eps, 0.1*delta_pair);
+    upper_edge = max(delta_pair, 1.05*lower_edge);
+    histogram(ax, 'BinEdges', logspace(log10(lower_edge), log10(upper_edge), n_bins + 1), ...
+        'BinCounts', zeros(1, n_bins), ...
+        'FaceColor', face_color, 'EdgeColor', edge_color, 'LineWidth', 0.6);
+    xlim(ax, [lower_edge, upper_edge]);
+    text(ax, sqrt(lower_edge*upper_edge), 0, ...
+        '\textnormal{no pairs with surface gap $< \delta_{\mathrm{pair}}$}', ...
+        'Interpreter', 'latex', 'FontSize', ax.FontSize, ...
+        'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+    return
+end
+
+lower_edge = max(eps, min(close_gaps));
+upper_edge = max(delta_pair, 1.05*lower_edge);
+if upper_edge <= lower_edge
+    upper_edge = 1.05*lower_edge;
+end
+edges = logspace(log10(lower_edge), log10(upper_edge), n_bins + 1);
+
+histogram(ax, close_gaps, 'BinEdges', edges, ...
+    'FaceColor', face_color, 'EdgeColor', edge_color, 'LineWidth', 0.6);
+xlim(ax, [lower_edge, upper_edge]);
 end
