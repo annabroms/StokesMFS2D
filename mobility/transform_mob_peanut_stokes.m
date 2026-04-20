@@ -55,6 +55,7 @@ end
 use_pair_cache = isfield(pair_cache,'enabled') && pair_cache.enabled;
 
 P = length(q);
+n_pairs = size(pairs,1);
 N_c = opt.N_c;
 N_f = opt.N_f;
 N_large = length(rvec_out)/P;
@@ -66,6 +67,12 @@ use_dense = logical(getOptField(opt,'use_dense',false)) && isequal(rcheck_out,rv
 use_matrix_free_Lc_pair = logical(getOptField(opt,'use_matrix_free_Lc_pair',true));
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 need_explicit_pair_sources = ~use_cmap || get_bndry_field || ~opt.self_correct;
+has_pair_meta = isfield(pair_cache,'meta') && numel(pair_cache.meta) >= n_pairs;
+if use_matrix_free_Lc_pair
+    coarse_rigid_projector = buildRigidProjectionCache2D(rbase_in_c);
+else
+    coarse_rigid_projector = [];
+end
 
 lam_c_x = zeros(N_c*P,1);
 lam_c_y = zeros(N_c*P,1);
@@ -112,10 +119,14 @@ lam_self_y = lam_c_y;
 
 
 %% Phase 2: loop over all pairs
-for row = 1:size(pairs,1)
+for row = 1:n_pairs
     i = pairs(row,1);
     p2 = pairs(row,2);
-    meta = pair_cache.meta(row);
+    if has_pair_meta
+        meta = pair_cache.meta(row);
+    else
+        meta = struct();
+    end
 
     coarse_i = (i-1)*N_c+1:i*N_c;
     coarse_p2 = (p2-1)*N_c+1:p2*N_c;
@@ -128,11 +139,11 @@ for row = 1:size(pairs,1)
                lambda_i(N_c+1:end) lambda_p2(N_c+1:end)];
 
     if use_pair_cache % reuse information from multiple pairs
-        pair = getStokesPairInstance(pair_cache,row);
-        rhs = rotatePairOrderedStokesData(rhs_mat,N_c,pair.meta.phase_c,conj(pair.meta.rot));
+        group = pair_cache.groups(meta.group_id);
+        rhs = rotatePairOrderedStokesData(rhs_mat,N_c,meta.phase_c,conj(meta.rot));
         rhs = rhs(:);
-        rimage_i = pair.rimage_i;
-        rimage_p2 = pair.rimage_j;
+        rimage_i = mapCanonicalPointsToActual(group.rimage_canon{1},meta);
+        rimage_p2 = mapCanonicalPointsToActual(group.rimage_canon{2},meta);
     else
         rhs = rhs_mat(:);
         rimage_i = rimage_vec{i,p2};
@@ -145,10 +156,10 @@ for row = 1:size(pairs,1)
     tau_mapped_tot = [];
     if need_explicit_pair_sources
         if use_pair_cache
-            pair_mapped = pair.group.Upf*rhs;
-            tau_mapped_loc = pair.group.Ypf*pair_mapped;
+            pair_mapped = group.Upf*rhs;
+            tau_mapped_loc = group.Ypf*pair_mapped;
             tau_mapped_tot = rotateStokesPairSourceVector(tau_mapped_loc,N_f,length(rimage_i),length(rimage_p2), ...
-                pair.meta.phase_f_inv,pair.meta.rot);
+                meta.phase_f_inv,meta.rot);
         else
             pair_mapped = Upf{i,p2}*rhs;
             tau_mapped_tot = Ypf{i,p2}*pair_mapped;
@@ -160,13 +171,13 @@ for row = 1:size(pairs,1)
 
     if use_cmap
         if use_pair_cache
-            tau_peanut_ntot = pair.group.Cmap*rhs;
+            tau_peanut_ntot = group.Cmap*rhs;
         else
             tau_peanut_ntot = Cmap{i,p2}*rhs;
         end
     else
         if use_pair_cache
-            tau_peanut_ntot = pair.group.YC*(pair.group.DC*tau_mapped_loc);
+            tau_peanut_ntot = group.YC*(group.DC*tau_mapped_loc);
         else
             tau_peanut_ntot = YC_all{i,p2}*(DC_all{i,p2}*tau_mapped_tot);
         end
@@ -174,23 +185,20 @@ for row = 1:size(pairs,1)
 
     if use_matrix_free_Lc_pair
         if use_pair_cache
-            tau_peanut_loc = projectOutRigidPair2D( ...
-                tau_peanut_ntot, ...
-                rbase_in_c + pair.group.q_pair(1), pair.group.q_pair(1), ...
-                rbase_in_c + pair.group.q_pair(2), pair.group.q_pair(2));
+            tau_peanut_loc = projectOutRigidPairCached2D( ...
+                tau_peanut_ntot,coarse_rigid_projector);
             tau_peanut_tot = rotatePairOrderedStokesData( ...
-                tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
+                tau_peanut_loc,N_c,meta.phase_c_inv,meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
         else
-            tau_peanut_tot = projectOutRigidPair2D( ...
-                tau_peanut_ntot, ...
-                rbase_in_c + q(i), q(i), rbase_in_c + q(p2), q(p2));
+            tau_peanut_tot = projectOutRigidPairCached2D( ...
+                tau_peanut_ntot,coarse_rigid_projector);
         end
     else
         if use_pair_cache
-            tau_peanut_loc = pair.group.Lc_pair*tau_peanut_ntot;
+            tau_peanut_loc = group.Lc_pair*tau_peanut_ntot;
             tau_peanut_tot = rotatePairOrderedStokesData( ...
-                tau_peanut_loc,N_c,pair.meta.phase_c_inv,pair.meta.rot);
+                tau_peanut_loc,N_c,meta.phase_c_inv,meta.rot);
             tau_peanut_tot = tau_peanut_tot(:);
         else
             tau_peanut_tot = Lc_pair*tau_peanut_ntot;
@@ -312,4 +320,54 @@ else
     lam_f_y = [];
 end
 
+end
+
+function geom = buildRigidProjectionCache2D(rbase)
+rbase = rbase(:);
+dx = real(rbase);
+dy = imag(rbase);
+n = numel(rbase);
+
+g13 = -sum(dy);
+g23 = sum(dx);
+g33 = sum(dx.^2 + dy.^2);
+G = [n, 0, g13; ...
+     0, n, g23; ...
+     g13, g23, g33];
+
+geom.n = n;
+geom.dx = dx;
+geom.dy = dy;
+geom.Ginv = G\eye(3);
+end
+
+function pair_proj = projectOutRigidPairCached2D(pair_vec,geom)
+n = geom.n;
+dx = geom.dx;
+dy = geom.dy;
+
+x_i = pair_vec(1:n);
+x_j = pair_vec(n+1:2*n);
+y_i = pair_vec(2*n+1:3*n);
+y_j = pair_vec(3*n+1:4*n);
+
+alpha = geom.Ginv * [sum(x_i), sum(x_j); ...
+                     sum(y_i), sum(y_j); ...
+                     -dy.'*x_i + dx.'*y_i, -dy.'*x_j + dx.'*y_j];
+
+pair_proj = pair_vec;
+pair_proj(1:n) = x_i - alpha(1,1) + alpha(3,1)*dy;
+pair_proj(n+1:2*n) = x_j - alpha(1,2) + alpha(3,2)*dy;
+pair_proj(2*n+1:3*n) = y_i - alpha(2,1) - alpha(3,1)*dx;
+pair_proj(3*n+1:4*n) = y_j - alpha(2,2) - alpha(3,2)*dx;
+end
+
+function z_actual = mapCanonicalPointsToActual(z_canon,meta)
+z_canon = z_canon(:);
+if isempty(z_canon)
+    z_actual = zeros(0,1);
+    return
+end
+
+z_actual = meta.mid + meta.rot*z_canon;
 end

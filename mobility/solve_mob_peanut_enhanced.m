@@ -501,7 +501,7 @@ q = [0; 2.001; 2.001i]; %center coordinates
 
 delta = 1e-3;
 %delta = 0.5; 
-P = 20;
+P = 100;
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
@@ -515,10 +515,10 @@ R = side / (2*sin(pi/P));         % ring radius
 %q = q-q(1);´
 
 rng(8);
-%q = grow_cluster(P,delta,2);
+q = grow_cluster(P,delta,2);
 %q = [0; 2+delta]*1i;
-rings = 1;
-q = hexagonal_lattice(delta,rings,1);
+%rings = 1;
+%q = hexagonal_lattice(delta,rings,1);
 %q = [q(4);q(end-1:end)];
 
 P = length(q);
@@ -563,12 +563,13 @@ opt.gmres_tol = gmres_tol;
 opt.debug = debug;
 opt.surface_error_mode = 'rel';
 opt.rotation_mode = 'oversampled_fft';
-opt.reuse_pair_basis_by_sep = 1;
+opt.reuse_pair_basis_by_sep = 0;
 opt.cmap = 1; % coarse to coarse compression?
 opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
 opt.pair_basis_debug = 0; 
 opt.RAM_check = 1; 
+opt.get_bndry_field = 1;
 % opt.beta = 0.5;
 % opt.Nclust = 200;
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 

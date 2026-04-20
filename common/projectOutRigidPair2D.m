@@ -8,9 +8,9 @@ function pair_proj = projectOutRigidPair2D(pair_vec, rsrc_i, q_i, rsrc_j, q_j)
 % Input ordering:
 %   pair_vec = [x_i; x_j; y_i; y_j]
 %
-% The two bodies are projected independently with projectOutRigid2D and
-% then reassembled into pair ordering. This is the matrix-free equivalent
-% of multiplying by getILpair(L) for the single-body projector L.
+% The two bodies are projected independently and reassembled into pair
+% ordering. This is the matrix-free equivalent of multiplying by
+% getILpair(L) for the single-body projector L.
 %
 % Anna Broms, Mar 2026
 
@@ -37,10 +37,59 @@ if numel(pair_vec) ~= 4*n
         'pair_vec must have length 4*numel(rsrc_i).');
 end
 
-proj_i = projectOutRigid2D([pair_vec(1:n); pair_vec(2*n+1:3*n)], rsrc_i, q_i);
-proj_j = projectOutRigid2D([pair_vec(n+1:2*n); pair_vec(3*n+1:4*n)], rsrc_j, q_j);
+if n == 0
+    pair_proj = pair_vec;
+    return
+end
 
-pair_proj = [proj_i(1:n); proj_j(1:n); proj_i(n+1:end); proj_j(n+1:end)];
+rel_i = rsrc_i - q_i;
+rel_j = rsrc_j - q_j;
+
+x_i = pair_vec(1:n);
+x_j = pair_vec(n+1:2*n);
+y_i = pair_vec(2*n+1:3*n);
+y_j = pair_vec(3*n+1:4*n);
+
+if isequal(rel_i,rel_j)
+    dx = real(rel_i);
+    dy = imag(rel_i);
+    G = rigid_projection_gram(dx,dy,n);
+    alpha = G \ [sum(x_i), sum(x_j); ...
+                 sum(y_i), sum(y_j); ...
+                 -dy.'*x_i + dx.'*y_i, -dy.'*x_j + dx.'*y_j];
+
+    pair_proj = pair_vec;
+    pair_proj(1:n) = x_i - alpha(1,1) + alpha(3,1)*dy;
+    pair_proj(n+1:2*n) = x_j - alpha(1,2) + alpha(3,2)*dy;
+    pair_proj(2*n+1:3*n) = y_i - alpha(2,1) - alpha(3,1)*dx;
+    pair_proj(3*n+1:4*n) = y_j - alpha(2,2) - alpha(3,2)*dx;
+else
+    [proj_i_x,proj_i_y] = project_body_components(x_i,y_i,rel_i);
+    [proj_j_x,proj_j_y] = project_body_components(x_j,y_j,rel_j);
+    pair_proj = [proj_i_x; proj_j_x; proj_i_y; proj_j_y];
+end
+end
+
+function G = rigid_projection_gram(dx,dy,n)
+g13 = -sum(dy);
+g23 = sum(dx);
+g33 = sum(dx.^2 + dy.^2);
+G = [n, 0, g13; ...
+     0, n, g23; ...
+     g13, g23, g33];
+end
+
+function [proj_x,proj_y] = project_body_components(tau_x,tau_y,rel)
+dx = real(rel);
+dy = imag(rel);
+n = numel(rel);
+G = rigid_projection_gram(dx,dy,n);
+alpha = G \ [sum(tau_x); ...
+             sum(tau_y); ...
+             -dy.'*tau_x + dx.'*tau_y];
+
+proj_x = tau_x - alpha(1) + alpha(3)*dy;
+proj_y = tau_y - alpha(2) - alpha(3)*dx;
 end
 
 function run_self_test()

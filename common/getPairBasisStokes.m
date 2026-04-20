@@ -21,20 +21,25 @@ q = q(:);
 P = opt.P;
 
 N_peanut = opt.N_peanut; % number of peanut collocation nodes
-use_pair_map = opt.cmap; % use coarse-to-coarse compression?
-get_bndry_field = opt.get_bndry_field; % evaluate flow field on boundary? 
+use_pair_map = logical(opt.cmap); % use coarse-to-coarse compression?
+get_bndry_field = logical(opt.get_bndry_field); % evaluate flow field on boundary? 
 % If so, the mapping to recover fine sources must be stored
-reuse_pair_basis = opt.reuse_pair_basis_by_sep; % determine one compression per separation?
-parallel_precomp = opt.parallel_precomp; % parallelise pair precomputation?
+reuse_pair_basis = logical(opt.reuse_pair_basis_by_sep); % determine one compression per separation?
+parallel_precomp = logical(opt.parallel_precomp); % parallelise pair precomputation?
 shared_sep_tol = opt.shared_sep_tol; % tolerance for what is considered the same separation.
-use_dense = opt.use_dense; 
+use_dense = logical(opt.use_dense); 
 
 %Draw pair discretisation for debugging purpose?
-debug = opt.pair_basis_debug;
+debug = logical(opt.pair_basis_debug);
 %Show progress for building pair basis?
 show_counter = opt.show_counter; 
 % Need fine sources explicitly?
-need_explicit_pair_sources = (N_peanut == 0) || ~use_pair_map || get_bndry_field;
+self_correct = logical(getOptField(opt,'self_correct',false));
+need_explicit_pair_sources = needs_explicit_pair_sources( ...
+    N_peanut,use_pair_map,get_bndry_field,self_correct);
+payload_mode = choose_pair_payload_mode( ...
+    N_peanut,use_pair_map,get_bndry_field,self_correct,debug);
+store_full_pair_payload = strcmp(payload_mode,'full');
 
 
 pair_rad = getOptField(opt,'rad',1);
@@ -62,13 +67,16 @@ if reuse_pair_basis
     Cmap = [];
     Cmap_FU = [];
 else
-    [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs(P,N_peanut,use_pair_map,need_explicit_pair_sources);
+    [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = init_outputs( ...
+        P,N_peanut,use_pair_map,store_full_pair_payload);
 end
 
 pair_cache = init_pair_cache();
 pair_cache.enabled = reuse_pair_basis;
 pair_cache.shared_sep_tol = shared_sep_tol;
 pair_cache.stats.requested_parallel = parallel_precomp;
+pair_cache.stats.payload_mode = payload_mode;
+pair_cache.stats.needs_explicit_pair_sources = need_explicit_pair_sources;
 
 if isempty(pairs)
     return
@@ -89,57 +97,32 @@ if ~reuse_pair_basis
 
     if use_parallel_pairs
         if show_counter
-            fprintf('getPairBasisStokes: parallel pair build for %d pairs\n', total_pairs);
+            fprintf(['getPairBasisStokes: streamed parallel pair build for ', ...
+                '%d pairs (%s payload)\n'], total_pairs,payload_mode);
         end
-        pair_results = cell(total_pairs,1);
-        parfor ii = 1:total_pairs
-            pair_results{ii} = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs, ...
-                refine,pairs,opt,Lc,ii,false,svd_opts);
-        end
-        pair_cache.stats.pool_size = get_parallel_pool_size();
-        for ii = 1:total_pairs
-            i = pairs(ii,1);
-            p2 = pairs(ii,2);
-            pair = pair_results{ii};
-            if need_explicit_pair_sources
-                Uf{i,p2} = pair.Upf;
-                Yf{i,p2} = pair.Ypf;
-            end
-            if N_peanut && ~use_pair_map
-                Up{i,p2} = pair.DC;
-                Yp{i,p2} = pair.YC;
-            elseif N_peanut && use_pair_map
-                Cmap{i,p2} = pair.Cmap;
-            end
-            if use_pair_map
-                Cmap_FU{i,p2} = pair.Cmap_FU;
-            end
-        end
+        max_inflight = max(1,pool_size);
+        pair_cache.stats.max_inflight = max_inflight;
+        pair_cache.stats.parallel_backend = 'parfeval_stream';
+        [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pool_size] = build_pairs_parallel_streamed( ...
+            q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
+            svd_opts,payload_mode,store_full_pair_payload,Uf,Yf,Up,Yp, ...
+            Cmap,Cmap_FU,max_inflight,show_counter);
+        pair_cache.stats.pool_size = pool_size;
         if show_counter
             fprintf('getPairBasisStokes: finished parallel pair build for %d pairs\n', ...
                 total_pairs);
         end
     else
+        pair_cache.stats.parallel_backend = 'serial';
         processed_pairs = 0;
         for ii = 1:total_pairs
             i = pairs(ii,1);
             p2 = pairs(ii,2);
-
             pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs, ...
-                opt,Lc,ii,debug,svd_opts);
-            if need_explicit_pair_sources
-                Uf{i,p2} = pair.Upf;
-                Yf{i,p2} = pair.Ypf;
-            end
-            if N_peanut && ~use_pair_map
-                Up{i,p2} = pair.DC;
-                Yp{i,p2} = pair.YC;
-            elseif N_peanut && use_pair_map
-                Cmap{i,p2} = pair.Cmap;
-            end
-            if use_pair_map
-                Cmap_FU{i,p2} = pair.Cmap_FU;
-            end
+                opt,Lc,ii,debug,svd_opts,false,payload_mode);
+            [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = store_pair_payload( ...
+                Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair,pairs,ii,N_peanut, ...
+                use_pair_map,store_full_pair_payload);
 
             processed_pairs = processed_pairs + 1;
             if show_counter
@@ -149,7 +132,7 @@ if ~reuse_pair_basis
         end
     end
 
-    if use_dense && ~isempty(rout_base_c)
+    if use_dense && store_full_pair_payload && ~isempty(rout_base_c)
         pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
             rout_base_c,rimage_pairs,pairs);
     end
@@ -173,25 +156,28 @@ pair_cache.stats.used_parallel = use_parallel_groups;
 pair_cache.stats.pool_size = pool_size;
 
 if use_parallel_groups
+    pair_cache.stats.parallel_backend = 'parfor';
+    pair_cache.stats.max_inflight = max(1,pool_size);
     if show_counter
         fprintf(['getPairBasisStokes: parallel canonical build for %d groups ', ...
-            'covering %d pairs\n'], n_groups,total_pairs);
+            'covering %d pairs (%s payload)\n'], n_groups,total_pairs,payload_mode);
     end
     groups = repmat(init_pair_group(),n_groups,1);
     parfor gg = 1:n_groups
         groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
             q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
-            need_explicit_pair_sources,false,svd_opts);
+            store_full_pair_payload,false,svd_opts,payload_mode);
     end
     pair_cache.groups = groups;
     pair_cache.stats.pool_size = get_parallel_pool_size();
 else
+    pair_cache.stats.parallel_backend = 'serial';
     pair_cache.groups = repmat(init_pair_group(),n_groups,1);
     covered_pairs = 0;
     for gg = 1:n_groups
         pair_cache.groups(gg) = build_pair_group(gg,rep_rows(gg),group_sep(gg), ...
             q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc, ...
-            need_explicit_pair_sources,false,svd_opts);
+            store_full_pair_payload,false,svd_opts,payload_mode);
 
         if show_counter
             rep_i = pairs(rep_rows(gg),1);
@@ -210,7 +196,7 @@ if debug
     % pairs. Run the debug LS checks on every actual pair as requested.
     for row = 1:size(pairs,1)
         build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs, ...
-            opt,Lc,row,debug,svd_opts,false);
+            opt,Lc,row,debug,svd_opts,false,'full');
     end
 end
 
@@ -220,7 +206,7 @@ for row = 1:size(pairs,1)
     pair_cache.meta(row).sep = group_sep(gid);
 end
 
-if use_dense && ~isempty(rout_base_c)
+if use_dense && store_full_pair_payload && ~isempty(rout_base_c)
     pair_cache = populate_actual_dense_pair_fields(pair_cache,q,rbase_in_c,rbase_in_f, ...
         rout_base_c,rimage_pairs,pairs);
 end
@@ -262,6 +248,19 @@ else
 end
 end
 
+function tf = needs_explicit_pair_sources(N_peanut,use_pair_map,get_bndry_field,self_correct)
+tf = (N_peanut == 0) || ~use_pair_map || get_bndry_field || ~self_correct;
+end
+
+function payload_mode = choose_pair_payload_mode(N_peanut,use_pair_map, ...
+    get_bndry_field,self_correct,debug)
+if (N_peanut > 0) && use_pair_map && self_correct && ~get_bndry_field && ~debug
+    payload_mode = 'maps_only';
+else
+    payload_mode = 'full';
+end
+end
+
 function pair_cache = init_pair_cache()
 pair_cache = struct();
 pair_cache.enabled = false;
@@ -281,7 +280,9 @@ end
 
 function stats = init_pair_stats()
 stats = struct('requested_parallel',false,'used_parallel',false, ...
-    'branch','','n_pairs',0,'n_groups',0,'pool_size',0);
+    'branch','','n_pairs',0,'n_groups',0,'pool_size',0, ...
+    'payload_mode','full','parallel_backend','none','max_inflight',0, ...
+    'needs_explicit_pair_sources',false);
 end
 
 function [use_parallel,pool_size] = resolve_parallel_precomp(requested_parallel,caller_name)
@@ -299,7 +300,11 @@ if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox') || .
          'to exclude startup overhead.']);
 end
 
-pool_size = get_parallel_pool_size();
+pool = gcp('nocreate');
+if isempty(pool)
+    pool = gcp();
+end
+pool_size = pool.NumWorkers;
 end
 
 function pool_size = get_parallel_pool_size()
@@ -307,6 +312,96 @@ pool_size = 0;
 pool = gcp('nocreate');
 if ~isempty(pool)
     pool_size = pool.NumWorkers;
+end
+end
+
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU,pool_size] = build_pairs_parallel_streamed( ...
+    q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,svd_opts, ...
+    payload_mode,store_full_pair_payload,Uf,Yf,Up,Yp,Cmap,Cmap_FU, ...
+    max_inflight,show_counter)
+
+total_pairs = size(pairs,1);
+ctx_data = struct();
+ctx_data.q = q;
+ctx_data.rbase_in_c = rbase_in_c;
+ctx_data.rbase_in_f = rbase_in_f;
+ctx_data.rimage_pairs = rimage_pairs;
+ctx_data.refine = refine;
+ctx_data.pairs = pairs;
+ctx_data.opt = opt;
+ctx_data.Lc = Lc;
+ctx_data.svd_opts = svd_opts;
+ctx = parallel.pool.Constant(ctx_data);
+
+futures = parallel.FevalFuture.empty(0,1);
+next_row = 1;
+processed_pairs = 0;
+
+[futures,next_row] = submit_pair_futures( ...
+    futures,next_row,total_pairs,max_inflight,ctx,payload_mode);
+
+while processed_pairs < total_pairs
+    [completed_idx,row,pair] = fetchNext(futures);
+    futures(completed_idx) = [];
+
+    [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = store_pair_payload( ...
+        Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair,pairs,row,opt.N_peanut, ...
+        logical(opt.cmap),store_full_pair_payload);
+
+    processed_pairs = processed_pairs + 1;
+    if show_counter
+        i = pairs(row,1);
+        p2 = pairs(row,2);
+        fprintf('getPairBasisStokes: processed streamed pair %d/%d (%d,%d)\n', ...
+            processed_pairs,total_pairs,i,p2);
+    end
+
+    [futures,next_row] = submit_pair_futures( ...
+        futures,next_row,total_pairs,max_inflight,ctx,payload_mode);
+end
+
+clear futures ctx
+pool_size = get_parallel_pool_size();
+end
+
+function [futures,next_row] = submit_pair_futures(futures,next_row, ...
+    total_pairs,max_inflight,ctx,payload_mode)
+while next_row <= total_pairs && numel(futures) < max_inflight
+    futures(end+1) = parfeval(@build_pair_data_from_context, ...
+        2,ctx,next_row,payload_mode);
+    next_row = next_row + 1;
+end
+end
+
+function [row,pair] = build_pair_data_from_context(ctx,row,payload_mode)
+data = ctx.Value;
+pair = build_pair_data(data.q,data.rbase_in_c,data.rbase_in_f, ...
+    data.rimage_pairs,data.refine,data.pairs,data.opt,data.Lc,row, ...
+    false,data.svd_opts,false,payload_mode);
+end
+
+function [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = store_pair_payload( ...
+    Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair,pairs,row,N_peanut,use_pair_map, ...
+    store_full_pair_payload)
+i = pairs(row,1);
+p2 = pairs(row,2);
+
+if store_full_pair_payload
+    Uf{i,p2} = pair.Upf;
+    Yf{i,p2} = pair.Ypf;
+end
+
+if N_peanut && ~use_pair_map
+    if store_full_pair_payload
+        Up{i,p2} = pair.DC;
+        Yp{i,p2} = pair.YC;
+    end
+elseif N_peanut && use_pair_map
+    Cmap{i,p2} = pair.Cmap;
+end
+
+if use_pair_map
+    Cmap_FU{i,p2} = pair.Cmap_FU;
 end
 end
 
@@ -382,8 +477,8 @@ group_id = zeros(size(sep));
 group_id(order) = group_id_sorted;
 end
 
-function group = build_pair_group(group_id,row,group_sep,q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,need_explicit_pair_sources,debug,svd_opts)
-pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,true);
+function group = build_pair_group(group_id,row,group_sep,q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,store_full_pair_payload,debug,svd_opts,payload_mode)
+pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,true,payload_mode);
 group = init_pair_group();
 group.group_id = group_id;
 group.sep = group_sep;
@@ -392,28 +487,32 @@ group.rimage_canon = pair.rimage_canon;
 group.refine_canon = pair.refine_canon;
 group.Cmap = pair.Cmap;
 group.Cmap_FU = pair.Cmap_FU;
-group.Upair_colloc = pair.Upair_colloc;
-group.Ucross_colloc = pair.Ucross_colloc;
-group.Ecolloc = pair.Ecolloc;
 group.rep_pair = pair.rep_pair;
 
-if need_explicit_pair_sources
+if store_full_pair_payload
     group.Upf = pair.Upf;
     group.Ypf = pair.Ypf;
     group.DC = pair.DC;
     group.YC = pair.YC;
     group.Lf_pair = pair.Lf_pair;
     group.Lc_pair = pair.Lc_pair;
+    group.Upair_colloc = pair.Upair_colloc;
+    group.Ucross_colloc = pair.Ucross_colloc;
+    group.Ecolloc = pair.Ecolloc;
 end
 end
 
-function pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,use_canonical)
+function pair = build_pair_data(q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row,debug,svd_opts,use_canonical,payload_mode)
 if nargin < 11 || isempty(svd_opts)
     svd_opts = struct();
 end
-if nargin < 12
+if nargin < 12 || isempty(use_canonical)
     use_canonical = false;
 end
+if nargin < 13 || isempty(payload_mode)
+    payload_mode = 'full';
+end
+store_full_pair_payload = strcmp(payload_mode,'full');
 
 i = pairs(row,1);
 j = pairs(row,2);
@@ -445,6 +544,18 @@ end
 pair.q_pair = q_pair;
 pair.rimage_canon = {rimage_i; rimage_j};
 pair.refine_canon = {refine_i; refine_j};
+pair.rin_pair = [];
+pair.Upf = [];
+pair.Ypf = [];
+pair.Lf_pair = [];
+pair.Lc_pair = [];
+pair.DC = [];
+pair.YC = [];
+pair.Cmap = [];
+pair.Cmap_FU = [];
+pair.Upair_colloc = [];
+pair.Ucross_colloc = [];
+pair.Ecolloc = [];
 
 
 project_force = opt.project_force;
@@ -464,7 +575,9 @@ rin_1_f = q_pair(1)+rbase_in_f;
 rin_2_f = q_pair(2)+rbase_in_f;
 rout_f = [q_pair(1)+rout_base; refine_i; q_pair(2)+rout_base; refine_j];
 rin_pair = [rin_1_f; rimage_i; rin_2_f; rimage_j];
-pair.rin_pair = rin_pair;
+if store_full_pair_payload
+    pair.rin_pair = rin_pair;
+end
 
 svd_pair = svd_opts;
 if logical(getOptField(svd_opts,'left_weight',false))
@@ -524,22 +637,12 @@ end
 Npair = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_f);
 Upf = -Uf_pair'*Npair; %
 
-pair.Upf = Upf;
-pair.Ypf = Yf_pair;
-pair.Lf_pair = Lf_pair;
-pair.Lc_pair = Lc_pair;
-
-pair.DC = [];
-pair.YC = [];
-pair.Cmap = [];
-pair.Cmap_FU = [];
-
+DC = [];
+YC = [];
 if opt.N_peanut
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
     [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair,svd_opts);
-    pair.DC = DC;
-    pair.YC = YC;
     if opt.cmap
         pair.Cmap = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
     end
@@ -553,15 +656,21 @@ if opt.cmap
     pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);
 end
 
-if debug
-    run_pair_lsq_debug_test(i,j,row,q_pair,rbase_in_c,rin_pair,Upf,Yf_pair, ...
-        Lf_pair,Kf1,Kf2,Lc_pair,pair.DC,pair.YC,rout_f,Npair,opt);
+if store_full_pair_payload
+    pair.Upf = Upf;
+    pair.Ypf = Yf_pair;
+    pair.Lf_pair = Lf_pair;
+    pair.Lc_pair = Lc_pair;
+    pair.DC = DC;
+    pair.YC = YC;
 end
 
-pair.Upair_colloc = [];
-pair.Ucross_colloc = [];
-pair.Ecolloc = [];
-if project_force
+if debug
+    run_pair_lsq_debug_test(i,j,row,q_pair,rbase_in_c,rin_pair,Upf,Yf_pair, ...
+        Lf_pair,Kf1,Kf2,Lc_pair,DC,YC,rout_f,Npair,opt);
+end
+
+if store_full_pair_payload && project_force
     rout_pair_c = [q_pair(1)+rout_base_c; q_pair(2)+rout_base_c];
     Ppair = eye(size(Lf_pair)) - Lf_pair;
     pair.Upair_colloc = stokSLPmat(rin_pair,rout_pair_c,1) * Ppair * Yf_pair * Upf;
