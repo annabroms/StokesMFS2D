@@ -11,7 +11,7 @@ script_date = 'Apr 21, 2026';
 fprintf('=== %s (%s) ===\n',mfilename,script_date);
 
 if ~exist('P','var') || isempty(P)
-    P = 10;
+    P = 100;
 end
 phi = 0.65;
 rad = 1;
@@ -43,37 +43,32 @@ opt.self_correct = 1;
 opt.use_dense = 1;
 opt.reuse_pair_basis_by_sep = false;
 opt.single_threaded = 0; 
+opt.big_sparse_direct_u_corr = 1;  % 1 is a little less stable than 0 here
 
 fprintf('Geometry: P=%d, phi=%.3f, close pairs=%d\n', ...
     P,meta.phi,count_close_pairs(q,opt.delta_pair,rad));
 
 [~,~,~,~,~,pairs] = getEnhancedGrid(q,opt);
 N_check = ceil(opt.a_c*opt.N_c);
-labels = {'big sparse separate','big sparse combined'};
-combine_pair_u = [false true];
+labels = {'serial pair loop','big sparse'};
 for k = 1:2
     opt.use_big_sparse = (k==2);
-    opt.big_sparse_combine_pair_u_corr = false;
 
-    est = estimateMobPeanutBigSparseRamStokes( ...
-        numel(q),opt.N_c,N_check,size(pairs,1),opt);
-    fprintf('%-20s  sparse %.2f MB  build %.2f MB  peak %.2f MB\n', ...
-        labels{k},est.estimated_sparse_MB,est.estimated_build_MB, ...
-        est.estimated_peak_MB);
+    if opt.use_big_sparse
+        est = estimateMobPeanutBigSparseRamStokes( ...
+            numel(q),opt.N_c,N_check,size(pairs,1),opt);
+        fprintf('%-16s  sparse %.2f MB  build %.2f MB  peak %.2f MB\n', ...
+            labels{k},est.estimated_sparse_MB,est.estimated_build_MB, ...
+            est.estimated_peak_MB);
+    end
 
     wall_timer = tic;
-    [~,sol] = solve_mob_peanut_enhanced(q,F,T,opt);
+    [UW(:,k),sol] = solve_mob_peanut_enhanced(q,F,T,opt);
     wall_time = toc(wall_timer);
     
-    fprintf(['%-20s  wall %.3fs  GMRES %.3fs  total/fmm %.3f  ', ...
-        'it %d  final %.3e\n'], labels{k},wall_time,gmres_seconds(sol), ...
+    fprintf(['%-16s  wall %.3fs  GMRES %.3fs  fmm/total %.3f  ', ...
+        'it %d  final %.3e\n'], labels{k},wall_time,sol.solve_time.total, ...
         sol.solve_time.fmm/sol.solve_time.total,sol.it, ...
         sol.resvec(end));
 end
 
-function t = gmres_seconds(sol)
-t = NaN;
-if isfield(sol,'solve_time') && isfield(sol.solve_time,'total')
-    t = sol.solve_time.total;
-end
-end

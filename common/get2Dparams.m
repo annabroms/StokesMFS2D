@@ -52,11 +52,9 @@ opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated pa
 opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
-opt.use_big_sparse = false; % use global sparse close-pair correction matrices in peanut mobility GMRES
-opt.big_sparse_direct_source_corr = false; % use factored source correction rather than direct M_source_corr
-opt.big_sparse_direct_u_corr = true; % build/apply direct M_u_corr for pair velocity correction
-opt.big_sparse_structured_apply = true; % replace sparse projector/scatter maps by structured dense/indexed applies
-opt.big_sparse_combine_pair_u_corr = false; % compare mode: stack M_pair_nonp and M_u_corr into one sparse apply
+opt.use_big_sparse = true; % use global sparse close-pair correction matrices in peanut mobility GMRES
+opt.big_sparse_direct_u_corr = true; % if false, apply u_corr as M_u_cross*lambda - M_u_peanut*pair_proj. 
+                                     % 1 is a little less stable than 0 here
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'

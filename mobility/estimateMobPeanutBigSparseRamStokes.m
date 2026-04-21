@@ -4,8 +4,12 @@ function estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,op
 % estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt)
 % returns conservative byte counts for the sparse matrices and temporary
 % sparse-entry arrays used by buildMobPeanutBigSparseStokes. Auxiliary
-% arrays cover dense local projectors and indexed source scatter rows used
-% by opt.big_sparse_structured_apply.
+% arrays cover the dense local pair projector and indexed source scatter
+% rows used by the fixed source correction.
+%
+% opt.big_sparse_direct_u_corr selects the velocity correction matrices:
+%   true  (default): M_u_corr maps projected one-body sources to u_corr.
+%   false: M_u_cross and M_u_peanut keep the velocity correction factored.
 %
 % The estimate needs the number of close pairs. For a solve-grid setup this
 % can be obtained with getEnhancedGrid or count_close_pairs before building
@@ -24,7 +28,15 @@ validateattributes(N_check,{'numeric'},{'scalar','integer','positive'}, ...
 validateattributes(n_pairs,{'numeric'},{'scalar','integer','nonnegative'}, ...
     mfilename,'n_pairs',4);
 
-plan = getMobPeanutBigSparseMatrixPlan(opt);
+direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
+if direct_u_corr
+    velocity_correction = 'direct_sparse';
+else
+    velocity_correction = 'factored_sparse';
+end
+plan = struct('source_correction','factored_structured', ...
+    'velocity_correction',velocity_correction, ...
+    'direct_u_corr',direct_u_corr);
 
 n_coarse = P*N_c;
 n_source_cols = 2*n_coarse;
@@ -32,41 +44,23 @@ n_u_cols = 2*n_coarse;
 pair_rows = 4*N_c;
 pair_total_rows = n_pairs*pair_rows;
 
-source_entries = n_pairs*(8*N_c)*(4*N_c);
 u_entries = n_pairs*(4*N_check)*(4*N_c);
 pair_nonp_entries = n_pairs*pair_rows*(4*N_c);
-pair_projector_entries = n_pairs*pair_rows*pair_rows;
-source_scatter_entries = n_pairs*(8*N_c);
 source_scatter_index_entries = n_pairs*(8*N_c);
 dense_pair_projector_entries = pair_rows*pair_rows;
 
 counts = struct();
-counts.source = double(plan.direct_source_corr)*source_entries;
-counts.u = double(plan.need_u_corr_matrix)*u_entries;
-counts.pair_nonp = double(plan.need_pair_nonp_matrix)*pair_nonp_entries;
-counts.pair_nonp_u_corr = double(plan.combined_pair_u_corr)* ...
-    (pair_nonp_entries + u_entries);
-counts.pair_projector = double(plan.need_pair_projector)*pair_projector_entries;
-counts.source_scatter = double(plan.need_source_scatter)*source_scatter_entries;
-counts.source_scatter_indices = double(plan.need_source_scatter_indices)* ...
-    source_scatter_index_entries;
-counts.dense_pair_projector = double(plan.need_dense_pair_projector)* ...
-    dense_pair_projector_entries;
-counts.u_cross = double(plan.need_u_cross)*u_entries;
-counts.u_peanut = double(plan.need_u_peanut)*u_entries;
-counts.total = counts.source + counts.u + counts.pair_nonp + ...
-    counts.pair_nonp_u_corr + counts.pair_projector + ...
-    counts.source_scatter + counts.u_cross + counts.u_peanut;
+counts.u = double(direct_u_corr)*u_entries;
+counts.pair_nonp = pair_nonp_entries;
+counts.source_scatter_indices = source_scatter_index_entries;
+counts.dense_pair_projector = dense_pair_projector_entries;
+counts.u_cross = double(~direct_u_corr)*u_entries;
+counts.u_peanut = double(~direct_u_corr)*u_entries;
+counts.total = counts.u + counts.pair_nonp + counts.u_cross + ...
+    counts.u_peanut;
 
-sparse_cols = 0;
-sparse_cols = sparse_cols + double(plan.direct_source_corr)*n_source_cols;
-sparse_cols = sparse_cols + double(plan.need_u_corr_matrix)*n_u_cols;
-sparse_cols = sparse_cols + double(plan.need_pair_nonp_matrix)*n_source_cols;
-sparse_cols = sparse_cols + double(plan.combined_pair_u_corr)*n_source_cols;
-sparse_cols = sparse_cols + double(plan.need_pair_projector)*pair_total_rows;
-sparse_cols = sparse_cols + double(plan.need_source_scatter)*(2*pair_total_rows);
-sparse_cols = sparse_cols + double(plan.need_u_cross)*n_u_cols;
-sparse_cols = sparse_cols + double(plan.need_u_peanut)*pair_total_rows;
+sparse_cols = n_source_cols + double(direct_u_corr)*n_u_cols + ...
+    double(~direct_u_corr)*(n_u_cols + pair_total_rows);
 
 auxiliary_bytes = 8*counts.source_scatter_indices + ...
     8*counts.dense_pair_projector;

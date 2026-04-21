@@ -46,20 +46,13 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %                     the parallel solve matvec
 %       use_big_sparse
 %                     if true, use preassembled global sparse close-pair
-%                     correction matrices in the supported GMRES matvec
-%       big_sparse_structured_apply
-%                     if true, replace sparse projector/scatter maps in
-%                     the factored big-sparse matvec with dense/indexed
-%                     structured applies
-%       big_sparse_direct_source_corr
-%                     if true, build and apply direct M_source_corr instead
-%                     of the factored source correction
+%                     correction matrices in the supported GMRES matvec.
+%                     The v1 path always uses factored structured source
+%                     correction.
 %       big_sparse_direct_u_corr
-%                     if true, build and apply direct M_u_corr instead of
-%                     the factored u correction
-%       big_sparse_combine_pair_u_corr
-%                     if true, stack M_pair_nonp and M_u_corr into one
-%                     sparse matrix when both are needed
+%                     if true, build/apply direct M_u_corr. If false,
+%                     build/apply factored M_u_cross and M_u_peanut for
+%                     comparison. Default true.
 %       use_direct    in the parallel solve matvec, use direct local
 %                     Stokeslet evaluations when true and dense pair blocks
 %                     when false
@@ -582,20 +575,16 @@ stats.N_c = 0;
 stats.N_check = 0;
 stats.used_pair_cache = false;
 stats.rotations_used = false;
-stats.direct_source_corr = false;
-stats.direct_u_corr = false;
-stats.structured_apply = false;
-stats.combined_pair_u_corr = false;
-stats.local_source_entries = 0;
+stats.source_correction = 'factored_structured';
+stats.velocity_correction = 'direct_sparse';
+stats.direct_u_corr = true;
+stats.local_pair_nonp_entries = 0;
 stats.local_u_entries = 0;
-stats.nnz_source = 0;
 stats.nnz_u = 0;
-stats.nnz_pair_nonp = 0;
-stats.nnz_pair_nonp_u_corr = 0;
-stats.nnz_pair_projector = 0;
-stats.nnz_source_scatter = 0;
 stats.nnz_u_cross = 0;
 stats.nnz_u_peanut = 0;
+stats.nnz_pair_nonp = 0;
+stats.nnz_source_scatter = 0;
 stats.estimated_sparse_bytes = 0;
 stats.estimated_auxiliary_bytes = 0;
 stats.estimated_build_bytes = 0;

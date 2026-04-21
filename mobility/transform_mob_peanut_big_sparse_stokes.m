@@ -57,99 +57,49 @@ lam_self_x = lam_c_x;
 lam_self_y = lam_c_y;
 
 lambda_self = [lam_self_x; lam_self_y];
-use_direct_source_corr = logical(getOptField(opt, ...
-    'big_sparse_direct_source_corr',false));
-use_direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',false));
-use_structured_apply = logical(getOptField(opt, ...
-    'big_sparse_structured_apply',false));
-use_combined_pair_u = isfield(basis.big_sparse,'M_pair_nonp_u_corr');
-need_pair_proj = ~use_direct_source_corr || ~use_direct_u_corr;
-u_corr = [];
-if need_pair_proj
-    if use_combined_pair_u
-        combined = basis.big_sparse.M_pair_nonp_u_corr*lambda_self;
-        pair_rows = basis.big_sparse.pair_nonp_rows;
-        pair_nonp = combined(1:pair_rows);
-        u_corr = combined(pair_rows+1:end);
-    elseif isfield(basis.big_sparse,'M_pair_nonp')
-        pair_nonp = basis.big_sparse.M_pair_nonp*lambda_self;
-    else
-        error('transform_mob_peanut_big_sparse_stokes:MissingPairMaps', ...
-            'Factored source or velocity correction requires M_pair_nonp.');
-    end
-    % Algebra per pair:
-    %   pair_nonp = C_nonp*lambda_self
-    %   pair_proj = P_pair*pair_nonp
-    if use_structured_apply
-        if ~isfield(basis.big_sparse,'P_pair')
-            error('transform_mob_peanut_big_sparse_stokes:MissingProjector', ...
-                'Structured apply requires basis.big_sparse.P_pair.');
-        end
-        pair_proj = applyDensePairProjector(pair_nonp, ...
-            basis.big_sparse.P_pair);
-    else
-        if ~isfield(basis.big_sparse,'M_pair_projector')
-            error('transform_mob_peanut_big_sparse_stokes:MissingProjector', ...
-                'Sparse factored apply requires M_pair_projector.');
-        end
-        pair_proj = basis.big_sparse.M_pair_projector*pair_nonp;
-    end
-else
-    pair_proj = [];
-    pair_nonp = [];
+if ~isfield(basis.big_sparse,'M_pair_nonp')
+    error('transform_mob_peanut_big_sparse_stokes:MissingPairMap', ...
+        'The big sparse transform requires M_pair_nonp.');
+end
+if ~isfield(basis.big_sparse,'P_pair')
+    error('transform_mob_peanut_big_sparse_stokes:MissingProjector', ...
+        'The big sparse transform requires basis.big_sparse.P_pair.');
+end
+if ~isfield(basis.big_sparse,'source_scatter_rows')
+    error('transform_mob_peanut_big_sparse_stokes:MissingSourceRows', ...
+        'The big sparse transform requires source_scatter_rows.');
 end
 
-if use_direct_source_corr
-    % Diagnostic path: M_source_corr forms P_pair*C_nonp explicitly. The
-    % default factored source correction is more stable for large sources.
-    if ~isfield(basis.big_sparse,'M_source_corr')
-        error('transform_mob_peanut_big_sparse_stokes:MissingDirectSourceCorr', ...
-            'opt.big_sparse_direct_source_corr=1 requires M_source_corr.');
-    end
-    corr = basis.big_sparse.M_source_corr*lambda_self;
-else
-    if use_structured_apply
-        if ~isfield(basis.big_sparse,'source_scatter_rows')
-            error('transform_mob_peanut_big_sparse_stokes:MissingSourceRows', ...
-                'Structured source correction requires source_scatter_rows.');
-        end
-        corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
-            pair_proj,pair_nonp,4*N_c,n_coarse);
-    else
-        if ~isfield(basis.big_sparse,'M_source_scatter')
-            error('transform_mob_peanut_big_sparse_stokes:MissingSourceScatter', ...
-                'Factored source correction requires M_source_scatter.');
-        end
-        corr = basis.big_sparse.M_source_scatter*[pair_proj; pair_nonp];
-    end
-end
+% Fixed source-correction algebra:
+%   pair_nonp = C_nonp*lambda_self
+%   pair_proj = P_pair*pair_nonp
+%   corr = scatter([pair_proj; pair_nonp])
+pair_nonp = basis.big_sparse.M_pair_nonp*lambda_self;
+pair_proj = applyDensePairProjector(pair_nonp,basis.big_sparse.P_pair);
+corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
+    pair_proj,pair_nonp,4*N_c,n_coarse);
 
 lam_c_x = lam_self_x + corr(1:n_coarse);
 lam_c_y = lam_self_y + corr(n_coarse+1:2*n_coarse);
 lam_c_nonpx = lam_c_nonpx + corr(2*n_coarse+1:3*n_coarse);
 lam_c_nonpy = lam_c_nonpy + corr(3*n_coarse+1:4*n_coarse);
 
+use_direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
 if use_direct_u_corr
-    % Diagnostic path: M_u_corr forms Ucross - Ecolloc*C_proj explicitly,
-    % which can lose precision compared with the default factored apply.
-    if ~isempty(u_corr)
-        % Computed together with pair_nonp by M_pair_nonp_u_corr.
-    elseif ~isfield(basis.big_sparse,'M_u_corr')
-        error('transform_mob_peanut_big_sparse_stokes:MissingDirectUCorr', ...
+    if ~isfield(basis.big_sparse,'M_u_corr')
+        error('transform_mob_peanut_big_sparse_stokes:MissingUCorr', ...
             'opt.big_sparse_direct_u_corr=1 requires M_u_corr.');
-    else
-        u_corr = basis.big_sparse.M_u_corr*lambda_self;
     end
-elseif isfield(basis.big_sparse,'M_u_cross') && ...
-        isfield(basis.big_sparse,'M_u_peanut')
-    % Default path: u_corr = Ucross*lambda_self - Ecolloc*pair_proj.
-    u_corr = basis.big_sparse.M_u_cross*lambda_self - ...
-        basis.big_sparse.M_u_peanut*pair_proj;
-elseif isfield(basis.big_sparse,'M_u_corr')
     u_corr = basis.big_sparse.M_u_corr*lambda_self;
 else
-    error('transform_mob_peanut_big_sparse_stokes:MissingUCorrMap', ...
-        'Missing both factored u-correction maps and direct M_u_corr.');
+    if ~isfield(basis.big_sparse,'M_u_cross') || ...
+            ~isfield(basis.big_sparse,'M_u_peanut')
+        error('transform_mob_peanut_big_sparse_stokes:MissingFactoredUCorr', ...
+            ['opt.big_sparse_direct_u_corr=0 requires M_u_cross ', ...
+             'and M_u_peanut.']);
+    end
+    u_corr = basis.big_sparse.M_u_cross*lambda_self - ...
+        basis.big_sparse.M_u_peanut*pair_proj;
 end
 
 lam_f_x = [];
