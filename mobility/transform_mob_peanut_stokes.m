@@ -67,6 +67,7 @@ use_dense = logical(getOptField(opt,'use_dense',false)) && isequal(rcheck_out,rv
 use_matrix_free_Lc_pair = logical(getOptField(opt,'use_matrix_free_Lc_pair',true));
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 need_explicit_pair_sources = ~use_cmap || get_bndry_field || ~opt.self_correct;
+parallel_solve = logical(getOptField(opt,'parallel_solve',false));
 has_pair_meta = isfield(pair_cache,'meta') && numel(pair_cache.meta) >= n_pairs;
 if use_matrix_free_Lc_pair
     coarse_rigid_projector = buildRigidProjectionCache2D(rbase_in_c);
@@ -119,6 +120,11 @@ lam_self_y = lam_c_y;
 
 
 %% Phase 2: loop over all pairs
+if parallel_solve && n_pairs > 1
+    [lam_c_x,lam_c_y,u_corr] = applyPairCorrectionsParallelSolve( ...
+        lam_c_x,lam_c_y,u_corr,lam_self_x,lam_self_y, ...
+        coarse_rigid_projector,basis);
+else
 for row = 1:n_pairs
     i = pairs(row,1);
     p2 = pairs(row,2);
@@ -299,6 +305,7 @@ for row = 1:n_pairs
         (p2-1)*N_check+PM2+1:p2*N_check+PM2]';
     u_corr(pair_ind) = u_corr(pair_ind)+u_pair-u_peanut_corr;
 end
+end
 
 
 %% Store fine sources for post-processing? 
@@ -320,6 +327,167 @@ else
     lam_f_y = [];
 end
 
+end
+
+function [lam_c_x,lam_c_y,u_corr] = applyPairCorrectionsParallelSolve( ...
+    lam_c_x,lam_c_y,u_corr,lam_self_x,lam_self_y, ...
+    coarse_rigid_projector,basis)
+
+if ~isfield(basis,'parallel_solve_context') || isempty(basis.parallel_solve_context)
+    error('transform_mob_peanut_stokes:ParallelSolveMissingContext', ...
+        ['opt.parallel_solve=1 requires the compact parallel solve ', ...
+         'context prepared by solve_mob_peanut_enhanced.']);
+end
+
+ctx_ref = basis.parallel_solve_context;
+ctx0 = getParallelSolveContextValue(ctx_ref);
+n_pairs = size(ctx0.pairs,1);
+N_c = ctx0.N_c;
+N_check = ctx0.N_check;
+P = numel(ctx0.q);
+
+chunk_size = ctx0.chunk_size;
+n_chunks = ceil(n_pairs/chunk_size);
+coarse_chunks = cell(n_chunks,1);
+velocity_chunks = cell(n_chunks,1);
+
+if isstruct(ctx_ref)
+    ctx = ctx0;
+    parfor chunk_it = 1:n_chunks
+        rows = parallelSolveChunkRows(chunk_it,chunk_size,n_pairs);
+        [coarse_chunks{chunk_it},velocity_chunks{chunk_it}] = ...
+            computeParallelSolveChunk(rows,ctx,lam_self_x,lam_self_y, ...
+            coarse_rigid_projector);
+    end
+else
+    parfor chunk_it = 1:n_chunks
+        ctx = ctx_ref.Value;
+        rows = parallelSolveChunkRows(chunk_it,chunk_size,n_pairs);
+        [coarse_chunks{chunk_it},velocity_chunks{chunk_it}] = ...
+            computeParallelSolveChunk(rows,ctx,lam_self_x,lam_self_y, ...
+            coarse_rigid_projector);
+    end
+end
+
+PM_check = N_check*P;
+for chunk_it = 1:n_chunks
+    rows = parallelSolveChunkRows(chunk_it,chunk_size,n_pairs);
+    coarse_delta = coarse_chunks{chunk_it};
+    velocity_delta = velocity_chunks{chunk_it};
+    for local_it = 1:numel(rows)
+        row = rows(local_it);
+        i = ctx0.pairs(row,1);
+        p2 = ctx0.pairs(row,2);
+
+        coarse_i = (i-1)*N_c+1:i*N_c;
+        coarse_p2 = (p2-1)*N_c+1:p2*N_c;
+        lam_c_x(coarse_i) = lam_c_x(coarse_i) + coarse_delta(1:N_c,local_it);
+        lam_c_x(coarse_p2) = lam_c_x(coarse_p2) + coarse_delta(N_c+1:2*N_c,local_it);
+        lam_c_y(coarse_i) = lam_c_y(coarse_i) + coarse_delta(2*N_c+1:3*N_c,local_it);
+        lam_c_y(coarse_p2) = lam_c_y(coarse_p2) + coarse_delta(3*N_c+1:4*N_c,local_it);
+
+        pair_ind = [(i-1)*N_check+1:i*N_check ...
+            (p2-1)*N_check+1:p2*N_check ...
+            (i-1)*N_check+PM_check+1:i*N_check+PM_check ...
+            (p2-1)*N_check+PM_check+1:p2*N_check+PM_check]';
+        u_corr(pair_ind) = u_corr(pair_ind) + velocity_delta(:,local_it);
+    end
+end
+end
+
+function rows = parallelSolveChunkRows(chunk_it,chunk_size,n_pairs)
+first_row = (chunk_it-1)*chunk_size + 1;
+last_row = min(first_row + chunk_size - 1,n_pairs);
+rows = first_row:last_row;
+end
+
+function ctx = getParallelSolveContextValue(ctx_ref)
+if isstruct(ctx_ref)
+    ctx = ctx_ref;
+else
+    ctx = ctx_ref.Value;
+end
+end
+
+function [tau_peanut_tot,u_delta] = computeParallelSolvePair( ...
+    row,ctx,lam_self_x,lam_self_y,coarse_rigid_projector)
+
+N_c = ctx.N_c;
+pairs = ctx.pairs;
+i = pairs(row,1);
+p2 = pairs(row,2);
+
+coarse_i = (i-1)*N_c+1:i*N_c;
+coarse_p2 = (p2-1)*N_c+1:p2*N_c;
+
+lambda_i = [lam_self_x(coarse_i); lam_self_y(coarse_i)];
+lambda_p2 = [lam_self_x(coarse_p2); lam_self_y(coarse_p2)];
+rhs_mat = [lambda_i(1:N_c) lambda_p2(1:N_c) ...
+           lambda_i(N_c+1:end) lambda_p2(N_c+1:end)];
+
+if ctx.use_pair_cache
+    meta = ctx.meta(row);
+    rhs = rotatePairOrderedStokesData(rhs_mat,N_c,meta.phase_c,conj(meta.rot));
+    rhs = rhs(:);
+    tau_peanut_ntot = ctx.group_Cmap{meta.group_id}*rhs;
+    tau_peanut_loc = projectOutRigidPairCached2D( ...
+        tau_peanut_ntot,coarse_rigid_projector);
+    tau_peanut_tot = rotatePairOrderedStokesData( ...
+        tau_peanut_loc,N_c,meta.phase_c_inv,meta.rot);
+    tau_peanut_tot = tau_peanut_tot(:);
+else
+    rhs = rhs_mat(:);
+    tau_peanut_ntot = ctx.Cmap_pair{row}*rhs;
+    tau_peanut_tot = projectOutRigidPairCached2D( ...
+        tau_peanut_ntot,coarse_rigid_projector);
+end
+
+if ctx.use_direct
+    q = ctx.q;
+    rbase_in_c = ctx.rbase_in_c;
+    rout_base_c = ctx.rout_base_c;
+    q_i = q(i);
+    q_p2 = q(p2);
+
+    rcheck_i = rout_base_c + q_i;
+    rcheck_p2 = rout_base_c + q_p2;
+    rout_pair = [rcheck_i; rcheck_p2];
+    rin_pair_c = [rbase_in_c+q_i; rbase_in_c+q_p2];
+
+    [ui,vi] = stokSLPdirect(real(rbase_in_c+q_p2),imag(rbase_in_c+q_p2), ...
+        real(rcheck_i),imag(rcheck_i),lam_self_x(coarse_p2), ...
+        lam_self_y(coarse_p2),N_c);
+    [up2,vp2] = stokSLPdirect(real(rbase_in_c+q_i),imag(rbase_in_c+q_i), ...
+        real(rcheck_p2),imag(rcheck_p2),lam_self_x(coarse_i), ...
+        lam_self_y(coarse_i),N_c);
+    u_pair = -[ui; up2; vi; vp2];
+
+    [u1,v1] = stokSLPdirect(real(rin_pair_c),imag(rin_pair_c), ...
+        real(rout_pair),imag(rout_pair),tau_peanut_tot(1:2*N_c), ...
+        tau_peanut_tot(2*N_c+1:4*N_c),2*N_c);
+    u_peanut_corr = [u1; v1];
+else
+    rhs_self = [lam_self_x(coarse_i); lam_self_x(coarse_p2); ...
+                lam_self_y(coarse_i); lam_self_y(coarse_p2)];
+    u_pair = ctx.Ucross_pair{row}*rhs_self;
+    tau_peanut_src = [tau_peanut_tot(1:2*N_c); ...
+                      tau_peanut_tot(2*N_c+1:4*N_c)];
+    u_peanut_corr = ctx.Ecolloc_pair{row}*tau_peanut_src;
+end
+u_delta = u_pair - u_peanut_corr;
+end
+
+function [coarse_delta,velocity_delta] = computeParallelSolveChunk( ...
+    rows,ctx,lam_self_x,lam_self_y,coarse_rigid_projector)
+n_local = numel(rows);
+coarse_delta = zeros(4*ctx.N_c,n_local);
+velocity_delta = zeros(4*ctx.N_check,n_local);
+
+for local_it = 1:n_local
+    [coarse_delta(:,local_it),velocity_delta(:,local_it)] = ...
+        computeParallelSolvePair(rows(local_it),ctx,lam_self_x,lam_self_y, ...
+        coarse_rigid_projector);
+end
 end
 
 function geom = buildRigidProjectionCache2D(rbase)

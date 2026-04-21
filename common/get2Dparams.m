@@ -50,6 +50,13 @@ opt.RAM_check = false; % estimate/report RAM usage for precomp, solve, and postp
 opt.project_force = false; % project out net force/torque-producing modes, needed in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated pair separations
 opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
+opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
+opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
+opt.use_big_sparse = false; % use global sparse close-pair correction matrices in peanut mobility GMRES
+opt.big_sparse_direct_source_corr = false; % use factored source correction rather than direct M_source_corr
+opt.big_sparse_direct_u_corr = true; % build/apply direct M_u_corr for pair velocity correction
+opt.big_sparse_structured_apply = true; % replace sparse projector/scatter maps by structured dense/indexed applies
+opt.big_sparse_combine_pair_u_corr = false; % compare mode: stack M_pair_nonp and M_u_corr into one sparse apply
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
@@ -57,8 +64,10 @@ opt.use_matrix_free_Lc_pair = true; % matrix-free pair rigid projection; set fal
 opt.show_counter = 1; % show progress for pair compressions
 opt.self_correct = 1; % enforce identity diagonal matrices in system matrix
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
+opt.use_direct = true; % in parallel solve, use direct local Stokeslet evals instead of dense pair blocks
 opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares problem
 opt.column_weight = false; % scale LS operator columns before SVD in peanut solvers
 opt.left_weight = false; % scale LS operator rows by local arclength weights in peanut solvers
+opt.single_threaded = false; % if true, set OMP_NUM_THREADS=1 to run single-threaded (impacts FMM)
 
 end
