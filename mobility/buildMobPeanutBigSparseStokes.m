@@ -2,7 +2,7 @@ function [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom,basis)
 %BUILDMOBPEANUTBIGSPARSESTOKES Build solve-grid sparse pair-correction maps.
 %
 % Calling buildMobPeanutBigSparseStokes with no inputs runs a visual
-% self-test on a P=20 random_discs_mc packing at phi=0.65 and shows the
+% self-test on a small random_discs_mc packing at phi=0.65 and shows the
 % sparse matrix structures with spy.
 %
 % This v1 builder is deliberately actual-pair only. Rotations are not part
@@ -35,41 +35,40 @@ timer = tic;
 opt = geom.opt;
 q = geom.q(:);
 pairs = geom.pairs;
-rbase_in_c = geom.rbase_in_c(:);
 rcheck = geom.rcheck;
 N_c = opt.N_c;
 P = numel(q);
 n_pairs = size(pairs,1);
 n_coarse = P*N_c;
 N_check = numel(rcheck)/P;
+build_mode = resolveMobBigSparseBuildMode(opt);
 
-validateBigSparseInputs(geom,basis,N_check);
+validateBigSparseInputs(geom,basis,N_check,build_mode);
 
 n_source_cols = 2*n_coarse;
 n_u_rows = 2*P*N_check;
 n_u_cols = 2*n_coarse;
 pair_block_rows = 4*N_c;
 pair_total_rows = n_pairs*pair_block_rows;
-P_pair = buildPairProjectionMatrix(rbase_in_c);
+P_pair = resolvePairProjectionMatrix(geom,basis);
 ram_estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt);
 plan = ram_estimate.matrix_plan;
-counts = ram_estimate.counts;
 direct_u_corr = plan.direct_u_corr;
 
 stats = initBigSparseStats(n_pairs,N_c,N_check,ram_estimate);
 stats.requested = true;
 
 max_build_bytes = getOptField(opt,'big_sparse_max_build_bytes',inf);
-if stats.estimated_build_bytes > max_build_bytes
+if stats.big_sparse_build_bytes > max_build_bytes
     error('buildMobPeanutBigSparseStokes:BuildMemoryLimit', ...
         ['Estimated sparse-entry build memory %.3g bytes exceeds ', ...
          'opt.big_sparse_max_build_bytes %.3g bytes.'], ...
-        stats.estimated_build_bytes,max_build_bytes);
+        stats.big_sparse_build_bytes,max_build_bytes);
 end
 
 if n_pairs == 0
     big_sparse = emptyBigSparse(n_source_cols,n_u_rows,n_u_cols, ...
-        pair_total_rows,plan);
+        pair_total_rows,3*P,plan);
     big_sparse.ram_estimate = ram_estimate;
     stats.active = true;
     stats.reason = 'no_close_pairs';
@@ -79,47 +78,34 @@ if n_pairs == 0
 end
 
 rout_base_c = rcheck(1:N_check) - q(1);
-entries = preallocateSparseEntries(counts);
+entries = initSparseBuilders(P,N_c,N_check,n_pairs,opt,plan);
 
-for row = 1:n_pairs
-    i = pairs(row,1);
-    j = pairs(row,2);
-
-    in_idx = pairCoarseInputIndices(i,j,N_c,P);
-    u_out_idx = pairVelocityOutputIndices(i,j,N_check,P);
-    pair_idx = (row-1)*pair_block_rows+1:row*pair_block_rows;
-
-    C_nonp = basis.Cmap{i,j};
-    [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
-        q,rbase_in_c,rout_base_c,pairs,row);
-
-    entries = appendDenseBlock(entries,'pair_nonp',pair_idx,in_idx,C_nonp);
-    if direct_u_corr
-        C_proj = P_pair*C_nonp;
-        entries = appendDenseBlock(entries,'u',u_out_idx,in_idx, ...
-            Ucross - Ecolloc*C_proj);
-    else
-        entries = appendDenseBlock(entries,'u_cross',u_out_idx,in_idx, ...
-            Ucross);
-        entries = appendDenseBlock(entries,'u_peanut',u_out_idx,pair_idx, ...
-            Ecolloc);
-    end
+switch build_mode
+    case 'precomputed'
+        entries = appendPrecomputedBlocks(entries,geom,basis, ...
+            rout_base_c,P_pair);
+    case 'streaming'
+        entries = appendStreamingBlocks(entries,geom,basis, ...
+            rout_base_c,P_pair);
+    otherwise
+        error('buildMobPeanutBigSparseStokes:BadMode', ...
+            'Unsupported build mode "%s".',build_mode);
 end
+
+entries = flushAllSparseBuilders(entries);
 
 big_sparse = struct();
 big_sparse.matrix_plan = plan;
 big_sparse.ram_estimate = ram_estimate;
 big_sparse.P_pair = P_pair;
 big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
-big_sparse.M_pair_nonp = sparseFromEntries(entries.pair_nonp, ...
-    pair_total_rows,n_source_cols);
+big_sparse.M_pair_nonp = entries.pair_nonp.S;
+big_sparse.M_rbm_corr = entries.rbm.S;
 if direct_u_corr
-    big_sparse.M_u_corr = sparseFromEntries(entries.u,n_u_rows,n_u_cols);
+    big_sparse.M_u_corr = entries.u.S;
 else
-    big_sparse.M_u_cross = sparseFromEntries(entries.u_cross,n_u_rows, ...
-        n_u_cols);
-    big_sparse.M_u_peanut = sparseFromEntries(entries.u_peanut,n_u_rows, ...
-        pair_total_rows);
+    big_sparse.M_u_cross = entries.u_cross.S;
+    big_sparse.M_u_peanut = entries.u_peanut.S;
 end
 
 if direct_u_corr
@@ -129,6 +115,7 @@ else
     stats.nnz_u_peanut = nnz(big_sparse.M_u_peanut);
 end
 stats.nnz_pair_nonp = nnz(big_sparse.M_pair_nonp);
+stats.nnz_rbm = nnz(big_sparse.M_rbm_corr);
 stats.nnz_source_scatter = numel(big_sparse.source_scatter_rows);
 stats.active = true;
 stats.reason = '';
@@ -136,7 +123,20 @@ stats.build_time = toc(timer);
 big_sparse.stats = stats;
 end
 
-function validateBigSparseInputs(geom,basis,N_check)
+function build_mode = resolveMobBigSparseBuildMode(opt)
+build_mode = lower(char(getOptField(opt,'mob_big_sparse_build_mode', ...
+    'precomputed')));
+switch build_mode
+    case {'precomputed','streaming'}
+        % supported
+    otherwise
+        error('buildMobPeanutBigSparseStokes:BadMode', ...
+            ['opt.mob_big_sparse_build_mode must be ''precomputed'' ', ...
+             'or ''streaming''.']);
+end
+end
+
+function validateBigSparseInputs(geom,basis,N_check,build_mode)
 opt = geom.opt;
 
 if ~logical(getOptField(opt,'cmap',false))
@@ -151,10 +151,6 @@ if ~logical(getOptField(opt,'use_dense',false))
     error('buildMobPeanutBigSparseStokes:UnsupportedOption', ...
         'opt.use_big_sparse=1 requires opt.use_dense=1.');
 end
-if ~logical(getOptField(opt,'use_matrix_free_Lc_pair',true))
-    error('buildMobPeanutBigSparseStokes:UnsupportedOption', ...
-        'opt.use_big_sparse=1 requires opt.use_matrix_free_Lc_pair=1.');
-end
 if ~isequal(geom.rcheck,geom.rvec_out)
     error('buildMobPeanutBigSparseStokes:UnsupportedGrid', ...
         'opt.use_big_sparse=1 is only supported on the solve grid.');
@@ -163,10 +159,36 @@ if N_check ~= round(N_check)
     error('buildMobPeanutBigSparseStokes:BadGridSize', ...
         'rcheck length must be divisible by the number of particles.');
 end
-if size(geom.pairs,1) > 0 && ...
-        (~isfield(basis,'Cmap') || isempty(basis.Cmap))
+if strcmp(build_mode,'streaming') && ...
+        logical(getOptField(opt,'get_bndry_field',false))
+    error('buildMobPeanutBigSparseStokes:StreamingBoundaryUnsupported', ...
+        ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
+         'opt.get_bndry_field=0.']);
+end
+if strcmp(build_mode,'streaming') && ...
+        logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
+    error('buildMobPeanutBigSparseStokes:StreamingPairReuseUnsupported', ...
+        ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
+         'opt.reuse_pair_basis_by_sep=0.']);
+end
+if strcmp(build_mode,'precomputed') && size(geom.pairs,1) > 0 && ...
+        (~isfield(basis,'Cmap') || isempty(basis.Cmap) || ...
+         ~isfield(basis,'Cmap_FU') || isempty(basis.Cmap_FU))
     error('buildMobPeanutBigSparseStokes:MissingCmap', ...
-        'The big sparse builder requires actual per-pair Cmap data.');
+        'Precomputed big sparse requires actual per-pair Cmap and Cmap_FU data.');
+end
+if strcmp(build_mode,'streaming') && size(geom.pairs,1) > 0
+    required_geom = {'rbase_in_f','rimage_vec','refine'};
+    for k = 1:numel(required_geom)
+        if ~isfield(geom,required_geom{k}) || isempty(geom.(required_geom{k}))
+            error('buildMobPeanutBigSparseStokes:MissingStreamingGeom', ...
+                'Streaming big sparse requires geom.%s.',required_geom{k});
+        end
+    end
+    if ~isfield(basis,'Lc') || isempty(basis.Lc)
+        error('buildMobPeanutBigSparseStokes:MissingLc', ...
+            'Streaming big sparse requires basis.Lc.');
+    end
 end
 if size(geom.pairs,1) > 0 && isfield(basis,'pair_cache') && ...
         isfield(basis.pair_cache,'enabled') && basis.pair_cache.enabled
@@ -184,6 +206,8 @@ stats.requested = false;
 stats.active = false;
 stats.backend = 'global_block_sparse';
 stats.matrix_plan = plan;
+stats.build_mode = plan.build_mode;
+stats.chunk_pairs = plan.chunk_pairs;
 stats.reason = 'not_requested';
 stats.n_pairs = n_pairs;
 stats.N_c = N_c;
@@ -192,34 +216,37 @@ stats.used_pair_cache = false;
 stats.source_correction = 'factored_structured';
 stats.velocity_correction = plan.velocity_correction;
 stats.direct_u_corr = plan.direct_u_corr;
+stats.projector_mode = plan.projector_mode;
 stats.local_pair_nonp_entries = counts.pair_nonp/max(1,n_pairs);
 stats.local_u_entries = counts.u/max(1,n_pairs);
 stats.local_u_cross_entries = counts.u_cross/max(1,n_pairs);
 stats.local_u_peanut_entries = counts.u_peanut/max(1,n_pairs);
+stats.local_rbm_entries = counts.rbm/max(1,n_pairs);
 stats.nnz_u = 0;
 stats.nnz_u_cross = 0;
 stats.nnz_u_peanut = 0;
 stats.nnz_pair_nonp = 0;
+stats.nnz_rbm = 0;
 stats.nnz_source_scatter = 0;
 stats.rotations_used = false;
-stats.estimated_sparse_bytes = ram_estimate.estimated_sparse_bytes;
-stats.estimated_auxiliary_bytes = ram_estimate.estimated_auxiliary_bytes;
-stats.estimated_build_bytes = ram_estimate.estimated_build_bytes;
-stats.estimated_peak_bytes = ram_estimate.estimated_peak_bytes;
-stats.estimated_sparse_MB = ram_estimate.estimated_sparse_MB;
-stats.estimated_auxiliary_MB = ram_estimate.estimated_auxiliary_MB;
-stats.estimated_build_MB = ram_estimate.estimated_build_MB;
-stats.estimated_peak_MB = ram_estimate.estimated_peak_MB;
+stats.big_sparse_matrix_bytes = ram_estimate.big_sparse_matrix_bytes;
+stats.big_sparse_auxiliary_bytes = ram_estimate.big_sparse_auxiliary_bytes;
+stats.big_sparse_build_bytes = ram_estimate.big_sparse_build_bytes;
+stats.big_sparse_peak_bytes = ram_estimate.big_sparse_peak_bytes;
+stats.retained_pair_basis_bytes = ram_estimate.retained_pair_basis_bytes;
+stats.solver_precompute_peak_bytes = ...
+    ram_estimate.solver_precompute_peak_bytes;
 stats.build_time = 0;
 end
 
 function big_sparse = emptyBigSparse(n_source_cols,n_u_rows,n_u_cols, ...
-    pair_total_rows,plan)
+    pair_total_rows,n_rbm_rows,plan)
 big_sparse = struct();
 big_sparse.matrix_plan = plan;
 big_sparse.P_pair = sparse(0,0);
 big_sparse.source_scatter_rows = zeros(0,1);
 big_sparse.M_pair_nonp = sparse(pair_total_rows,n_source_cols);
+big_sparse.M_rbm_corr = sparse(n_rbm_rows,n_source_cols);
 if plan.direct_u_corr
     big_sparse.M_u_corr = sparse(n_u_rows,n_u_cols);
 else
@@ -228,33 +255,190 @@ else
 end
 end
 
-function entries = preallocateSparseEntries(counts)
+function P_pair = resolvePairProjectionMatrix(geom,basis)
+opt = geom.opt;
+if logical(getOptField(opt,'use_matrix_free_Lc_pair',true))
+    P_pair = buildPairProjectionMatrix(geom.rbase_in_c(:));
+    return
+end
+
+if isfield(basis,'Lc_pair') && ~isempty(basis.Lc_pair)
+    P_pair = basis.Lc_pair;
+elseif isfield(basis,'Lc') && ~isempty(basis.Lc)
+    P_pair = getILpair(basis.Lc);
+else
+    error('buildMobPeanutBigSparseStokes:MissingDensePairProjector', ...
+        ['opt.use_matrix_free_Lc_pair=0 requires basis.Lc_pair ', ...
+         'or basis.Lc.']);
+end
+
+expected = 4*geom.opt.N_c;
+if ~isequal(size(P_pair),[expected expected])
+    error('buildMobPeanutBigSparseStokes:BadDensePairProjector', ...
+        'basis.Lc_pair must have size %d-by-%d.',expected,expected);
+end
+end
+
+function entries = initSparseBuilders(P,N_c,N_check,n_pairs,opt,plan)
+chunk_pairs = max(1,round(getOptField(opt,'mob_big_sparse_chunk_pairs',8)));
+chunk_pairs = min(max(1,n_pairs),chunk_pairs);
+n_coarse = P*N_c;
+n_source_cols = 2*n_coarse;
+n_u_rows = 2*P*N_check;
+n_u_cols = 2*n_coarse;
+pair_rows = 4*N_c;
+pair_total_rows = n_pairs*pair_rows;
+n_rbm_rows = 3*P;
+local_pair_nonp = pair_rows*(4*N_c);
+local_u = (4*N_check)*(4*N_c);
+local_rbm = 6*(4*N_c);
+
 entries = struct();
-entries.u = newSparseEntries(counts.u);
-entries.pair_nonp = newSparseEntries(counts.pair_nonp);
-entries.u_cross = newSparseEntries(counts.u_cross);
-entries.u_peanut = newSparseEntries(counts.u_peanut);
+entries.pair_nonp = newSparseBuilder( ...
+    chunk_pairs*local_pair_nonp,pair_total_rows,n_source_cols);
+entries.rbm = newSparseBuilder( ...
+    chunk_pairs*local_rbm,n_rbm_rows,n_source_cols);
+if plan.direct_u_corr
+    entries.u = newSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
+    entries.u_cross = newSparseBuilder(0,n_u_rows,n_u_cols);
+    entries.u_peanut = newSparseBuilder(0,n_u_rows,pair_total_rows);
+else
+    entries.u = newSparseBuilder(0,n_u_rows,n_u_cols);
+    entries.u_cross = newSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
+    entries.u_peanut = newSparseBuilder(chunk_pairs*local_u,n_u_rows, ...
+        pair_total_rows);
+end
 end
 
-function block = newSparseEntries(n)
-block = struct('rows',zeros(n,1),'cols',zeros(n,1), ...
-    'vals',zeros(n,1),'next',1);
+function block = newSparseBuilder(capacity,n_rows,n_cols)
+capacity = max(0,round(capacity));
+block = struct();
+block.rows = zeros(capacity,1);
+block.cols = zeros(capacity,1);
+block.vals = zeros(capacity,1);
+block.next = 1;
+block.S = sparse(n_rows,n_cols);
 end
 
-function entries = appendDenseBlock(entries,name,row_idx,col_idx,A)
-block = entries.(name);
+function entries = appendPrecomputedBlocks(entries,geom,basis, ...
+    rout_base_c,P_pair)
+pairs = geom.pairs;
+q = geom.q(:);
+N_c = geom.opt.N_c;
+N_check = numel(geom.rcheck)/numel(q);
+P = numel(q);
+n_pairs = size(pairs,1);
+
+for row = 1:n_pairs
+    i = pairs(row,1);
+    j = pairs(row,2);
+    C_nonp = basis.Cmap{i,j};
+    Cmap_FU = basis.Cmap_FU{i,j};
+    [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
+        q,geom.rbase_in_c(:),rout_base_c,pairs,row);
+    entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
+        C_nonp,Cmap_FU,Ucross,Ecolloc,P_pair,geom.opt);
+end
+end
+
+function entries = appendStreamingBlocks(entries,geom,basis, ...
+    rout_base_c,P_pair)
+pairs = geom.pairs;
+q = geom.q(:);
+opt = geom.opt;
+N_c = opt.N_c;
+N_check = numel(geom.rcheck)/numel(q);
+P = numel(q);
+n_pairs = size(pairs,1);
+show_counter = logical(getOptField(opt,'show_counter',false));
+svd_opts = struct( ...
+    'column_weight',logical(getOptField(opt,'column_weight',false)), ...
+    'left_weight',logical(getOptField(opt,'left_weight',false)));
+
+pair_opt = opt;
+pair_opt.project_force = true;
+pair_opt.project = true;
+pair_opt.pair_basis_debug = false;
+
+for row = 1:n_pairs
+    pair = buildStokesMobilityPairData(q,geom.rbase_in_c(:), ...
+        geom.rbase_in_f(:),geom.rimage_vec,geom.refine,pairs,pair_opt, ...
+        basis.Lc,row,false,svd_opts,false,'maps_only');
+    [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
+        q,geom.rbase_in_c(:),rout_base_c,pairs,row);
+    entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
+        pair.Cmap,pair.Cmap_FU,Ucross,Ecolloc,P_pair,opt);
+    if show_counter
+        fprintf('buildMobPeanutBigSparseStokes: streamed pair %d/%d\n', ...
+            row,n_pairs);
+    end
+end
+end
+
+function entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
+    C_nonp,Cmap_FU,Ucross,Ecolloc,P_pair,opt)
+i = pairs(row,1);
+j = pairs(row,2);
+in_idx = pairCoarseInputIndices(i,j,N_c,P);
+u_out_idx = pairVelocityOutputIndices(i,j,N_check,P);
+pair_idx = (row-1)*(4*N_c)+1:row*(4*N_c);
+rbm_idx = pairRigidOutputIndices(i,j,P);
+direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
+
+entries.pair_nonp = appendSparseBlock(entries.pair_nonp, ...
+    pair_idx,in_idx,C_nonp);
+entries.rbm = appendSparseBlock(entries.rbm,rbm_idx,in_idx,-Cmap_FU);
+if direct_u_corr
+    C_proj = P_pair*C_nonp;
+    entries.u = appendSparseBlock(entries.u,u_out_idx,in_idx, ...
+        Ucross - Ecolloc*C_proj);
+else
+    entries.u_cross = appendSparseBlock(entries.u_cross,u_out_idx,in_idx, ...
+        Ucross);
+    entries.u_peanut = appendSparseBlock(entries.u_peanut,u_out_idx, ...
+        pair_idx,Ecolloc);
+end
+end
+
+function block = appendSparseBlock(block,row_idx,col_idx,A)
 row_idx = row_idx(:);
 col_idx = col_idx(:);
 nr = numel(row_idx);
 nc = numel(col_idx);
 n = nr*nc;
+if n == 0
+    return
+end
+if block.next+n-1 > numel(block.vals)
+    block = flushSparseBuilder(block);
+end
+if n > numel(block.vals)
+    block.S = block.S + sparse(repmat(row_idx,nc,1), ...
+        repelem(col_idx,nr),real(A(:)),size(block.S,1),size(block.S,2));
+    return
+end
 loc = block.next:block.next+n-1;
-
 block.rows(loc) = repmat(row_idx,nc,1);
 block.cols(loc) = repelem(col_idx,nr);
 block.vals(loc) = real(A(:));
 block.next = block.next + n;
-entries.(name) = block;
+end
+
+function block = flushSparseBuilder(block)
+n = block.next - 1;
+if n > 0
+    block.S = block.S + sparse(block.rows(1:n),block.cols(1:n), ...
+        block.vals(1:n),size(block.S,1),size(block.S,2));
+    block.next = 1;
+end
+end
+
+function entries = flushAllSparseBuilders(entries)
+entries.pair_nonp = flushSparseBuilder(entries.pair_nonp);
+entries.rbm = flushSparseBuilder(entries.rbm);
+entries.u = flushSparseBuilder(entries.u);
+entries.u_cross = flushSparseBuilder(entries.u_cross);
+entries.u_peanut = flushSparseBuilder(entries.u_peanut);
 end
 
 function rows = buildSourceScatterRows(pairs,N_c,P)
@@ -266,14 +450,6 @@ for row = 1:n_pairs
     rows(next:next+numel(ij)-1) = ij;
     next = next + numel(ij);
 end
-end
-
-function S = sparseFromEntries(block,n_rows,n_cols)
-if block.next ~= numel(block.vals) + 1
-    error('buildMobPeanutBigSparseStokes:EntryCountMismatch', ...
-        'Internal sparse entry count mismatch.');
-end
-S = sparse(block.rows,block.cols,block.vals,n_rows,n_cols);
 end
 
 function P_pair = buildPairProjectionMatrix(rbase)
@@ -340,6 +516,16 @@ idx_j = (j-1)*N_check+1:j*N_check;
 idx = [idx_i, idx_j, pm_check+idx_i, pm_check+idx_j]';
 end
 
+function idx = pairRigidOutputIndices(i,j,P)
+idx_i = (i-1)*3+1:3*i;
+idx_j = (j-1)*3+1:3*j;
+idx = [idx_i idx_j]';
+if max(idx) > 3*P
+    error('buildMobPeanutBigSparseStokes:BadRigidIndex', ...
+        'Internal rigid-motion output index out of range.');
+end
+end
+
 function test_buildMobPeanutBigSparseStokes
 fprintf('buildMobPeanutBigSparseStokes self-test: random_discs_mc spy plots\n');
 
@@ -382,9 +568,9 @@ fprintf('  P=%d, target phi=%.3f, actual phi=%.3f, close pairs=%d\n', ...
     P,phi,meta.phi,stats_direct.n_pairs);
 fprintf('  direct u:   M_pair_nonp nnz=%d, M_u_corr nnz=%d\n', ...
     stats_direct.nnz_pair_nonp,stats_direct.nnz_u);
-fprintf('  factored u: M_pair_nonp nnz=%d, M_u_cross nnz=%d, M_u_peanut nnz=%d\n', ...
-    stats_factored.nnz_pair_nonp,stats_factored.nnz_u_cross, ...
-    stats_factored.nnz_u_peanut);
+fprintf(['  factored u: M_pair_nonp nnz=%d, M_u_cross nnz=%d, ', ...
+    'M_u_peanut nnz=%d\n'],stats_factored.nnz_pair_nonp, ...
+    stats_factored.nnz_u_cross,stats_factored.nnz_u_peanut);
 
 figure('Name','buildMobPeanutBigSparseStokes spy self-test','Color','w');
 tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
@@ -412,75 +598,75 @@ title('factored: M_u_cross','Interpreter','none');
 nexttile;
 spy(big_factored.M_u_peanut);
 title('factored: M_u_peanut','Interpreter','none');
-end
 
-function [geom,basis] = buildSelfTestMobilityData(q,opt)
-q = q(:);
-P = numel(q);
-rad = 1;
-N_c = opt.N_c;
-N_f = opt.N_f;
-a_c = opt.a_c;
-Rp_c = opt.Rp_c;
-Rp_f = opt.Rp_f;
+    function [geom,basis] = buildSelfTestMobilityData(q,opt)
+    q = q(:);
+    P = numel(q);
+    rad = 1;
+    N_c = opt.N_c;
+    N_f = opt.N_f;
+    a_c = opt.a_c;
+    Rp_c = opt.Rp_c;
+    Rp_f = opt.Rp_f;
 
-tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
-tout_c = tout_c_all(1:end-1)';
-rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
-tin_c = linspace(0,2*pi,N_c+1)';
-tin_c = tin_c(1:end-1);
-rbase_in_c = Rp_c*cos(tin_c) + 1i*Rp_c*sin(tin_c);
-tin_f = linspace(0,2*pi,N_f+1)';
-tin_f = tin_f(1:end-1);
-rbase_in_f = Rp_f*cos(tin_f) + 1i*Rp_f*sin(tin_f);
+    tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
+    tout_c = tout_c_all(1:end-1)';
+    rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
+    tin_c = linspace(0,2*pi,N_c+1)';
+    tin_c = tin_c(1:end-1);
+    rbase_in_c = Rp_c*cos(tin_c) + 1i*Rp_c*sin(tin_c);
+    tin_f = linspace(0,2*pi,N_f+1)';
+    tin_f = tin_f(1:end-1);
+    rbase_in_f = Rp_f*cos(tin_f) + 1i*Rp_f*sin(tin_f);
 
-[~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
+    [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
-rvec_in_c = zeros(P*N_c,1);
-rout = zeros(P*numel(rbase_out_c),1);
-for k = 1:P
-    rvec_in_c((k-1)*N_c+1:k*N_c) = q(k) + rbase_in_c;
-    out_idx = (k-1)*numel(rbase_out_c)+1:k*numel(rbase_out_c);
-    rout(out_idx) = q(k) + rbase_out_c;
-end
+    rvec_in_c = zeros(P*N_c,1);
+    rout = zeros(P*numel(rbase_out_c),1);
+    for k = 1:P
+        rvec_in_c((k-1)*N_c+1:k*N_c) = q(k) + rbase_in_c;
+        out_idx = (k-1)*numel(rbase_out_c)+1:k*numel(rbase_out_c);
+        rout(out_idx) = q(k) + rbase_out_c;
+    end
 
-svd_opts = struct('column_weight',false,'left_weight',false);
-[U,Y,Lc] = getSelfPseudoMobilityStokes( ...
-    1,q,rbase_in_c,rbase_out_c,[],[0,ceil(a_c*N_c)],svd_opts);
+    svd_opts = struct('column_weight',false,'left_weight',false);
+    [U,Y,Lc] = getSelfPseudoMobilityStokes( ...
+        1,q,rbase_in_c,rbase_out_c,[],[0,ceil(a_c*N_c)],svd_opts);
 
-opt_pair = opt;
-opt_pair.project_force = true;
-opt_pair.project = true;
-opt_pair.pair_basis_debug = 0;
-opt_pair.rad = ones(P,1);
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine, ...
-    pairs,opt_pair,Lc{1},rbase_out_c,svd_opts);
+    opt_pair = opt;
+    opt_pair.project_force = true;
+    opt_pair.project = true;
+    opt_pair.pair_basis_debug = 0;
+    opt_pair.rad = ones(P,1);
+    [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
+        getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine, ...
+        pairs,opt_pair,Lc{1},rbase_out_c,svd_opts);
 
-geom = struct();
-geom.rbase_in_c = rbase_in_c;
-geom.rbase_in_f = rbase_in_f;
-geom.rvec_in = rvec_in_c;
-geom.rimage_vec = rimage_vec;
-geom.opt = opt_pair;
-geom.opt.get_bndry_field = 0;
-geom.opt.parallel_solve = false;
-geom.rvec_out = rout;
-geom.rcheck = rout;
-geom.q = q;
-geom.pairs = pairs;
-geom.refine = refine;
+    geom = struct();
+    geom.rbase_in_c = rbase_in_c;
+    geom.rbase_in_f = rbase_in_f;
+    geom.rvec_in = rvec_in_c;
+    geom.rimage_vec = rimage_vec;
+    geom.opt = opt_pair;
+    geom.opt.get_bndry_field = 0;
+    geom.opt.parallel_solve = false;
+    geom.rvec_out = rout;
+    geom.rcheck = rout;
+    geom.q = q;
+    geom.pairs = pairs;
+    geom.refine = refine;
 
-basis = struct();
-basis.U = U;
-basis.Y = Y;
-basis.Lc = Lc{1};
-basis.Upf = UB_all;
-basis.Ypf = YB_all;
-basis.DC_all = UC_all;
-basis.YC_all = YC_all;
-basis.Cmap = Cmap;
-basis.Cmap_FU = Cmap_FU;
-basis.Lc_pair = getILpair(Lc{1});
-basis.pair_cache = pair_cache;
+    basis = struct();
+    basis.U = U;
+    basis.Y = Y;
+    basis.Lc = Lc{1};
+    basis.Upf = UB_all;
+    basis.Ypf = YB_all;
+    basis.DC_all = UC_all;
+    basis.YC_all = YC_all;
+    basis.Cmap = Cmap;
+    basis.Cmap_FU = Cmap_FU;
+    basis.Lc_pair = getILpair(Lc{1});
+    basis.pair_cache = pair_cache;
+    end
 end

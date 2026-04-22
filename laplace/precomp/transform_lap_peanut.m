@@ -115,9 +115,15 @@ for row = 1:size(pairs,1)
     if use_pair_cache % if distances are shared for more than one pair
         meta = pair_cache.meta(row);
         group = pair_cache.groups(meta.group_id);
+        use_identity_rotation = isIdentityRotation(meta.rot);
+
         % interpolate data to canonical reference frame
-        rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],meta.phase_c);
-        rhs_pair = rhs_pair(:);    
+        if use_identity_rotation
+            rhs_pair = [lam_i; lam_p2];
+        else
+            rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],meta.phase_c);
+            rhs_pair = rhs_pair(:);
+        end
 
         % recover fine sources
         if need_explicit_pair_sources
@@ -157,7 +163,7 @@ for row = 1:size(pairs,1)
    % tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
       %  projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
-    if use_pair_cache
+    if use_pair_cache && ~use_identity_rotation
         % tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],meta.phase_c_inv);
         % tau_peanut_pair = tau_pair_rot(:,1:2);
         % tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
@@ -226,7 +232,7 @@ for row = 1:size(pairs,1)
 
         beta_fine_pair = [beta_i_local(1:N_f) beta_p2_local(1:N_f) ...
             beta_i_nonp_local(1:N_f) beta_p2_nonp_local(1:N_f)];
-        if use_pair_cache
+        if use_pair_cache && ~use_identity_rotation
             beta_fine_pair = rotateUniformCircleData(beta_fine_pair,[],meta.phase_f_inv);
         end
         beta_i_fine = beta_fine_pair(:,1);
@@ -298,4 +304,8 @@ end
 n = numel(lam_in);
 lam_out = lam_in - (sum(lam_in)/n);
 
+end
+
+function tf = isIdentityRotation(rot)
+tf = abs(rot - 1) <= 100*eps(max(1,abs(rot)));
 end

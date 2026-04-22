@@ -11,7 +11,7 @@ script_date = 'Apr 21, 2026';
 fprintf('=== %s (%s) ===\n',mfilename,script_date);
 
 if ~exist('P','var') || isempty(P)
-    P = 100;
+    P = 50;
 end
 phi = 0.65;
 rad = 1;
@@ -44,6 +44,10 @@ opt.use_dense = 1;
 opt.reuse_pair_basis_by_sep = false;
 opt.single_threaded = 0; 
 opt.big_sparse_direct_u_corr = 1;  % 1 is a little less stable than 0 here
+opt.mob_big_sparse_build_mode = 'precomputed'; %'streaming'
+
+%opt.mob_big_sparse_build_mode = 'streaming';
+opt.mob_big_sparse_chunk_pairs = 8;
 
 fprintf('Geometry: P=%d, phi=%.3f, close pairs=%d\n', ...
     P,meta.phi,count_close_pairs(q,opt.delta_pair,rad));
@@ -51,15 +55,18 @@ fprintf('Geometry: P=%d, phi=%.3f, close pairs=%d\n', ...
 [~,~,~,~,~,pairs] = getEnhancedGrid(q,opt);
 N_check = ceil(opt.a_c*opt.N_c);
 labels = {'serial pair loop','big sparse'};
-for k = 1:2
+for k = 2
     opt.use_big_sparse = (k==2);
 
     if opt.use_big_sparse
         est = estimateMobPeanutBigSparseRamStokes( ...
             numel(q),opt.N_c,N_check,size(pairs,1),opt);
-        fprintf('%-16s  sparse %.2f MB  build %.2f MB  peak %.2f MB\n', ...
-            labels{k},est.estimated_sparse_MB,est.estimated_build_MB, ...
-            est.estimated_peak_MB);
+        fprintf(['%-16s  matrix %.2f MB  build %.2f MB  ', ...
+            'big peak %.2f MB  solver peak %.2f MB\n'], ...
+            labels{k},est.big_sparse_matrix_bytes/1024^2, ...
+            est.big_sparse_build_bytes/1024^2, ...
+            est.big_sparse_peak_bytes/1024^2, ...
+            est.solver_precompute_peak_bytes/1024^2);
     end
 
     wall_timer = tic;
@@ -71,4 +78,3 @@ for k = 1:2
         sol.solve_time.fmm/sol.solve_time.total,sol.it, ...
         sol.resvec(end));
 end
-

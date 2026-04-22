@@ -49,6 +49,11 @@ opt.check_rotations = false; % store per-pair pair-basis data alongside the cano
 opt.shared_sep_tol = 1e-2*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
+opt.use_big_sparse = false; % use global sparse close-pair correction matrices in peanut GMRES
+opt.lap_big_sparse_build_mode = 'auto'; % 'auto' | 'precomputed' | 'streaming'
+opt.lap_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk
+opt.lap_big_sparse_max_build_bytes = inf; % guardrail for estimated sparse-build peak memory
+opt.lap_big_sparse_max_build_ram_fraction = 1; % optional fraction of current MemAvailable for sparse-build peak guardrail
 
 % Solver and postprocessing control fields:
 opt.use_fmm = true;

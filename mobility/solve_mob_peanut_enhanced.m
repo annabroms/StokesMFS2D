@@ -115,12 +115,14 @@ get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 parallel_solve_requested = logical(getOptField(opt,'parallel_solve',false));
 use_big_sparse_requested = logical(getOptField(opt,'use_big_sparse',false));
+mob_big_sparse_build_mode = lower(char(getOptField(opt, ...
+    'mob_big_sparse_build_mode','precomputed')));
 N_peanut = getOptField(opt,'N_peanut',400);
 column_weight = logical(getOptField(opt,'column_weight',false));
 left_weight = logical(getOptField(opt,'left_weight',false));
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
-    'pair_basis',nan,'two_body_or_peanut',nan);
+    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
 pair_setup_time = 0;
 
 if N_peanut <= 0
@@ -133,11 +135,35 @@ if use_big_sparse_requested && parallel_solve_requested
         ['opt.use_big_sparse=1 and opt.parallel_solve=1 are alternative ', ...
          'GMRES close-pair acceleration paths; enable only one.']);
 end
-if use_big_sparse_requested && logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
+if use_big_sparse_requested
+    switch mob_big_sparse_build_mode
+        case {'precomputed','streaming'}
+            % supported
+        otherwise
+            error('solve_mob_peanut_enhanced:BadBigSparseBuildMode', ...
+                ['opt.mob_big_sparse_build_mode must be ''precomputed'' ', ...
+                 'or ''streaming''.']);
+    end
+end
+streaming_big_sparse = use_big_sparse_requested && ...
+    strcmp(mob_big_sparse_build_mode,'streaming');
+if streaming_big_sparse && get_bndry_field
+    error('solve_mob_peanut_enhanced:StreamingBoundaryUnsupported', ...
+        ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
+         'opt.get_bndry_field=0.']);
+end
+if streaming_big_sparse && logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
+    error('solve_mob_peanut_enhanced:StreamingPairReuseUnsupported', ...
+        ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
+         'opt.reuse_pair_basis_by_sep=0.']);
+end
+if use_big_sparse_requested && ~streaming_big_sparse && ...
+        logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
     fprintf(['opt.use_big_sparse=1: disabling opt.reuse_pair_basis_by_sep ', ...
-        'for the v1 big sparse solve-grid matvec.\n']);
+        'for the precomputed big sparse solve-grid matvec.\n']);
     opt.reuse_pair_basis_by_sep = false;
 end
+opt.mob_big_sparse_build_mode = mob_big_sparse_build_mode;
 opt.N_peanut = N_peanut;
 
 %% SET PARAMS
@@ -211,8 +237,18 @@ opt.rad = ones(P,1);
 if get_precomp_time
     pair_timer = tic;
 end
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c,svd_opts);
+if streaming_big_sparse
+    UB_all = [];
+    YB_all = [];
+    UC_all = [];
+    YC_all = [];
+    Cmap = [];
+    Cmap_FU = [];
+    pair_cache = initStreamingMobPairCache(size(pairs,1));
+else
+    [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
+        getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine,pairs,opt,Lc{1},rbase_out_c,svd_opts);
+end
                      
 
 % TODO: update visualisation:
@@ -286,6 +322,20 @@ big_sparse_stats = initBigSparseSolveStats(use_big_sparse_requested,size(pairs,1
 if use_big_sparse_requested
     [geom_gmres,basis_gmres,big_sparse_stats] = ...
         prepareBigSparseMobilityMatvec(geom_solve,basis_mob);
+    basis_mob.big_sparse = basis_gmres.big_sparse;
+    if get_precomp_time
+        precomp_time.big_sparse = big_sparse_stats.build_time;
+        if streaming_big_sparse
+            precomp_time.pair_basis = big_sparse_stats.build_time;
+            precomp_time.two_body_or_peanut = pair_setup_time + ...
+                precomp_time.pair_basis;
+        else
+            precomp_time.two_body_or_peanut = pair_setup_time + ...
+                precomp_time.pair_basis + precomp_time.big_sparse;
+        end
+        precomp_time.total = precomp_time.one_body + ...
+            precomp_time.two_body_or_peanut;
+    end
     parallel_solve_stats = initParallelSolveStats(false,size(pairs,1));
     parallel_solve_stats.reason = 'disabled_by_big_sparse';
 else
@@ -379,9 +429,18 @@ if get_bndry_field
     geom_post = geom_check;
 end
 
-[lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
-    lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
-    transform_mob_peanut_stokes(tau,geom_post,basis_mob);
+use_big_sparse_post = use_big_sparse_requested && ...
+    isequal(geom_post.rcheck,geom_post.rvec_out) && ...
+    isfield(basis_mob,'big_sparse') && ~isempty(basis_mob.big_sparse);
+if use_big_sparse_post
+    [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
+        lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
+        transform_mob_peanut_big_sparse_stokes(tau,geom_post,basis_mob);
+else
+    [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
+        lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
+        transform_mob_peanut_stokes(tau,geom_post,basis_mob);
+end
 lambda_c = [lam_c_x; lam_c_y];
 
 %%% Get rigid body motion. 
@@ -393,7 +452,9 @@ for k= 1:P
     UW((k-1)*3+1:3*k) = -Kc'*[lam_c_nonpx((k-1)*N_c+1:k*N_c); lam_c_nonpy((k-1)*N_c+1:k*N_c)];
 end
 
-if opt.cmap
+if opt.cmap && use_big_sparse_post && isfield(basis_mob.big_sparse,'M_rbm_corr')
+    UW = UW + basis_mob.big_sparse.M_rbm_corr*[lam_self_x; lam_self_y];
+elseif opt.cmap
     for pair_it = 1:size(pairs,1)
         i = pairs(pair_it,1);
         p2 = pairs(pair_it,2);
@@ -546,6 +607,32 @@ sol.ram_estimate = finishRamCheck(ram_check);
 end
 
 
+function pair_cache = initStreamingMobPairCache(n_pairs)
+pair_cache = struct();
+pair_cache.enabled = false;
+pair_cache.shared_sep_tol = [];
+pair_cache.meta = repmat(struct('i',[],'j',[],'group_id',[],'sep',[], ...
+    'mid',[],'rot',[],'phase_c',[],'phase_c_inv',[], ...
+    'phase_f',[],'phase_f_inv',[], ...
+    'Upair_colloc_actual',[],'Ucross_colloc_actual',[], ...
+    'Ecolloc_actual',[]),0,1);
+pair_cache.groups = repmat(struct('group_id',[],'sep',[],'q_pair',[], ...
+    'rimage_canon',{{}},'refine_canon',{{}},'Upf',[],'Ypf',[], ...
+    'DC',[],'YC',[],'Cmap',[],'Cmap_proj',[],'Cmap_FU',[], ...
+    'Lf_pair',[],'Lc_pair',[],'Upair_colloc',[], ...
+    'Ucross_colloc',[],'Ecolloc',[],'rep_pair',[]),0,1);
+pair_cache.group_id = zeros(0,1);
+pair_cache.group_sep = zeros(0,1);
+pair_cache.representative_rows = zeros(0,1);
+pair_cache.n_groups = 0;
+pair_cache.stats = struct('requested_parallel',false, ...
+    'used_parallel',false,'branch','streaming_big_sparse', ...
+    'n_pairs',n_pairs,'n_groups',0,'pool_size',0, ...
+    'payload_mode','maps_only_streamed_to_sparse', ...
+    'parallel_backend','none','max_inflight',0, ...
+    'needs_explicit_pair_sources',false);
+end
+
 function matvec_handle = makeMobPeanutSolveMatvec(geom_gmres,basis_gmres)
 if logical(getOptField(geom_gmres.opt,'use_big_sparse',false))
     matvec_handle = @(x) matvec_mob_peanut_big_sparse(x,geom_gmres,basis_gmres);
@@ -570,6 +657,8 @@ stats.requested = logical(requested);
 stats.active = false;
 stats.backend = 'global_block_sparse';
 stats.reason = 'not_requested';
+stats.build_mode = '';
+stats.chunk_pairs = 0;
 stats.n_pairs = n_pairs;
 stats.N_c = 0;
 stats.N_check = 0;
@@ -578,21 +667,21 @@ stats.rotations_used = false;
 stats.source_correction = 'factored_structured';
 stats.velocity_correction = 'direct_sparse';
 stats.direct_u_corr = true;
+stats.projector_mode = '';
 stats.local_pair_nonp_entries = 0;
 stats.local_u_entries = 0;
 stats.nnz_u = 0;
 stats.nnz_u_cross = 0;
 stats.nnz_u_peanut = 0;
 stats.nnz_pair_nonp = 0;
+stats.nnz_rbm = 0;
 stats.nnz_source_scatter = 0;
-stats.estimated_sparse_bytes = 0;
-stats.estimated_auxiliary_bytes = 0;
-stats.estimated_build_bytes = 0;
-stats.estimated_peak_bytes = 0;
-stats.estimated_sparse_MB = 0;
-stats.estimated_auxiliary_MB = 0;
-stats.estimated_build_MB = 0;
-stats.estimated_peak_MB = 0;
+stats.big_sparse_matrix_bytes = 0;
+stats.big_sparse_auxiliary_bytes = 0;
+stats.big_sparse_build_bytes = 0;
+stats.big_sparse_peak_bytes = 0;
+stats.retained_pair_basis_bytes = 0;
+stats.solver_precompute_peak_bytes = 0;
 stats.build_time = 0;
 if requested
     stats.reason = 'not_prepared';

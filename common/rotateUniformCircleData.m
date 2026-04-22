@@ -62,6 +62,13 @@ end
 
 if ~isempty(spec)
     switch lower(char(spec.mode))
+        case 'shift'
+            shift_steps = 0;
+            if isfield(spec,'shift_steps') && ~isempty(spec.shift_steps)
+                shift_steps = spec.shift_steps;
+            end
+            values_rot = circshift(values,-shift_steps,1);
+
         case 'fft'
             phase = spec.phase(:);
             if numel(phase) ~= n

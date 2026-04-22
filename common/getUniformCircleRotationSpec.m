@@ -43,6 +43,7 @@ if isempty(mode)
 end
 
 theta = atan2(imag(rot),real(rot));
+shift_steps = round(theta*n/(2*pi));
 
 spec = struct();
 spec.mode = mode;
@@ -50,7 +51,12 @@ spec.n = n;
 spec.rot = rot;
 spec.phase = [];
 spec.n_oversampled = n;
-spec.shift_steps = 0;
+spec.shift_steps = shift_steps;
+
+if abs(theta - 2*pi*shift_steps/n) <= 100*eps(max(1,abs(theta)))
+    spec.mode = 'shift';
+    return
+end
 
 switch mode
     case 'fft'

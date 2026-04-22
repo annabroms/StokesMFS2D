@@ -17,6 +17,11 @@ if isfield(spec_inv,'rot') && ~isempty(spec_inv.rot)
 end
 
 switch lower(char(spec.mode))
+    case 'shift'
+        if isfield(spec,'shift_steps') && ~isempty(spec.shift_steps)
+            spec_inv.shift_steps = -spec.shift_steps;
+        end
+
     case 'fft'
         spec_inv.phase = conj(spec.phase);
 

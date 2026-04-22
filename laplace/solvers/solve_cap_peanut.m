@@ -78,15 +78,49 @@ get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
 body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 get_solve_time = logical(getOptField(opt,'get_solve_time',true));
+use_big_sparse_requested = logical(getOptField(opt,'use_big_sparse',false));
+big_sparse_build_mode = '';
+if use_big_sparse_requested
+    if ~logical(getOptField(opt,'cmap',false))
+        error('solve_cap_peanut:BigSparseUnsupported', ...
+            'opt.use_big_sparse=1 requires opt.cmap=1.');
+    end
+    big_sparse_build_mode = lower(char(getOptField(opt, ...
+        'lap_big_sparse_build_mode','auto')));
+    switch big_sparse_build_mode
+        case 'auto'
+            if get_bndry_field
+                big_sparse_build_mode = 'precomputed';
+            else
+                big_sparse_build_mode = 'streaming';
+            end
+        case {'precomputed','streaming'}
+            % supported
+        otherwise
+            error('solve_cap_peanut:BadBigSparseBuildMode', ...
+                ['opt.lap_big_sparse_build_mode must be ''auto'', ', ...
+                 '''precomputed'', or ''streaming''.']);
+    end
+    if strcmp(big_sparse_build_mode,'streaming') && get_bndry_field
+        error('solve_cap_peanut:StreamingBoundaryUnsupported', ...
+            ['lap_big_sparse_build_mode=''streaming'' requires ', ...
+             'opt.get_bndry_field=0. Use ''auto'' or ''precomputed'' ', ...
+             'for boundary postprocessing.']);
+    end
+end
 opt_solve = opt;
 opt_solve.get_bndry_field = false;
+if use_big_sparse_requested
+    opt_solve.use_big_sparse = true;
+    opt_solve.lap_big_sparse_build_mode = big_sparse_build_mode;
+end
 
 q = q(:);
 v_body = v_body(:);
 P = numel(q);
 assert(numel(v_body)==P,'v_body must have one entry per particle.');
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
-    'pair_basis',nan,'two_body_or_peanut',nan);
+    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
 
 %% Parameters
 maxit = 800;
@@ -144,12 +178,31 @@ if get_precomp_time
 end
 
 %% Basis factors
+streaming_big_sparse = use_big_sparse_requested && ...
+    strcmp(big_sparse_build_mode,'streaming');
 if get_precomp_time
     pair_basis_timer = tic;
 end
-[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
-    getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
-    rimage_vec,refine,pairs,opt);
+if streaming_big_sparse
+    UB_all = [];
+    YB_all = [];
+    UC_all = [];
+    YC_all = [];
+    Cmap = [];
+    Cmap_QV = [];
+    pair_cache = initLaplacePairCache();
+    pair_cache.enabled = logical(getOptField(opt,'reuse_pair_basis_by_sep',false));
+    if pair_cache.enabled
+        pair_cache.stats.branch = 'canonical_group';
+    else
+        pair_cache.stats.branch = 'per_pair';
+    end
+    pair_cache.stats.n_pairs = size(pairs,1);
+else
+    [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
+        getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
+        rimage_vec,refine,pairs,opt);
+end
 if get_precomp_time
     precomp_time.pair_basis = toc(pair_basis_timer);
     precomp_time.two_body_or_peanut = precomp_time.pair_setup + precomp_time.pair_basis;
@@ -166,6 +219,7 @@ end
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
 geom.rbase_in_f = rbase_in_f;
+geom.rout_base_f = rout_base_f;
 geom.refine = refine;
 geom.opt = opt_solve;
 geom.rvec_out = rout;
@@ -188,6 +242,30 @@ basis.Cmap_QV = Cmap_QV;
 basis.pair_cache = pair_cache;
 basis.Nii = lapSLPmat(rbase_in_c,rbase_out_c);
 
+big_sparse_stats = initLaplaceBigSparseSolveStats( ...
+    use_big_sparse_requested,size(pairs,1));
+if use_big_sparse_requested
+    [big_sparse,big_sparse_stats,pair_cache] = ...
+        buildLaplacePeanutBigSparse(geom,basis);
+    basis.big_sparse = big_sparse;
+    basis.pair_cache = pair_cache;
+    geom.pair_cache = pair_cache;
+    geom.opt.use_big_sparse = true;
+    if get_precomp_time
+        precomp_time.big_sparse = big_sparse_stats.build_time;
+        if streaming_big_sparse
+            precomp_time.pair_basis = big_sparse_stats.build_time;
+            precomp_time.two_body_or_peanut = precomp_time.pair_setup + ...
+                precomp_time.pair_basis;
+        else
+            precomp_time.two_body_or_peanut = precomp_time.pair_setup + ...
+                precomp_time.pair_basis + precomp_time.big_sparse;
+        end
+        precomp_time.total = precomp_time.one_body + ...
+            precomp_time.two_body_or_peanut;
+    end
+end
+
 %% RHS
 fout = zeros(P*nout,1);
 for k = 1:P
@@ -195,6 +273,12 @@ for k = 1:P
 end
 
 %% Solve
+if use_big_sparse_requested
+    matvec_handle = @(x) matvec_lap_peanut_big_sparse(x,geom,basis);
+else
+    matvec_handle = @(x) matvec_lap_peanut_enhanced(x,geom,basis);
+end
+
 if debug
     x = zeros(length(rout),1);
     CC = zeros(length(rout));
@@ -204,7 +288,7 @@ if debug
         fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
-        CC(:,k) = matvec_lap_peanut_enhanced(x,geom,basis);
+        CC(:,k) = matvec_handle(x);
     end
     figure(); imagesc(log10(abs(CC))); colorbar
     title([solver_name ': log_{10}|matvec system matrix|'],'interpreter','none')
@@ -233,7 +317,7 @@ ram_check = markRamCheckPhase(ram_check,'precomp_end');
 disp(' == Solving... == ');
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
-[tau,it,resvec,~] = helsing_gmres(@(x) matvec_lap_peanut_enhanced(x,geom,basis), ...
+[tau,it,resvec,~] = helsing_gmres(matvec_handle, ...
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
 solve_time_cleanup = [];
@@ -266,8 +350,14 @@ else
     geom_eval = geom;
 end
 
-[lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
-    transform_lap_peanut(tau,geom_eval,basis);
+if use_big_sparse_requested && isequal(geom_eval.rcheck,geom_eval.rvec_out)
+    [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...
+        lam_f_nonp,lam_e_nonp] = ...
+        transform_lap_peanut_big_sparse(tau,geom_eval,basis);
+else
+    [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...
+        lam_f_nonp,lam_e_nonp] = transform_lap_peanut(tau,geom_eval,basis);
+end
 
 lambda_proxy = lam_c;
 
@@ -326,6 +416,7 @@ sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
 sol.solve_time = solve_time;
+sol.big_sparse_stats = big_sparse_stats;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 end

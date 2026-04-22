@@ -512,170 +512,18 @@ end
 if nargin < 13 || isempty(payload_mode)
     payload_mode = 'full';
 end
-store_full_pair_payload = strcmp(payload_mode,'full');
-
-i = pairs(row,1);
-j = pairs(row,2);
-pair.rep_pair = [i j];
-
-delta = q(j)-q(i);
-sep = abs(delta);
-if sep == 0
-    rot = 1;
-else
-    rot = delta/sep;
-end
-mid = 0.5*(q(i)+q(j));
-
-if use_canonical
-    q_pair = [-sep/2; sep/2];
-    rimage_i = map_points_to_canonical(rimage_pairs{i,j},mid,rot);
-    rimage_j = map_points_to_canonical(rimage_pairs{j,i},mid,rot);
-    refine_i = map_points_to_canonical(refine{i,j},mid,rot);
-    refine_j = map_points_to_canonical(refine{j,i},mid,rot);
-else
-    q_pair = [q(i); q(j)];
-    rimage_i = rimage_pairs{i,j};
-    rimage_j = rimage_pairs{j,i};
-    refine_i = refine{i,j};
-    refine_j = refine{j,i};
-end
-
-pair.q_pair = q_pair;
-pair.rimage_canon = {rimage_i; rimage_j};
-pair.refine_canon = {refine_i; refine_j};
-pair.rin_pair = [];
-pair.Upf = [];
-pair.Ypf = [];
-pair.Lf_pair = [];
-pair.Lc_pair = [];
-pair.DC = [];
-pair.YC = [];
-pair.Cmap = [];
-pair.Cmap_FU = [];
-pair.Upair_colloc = [];
-pair.Ucross_colloc = [];
-pair.Ecolloc = [];
-
-
-project_force = opt.project_force;
-
-N_c = opt.N_c;
-a_c = getOptField(opt,'a_c',1.2);
-tout_c = linspace(0,2*pi,ceil(a_c*N_c)+1);
-tout_c = tout_c(1:end-1)';
-rout_base_c = cos(tout_c)+1i*sin(tout_c);
-
-nout = ceil(opt.a_f*opt.N_f);
-t = linspace(0,2*pi,nout+1);
-t = t(1:end-1)';
-rout_base = cos(t)+1i*sin(t);
-
-rin_1_f = q_pair(1)+rbase_in_f;
-rin_2_f = q_pair(2)+rbase_in_f;
-rout_f = [q_pair(1)+rout_base; refine_i; q_pair(2)+rout_base; refine_j];
-rin_pair = [rin_1_f; rimage_i; rin_2_f; rimage_j];
-if store_full_pair_payload
-    pair.rin_pair = rin_pair;
-end
-
-svd_pair = svd_opts;
-if logical(getOptField(svd_opts,'left_weight',false))
-    row_weights_1 = getPeriodicCurveWeights([q_pair(1)+rout_base; refine_i],q_pair(1));
-    row_weights_2 = getPeriodicCurveWeights([q_pair(2)+rout_base; refine_j],q_pair(2));
-    svd_pair.row_weights = [row_weights_1; row_weights_2];
-end
+[pair,debug_data] = buildStokesMobilityPairData( ...
+    q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,opt,Lc,row, ...
+    debug,svd_opts,use_canonical,payload_mode);
 
 if debug
-    figure(801);
-    clf;
-    plot(real(rin_1_f),imag(rin_1_f),'r.','MarkerSize',10);
-    hold on;
-    plot(real(rin_2_f),imag(rin_2_f),'b.','MarkerSize',10);
-    plot(real(q_pair(1)+rout_base),imag(q_pair(1)+rout_base),'ro','MarkerSize',4);
-    plot(real(q_pair(2)+rout_base),imag(q_pair(2)+rout_base),'bo','MarkerSize',4);
-    plot(real(refine_i),imag(refine_i),'r+','MarkerSize',6);
-    plot(real(refine_j),imag(refine_j),'b+','MarkerSize',6);
-    if ~isempty(rimage_i)
-        plot(real(rimage_i),imag(rimage_i),'ks','MarkerSize',5);
-    end
-    if ~isempty(rimage_j)
-        plot(real(rimage_j),imag(rimage_j),'kd','MarkerSize',5);
-    end
-    axis equal;
-    grid on;
-    title(sprintf('getPairBasisStokes pair (%d,%d)',i,j), ...
-        'Interpreter','none');
-    drawnow;
-end
-
-if ~isempty(Lc)
-    Lc_pair = getILpair(Lc);
-else
-    Lc_pair = [];
-end
-
-if project_force || opt.cmap
-    Kf1 = getKmat2D(rin_pair(1:end/2),q_pair(1));
-    Kf2 = getKmat2D(rin_pair(end/2+1:end),q_pair(2));
-else
-    Kf1 = [];
-    Kf2 = [];
-end
-
-if project_force
-    B1 = getKmat2D([q_pair(1)+rout_base; refine_i],q_pair(1));
-    B2 = getKmat2D([q_pair(2)+rout_base; refine_j],q_pair(2));
-    Lr_pair = getLrPair(B1,B2,Kf1,Kf2);
-    Lf_pair = getLfPair(Kf1,Kf2);
-else
-    Lr_pair = [];
-    Lf_pair = [];
-end
-
-[Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair,Lr_pair,svd_pair);
-Npair = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_f);
-Upf = -Uf_pair'*Npair; %
-
-DC = [];
-YC = [];
-if opt.N_peanut
-    rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
-    rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
-    [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut,Lc_pair,Lf_pair,svd_opts);
-    if opt.cmap
-        pair.Cmap = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
-    end
-else
-    rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
-end
-
-
-if opt.cmap
-    Kft_pair = getKftPair(Kf1,Kf2);
-    pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);
-end
-
-if store_full_pair_payload
-    pair.Upf = Upf;
-    pair.Ypf = Yf_pair;
-    pair.Lf_pair = Lf_pair;
-    pair.Lc_pair = Lc_pair;
-    pair.DC = DC;
-    pair.YC = YC;
-end
-
-if debug
-    run_pair_lsq_debug_test(i,j,row,q_pair,rbase_in_c,rin_pair,Upf,Yf_pair, ...
-        Lf_pair,Kf1,Kf2,Lc_pair,DC,YC,rout_f,Npair,opt);
-end
-
-if store_full_pair_payload && project_force
-    rout_pair_c = [q_pair(1)+rout_base_c; q_pair(2)+rout_base_c];
-    Ppair = eye(size(Lf_pair)) - Lf_pair;
-    pair.Upair_colloc = stokSLPmat(rin_pair,rout_pair_c,1) * Ppair * Yf_pair * Upf;
-    pair.Ecolloc = stokSLPmat(rin_pair_c,rout_pair_c,1);
-    pair.Ucross_colloc = build_cross_pair_velocity_map(pair.Ecolloc,N_c,numel(rout_base_c));
+    i = pairs(row,1);
+    j = pairs(row,2);
+    run_pair_lsq_debug_test(i,j,row,debug_data.q_pair,rbase_in_c, ...
+        debug_data.rin_pair,debug_data.Upf,debug_data.Yf_pair, ...
+        debug_data.Lf_pair,debug_data.Kf1,debug_data.Kf2, ...
+        debug_data.Lc_pair,debug_data.DC,debug_data.YC, ...
+        debug_data.rout_f,debug_data.Npair,opt);
 end
 end
 

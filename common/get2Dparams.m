@@ -53,6 +53,8 @@ opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel po
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
 opt.use_big_sparse = true; % use global sparse close-pair correction matrices in peanut mobility GMRES
+opt.mob_big_sparse_build_mode = 'precomputed'; % 'precomputed' | 'streaming'
+opt.mob_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk
 opt.big_sparse_direct_u_corr = true; % if false, apply u_corr as M_u_cross*lambda - M_u_peanut*pair_proj. 
                                      % 1 is a little less stable than 0 here
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs

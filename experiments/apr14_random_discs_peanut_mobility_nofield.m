@@ -11,7 +11,7 @@ end
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 250;
+geom.P = 1e4;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -58,8 +58,7 @@ end
 io.data_filename = build_results_filename(script_name, geom.P, geom.phi, solver.N_c);
 io.name2 = io.data_filename; %build_results_filename(script_name, geom.P, geom.phi, compare.reference_N_c);
 
-% Reporting and visualisation
-report.count_close_pairs = (geom.P <= 3000) && strcmp(geom.domain,'boxed');
+% Visualisation
 plots.font_size = 16;
 plots.full_edge_color = [0.10 0.10 0.10];
 plots.line_width_full = 0.15;
@@ -135,18 +134,12 @@ else
 
     [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
-    n_close = nan;
-    if report.count_close_pairs
-        n_close = count_close_pairs(q, solver.delta_pair, geom.rad);
-    elseif strcmp(geom.domain,'periodic')
-        fprintf('Close-pair count skipped: count_close_pairs is not periodic-image aware.\n');
-    else
-        fprintf('Close-pair count skipped.\n');
-    end
-
     opt = build_solver_opt(geom.P, solver, geom);
     opt.get_bndry_field = 0;
     opt.RAM_check = 0; 
+    opt.single_threaded = 1; 
+    opt.mob_big_sparse_build_mode = 'streaming';
+
     
 
     rng(loads.rng_seed,'twister');
@@ -173,10 +166,8 @@ else
     results.mc = mc;
     results.loads = loads;
     results.solver = solver;
-    results.report = report;
     results.geom_meta = geom_meta;
     results.q = q;
-    results.n_close = n_close;
     results.F = F;
     results.T = T;
     results.UW = UW;
@@ -220,7 +211,6 @@ geom_run = results.geom;
 solver_run = results.solver;
 geom_meta = results.geom_meta;
 q = results.q;
-n_close = results.n_close;
 F = results.F;
 T = results.T;
 UW = results.UW;
@@ -237,9 +227,6 @@ fprintf('  domain=%s, P=%d, phi_target=%.6f, phi=%.6f, L=%.6f\n', ...
     geom_meta.domain, geom_run.P, geom_meta.phi_target, geom_meta.phi, geom_meta.L);
 fprintf('  min allowed gap=%.3e, measured min gap=%.3e\n', ...
     geom_meta.min_gap, geom_meta.min_surface_gap);
-if isfinite(n_close)
-    fprintf('  close pairs below delta_pair=%.3f: %d\n', solver_run.delta_pair, n_close);
-end
 
 fprintf('Solver:\n');
 fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
@@ -589,10 +576,8 @@ reference_results.geom = results.geom;
 reference_results.mc = results.mc;
 reference_results.loads = results.loads;
 reference_results.solver = solver_ref;
-reference_results.report = results.report;
 reference_results.geom_meta = results.geom_meta;
 reference_results.q = results.q;
-reference_results.n_close = results.n_close;
 reference_results.F = results.F;
 reference_results.T = results.T;
 reference_results.UW = UW_ref;
