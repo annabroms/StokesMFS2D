@@ -60,8 +60,6 @@ else
     project_charge = false;
 end
 
-lam_c = zeros(N_c*P,1);
-lam_c_nonp = zeros(N_c*P,1);
 pair_qv_nonp = zeros(P,1);
 if need_explicit_pair_sources
     lam_f = cell(P,1);
@@ -86,17 +84,29 @@ end
 u_corr = zeros(P*N_check,1);
 
 % Phase 1: one-body coarse mapping.
-for i = 1:P
-    block = (i-1)*N_large+1:i*N_large;
-    tau_i = tau(block);
+% for i = 1:P
+%     block = (i-1)*N_large+1:i*N_large;
+%     tau_i = tau(block);
 
-    lam_i_nonp = Y{1}*(U{1}*tau_i);
-    lam_i = projectChargeMode(lam_i_nonp,project_charge);
+%     lam_i_nonp = Y{1}*(U{1}*tau_i);
+%     lam_i = projectChargeMode(lam_i_nonp,project_charge);
 
-    idx = (i-1)*N_c+1:i*N_c;
-    lam_c(idx) = lam_i;
-    lam_c_nonp(idx) = lam_i_nonp;
+%     idx = (i-1)*N_c+1:i*N_c;
+%     lam_c(idx) = lam_i;
+%     lam_c_nonp(idx) = lam_i_nonp;
+% end
+
+% Faster alternative: All one-body blocks are identical, so batch them as
+% particle columns while keeping the U{1} then Y{1} ordering for a backward stable apply.
+tau_blocks = reshape(tau(1:P*N_large),N_large,P);
+lam_blocks_nonp = Y{1}*(U{1}*tau_blocks);
+if project_charge
+    lam_blocks = lam_blocks_nonp - mean(lam_blocks_nonp,1);
+else
+    lam_blocks = lam_blocks_nonp;
 end
+lam_c = reshape(lam_blocks,[],1);
+lam_c_nonp = reshape(lam_blocks_nonp,[],1);
 
 lam_self = lam_c;
 lam_self_nonp = lam_c_nonp;

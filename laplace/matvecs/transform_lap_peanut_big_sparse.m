@@ -1,5 +1,5 @@
-function [lam_c,lam_self,lam_f,lam_e,u_corr,pair_qv_nonp, ...
-    lam_c_nonp,lam_self_nonp,lam_f_nonp,lam_e_nonp] = ...
+function [lam_c,lam_self,u_corr,pair_qv_nonp, ...
+    lam_c_nonp,lam_self_nonp] = ...
     transform_lap_peanut_big_sparse(tau,geom,basis)
 %TRANSFORM_LAP_PEANUT_BIG_SPARSE Apply prebuilt sparse pair maps.
 
@@ -13,33 +13,32 @@ if ~isequal(geom.rcheck,geom.rvec_out)
 end
 
 opt = geom.opt;
-q = geom.q(:);
 rvec_out = geom.rvec_out;
 U = basis.U;
 Y = basis.Y;
 
-P = numel(q);
+P = opt.P;
 N_c = opt.N_c;
 N_large = numel(rvec_out)/P;
 n_coarse = P*N_c;
 project_charge = logical(getOptField(opt,'project_charge',false));
 
-lam_c = zeros(n_coarse,1);
-lam_c_nonp = zeros(n_coarse,1);
-
-for i = 1:P
-    block = (i-1)*N_large+1:i*N_large;
-    tau_i = tau(block);
-    lam_i_nonp = Y{1}*(U{1}*tau_i);
-    lam_i = projectChargeMode(lam_i_nonp,project_charge);
-    idx = (i-1)*N_c+1:i*N_c;
-    lam_c(idx) = lam_i;
-    lam_c_nonp(idx) = lam_i_nonp;
+% 1-body basis. All one-body blocks are identical, so batch them as
+% particle columns while keeping the U{1} then Y{1} ordering for a backward stable apply.
+tau_blocks = reshape(tau(1:P*N_large),N_large,P);
+lam_blocks_nonp = Y{1}*(U{1}*tau_blocks);
+if project_charge
+    lam_blocks = lam_blocks_nonp - mean(lam_blocks_nonp,1);
+else
+    lam_blocks = lam_blocks_nonp;
 end
+lam_c = reshape(lam_blocks,[],1);
+lam_c_nonp = reshape(lam_blocks_nonp,[],1);
 
 lam_self = lam_c;
 lam_self_nonp = lam_c_nonp;
 
+% 2-body basis. Apply the pair maps to the projected one-body sources to get the close-pair contributions, then scatter them back to the coarse sources and velocity correction.
 [pair_nonp,pair_qv] = applyPairMaps(basis.big_sparse,lam_self);
 pair_proj = applyDensePairProjector(pair_nonp,basis.big_sparse.P_pair);
 corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
@@ -55,10 +54,7 @@ if isfield(basis.big_sparse,'M_u_qv') && ~isempty(basis.big_sparse.M_u_qv)
     u_corr = u_corr - basis.big_sparse.M_u_qv*pair_qv;
 end
 
-lam_f = [];
-lam_e = [];
-lam_f_nonp = [];
-lam_e_nonp = [];
+
 end
 
 function [pair_nonp,pair_qv] = applyPairMaps(big_sparse,lam_self)

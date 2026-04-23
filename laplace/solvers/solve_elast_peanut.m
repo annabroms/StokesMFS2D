@@ -96,10 +96,10 @@ fprintf('==== START: %s ====\n', solver_name);
 rad = getOptField(opt,'rad',2);
 opt.gmres_verbose = gmres_verbose;
 
-N_c = getOptField(opt,'N_c',80); %coarse proxy sources per body
-N_f = getOptField(opt,'N_f',150); %fine proxy sources per body (used to construct pair corrections only)
-a_c = getOptField(opt,'a_c',1.2); %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
-a_f = getOptField(opt,'a_f',1.2);
+N_c = opt.N_c; %coarse proxy sources per body
+N_f = opt.N_f; %fine proxy sources per body (used to construct pair corrections only)
+a_c = opt.a_c; %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
+a_f = opt.a_f;
 
 % Set radii for proxy points (see Stein & Barnett 2022 for discussion on how to choose these)
 tol_c = 1e-10;
@@ -316,7 +316,6 @@ solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,~] = helsing_gmres(matvec_handle, ...
     u_rhs,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
-solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -436,7 +435,7 @@ Q_body = randn(P,1);
 Q_body = Q_body-mean(Q_body); %zero total charge
 
 %% Tune parameters
-N_c = 61;
+N_c = 60;
 N_f = 150;
 opt = getLaplace2Dparams(P,R,N_c,N_f);
 opt.visualise_sol = 0;
@@ -453,6 +452,8 @@ opt.check_rotations = 0;
 opt.rotation_mode = 'fft'; 
 opt.rotation_oversample = 8; 
 opt.cmap = 1;
+opt.use_big_sparse = 1; 
+
 %% Check that parameters make sense
 report = test_pair_corrections_laplace(opt,@solve_cap_peanut,@solve_elast_peanut);
 
