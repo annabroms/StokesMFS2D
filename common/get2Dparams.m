@@ -52,9 +52,12 @@ opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated pa
 opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
-opt.use_big_sparse = true; % use global sparse close-pair correction matrices in peanut mobility GMRES
+opt.use_big_sparse = true; % use global sparse close-pair correction matrices in supported peanut GMRES solves
 opt.mob_big_sparse_build_mode = 'precomputed'; % 'precomputed' | 'streaming'
 opt.mob_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk
+opt.res_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk for resistance
+opt.res_big_sparse_max_build_bytes = inf; % guardrail for resistance sparse-build temporary storage
+opt.res_big_sparse_u_corr_mode = 'combined'; % 'combined' uses one resistance M_u_corr; 'factored' preserves solve parity
 opt.big_sparse_direct_u_corr = true; % if false, apply u_corr as M_u_cross*lambda - M_u_peanut*pair_proj. 
                                      % 1 is a little less stable than 0 here
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs
@@ -69,5 +72,6 @@ opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares prob
 opt.column_weight = false; % scale LS operator columns before SVD in peanut solvers
 opt.left_weight = false; % scale LS operator rows by local arclength weights in peanut solvers
 opt.single_threaded = false; % if true, set OMP_NUM_THREADS=1 to run single-threaded (impacts FMM)
-
+opt.use_fmm = 1; 
+opt.get_precomp_time = 1; 
 end

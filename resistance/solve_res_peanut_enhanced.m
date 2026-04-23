@@ -38,6 +38,9 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       get_bndry_field
 %                     if true, evaluate and report boundary velocity residuals
 %       cmap          if true, use coarse-to-coarse pair map for FT updates
+%       use_big_sparse
+%                     if true, use solve-grid sparse close-pair correction
+%                     maps in the GMRES matvec
 %       column_weight if true, scale least-squares matrix columns before
 %                     SVD in the one-body, pair, and peanut factor builds
 %       left_weight   if true, scale least-squares matrix rows by local
@@ -77,7 +80,7 @@ if nargin < 4 || ~isstruct(opt)
     error('solve_res_peanut_enhanced requires q, U, W, and an options struct opt.');
 end
 
-[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
+[ram_check,~] = startRamCheck(opt,mfilename); 
 
 q = q(:);
 W = W(:);
@@ -86,18 +89,40 @@ assert(size(U,1)==P,'U must have one row per particle.');
 assert(size(U,2)==2,'U must have two columns [Ux, Uy].');
 assert(numel(W)==P,'W must have one entry per particle.');
 
+opt.resistance = 1; 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
-gmres_tol = getOptField(opt,'gmres_tol',1e-10);
-debug = logical(getOptField(opt,'debug',false));
-maxit = getOptField(opt,'maxit',800);
+gmres_tol = opt.gmres_tol;
+debug = opt.debug; 
+maxit = opt.maxit;
 rad = getOptField(opt,'rad',1);
-get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
-get_solve_time = logical(getOptField(opt,'get_solve_time',true));
-column_weight = logical(getOptField(opt,'column_weight',false));
-left_weight = logical(getOptField(opt,'left_weight',false));
+get_precomp_time = opt.get_precomp_time;
+get_solve_time = opt.get_solve_time;
+column_weight = opt.column_weight;
+left_weight = opt.left_weight;
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
+use_big_sparse = opt.use_big_sparse;
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
-    'pair_basis',nan,'two_body_or_peanut',nan);
+    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
+
+if use_big_sparse
+    if ~logical(getOptField(opt,'cmap',false))
+        error('solve_res_peanut_enhanced:BigSparseUnsupported', ...
+            'opt.use_big_sparse=1 requires opt.cmap=1.');
+    end
+    if ~logical(getOptField(opt,'self_correct',false))
+        error('solve_res_peanut_enhanced:BigSparseUnsupported', ...
+            'opt.use_big_sparse=1 requires opt.self_correct=1.');
+    end
+    if getOptField(opt,'N_peanut',0) <= 0
+        error('solve_res_peanut_enhanced:BigSparseUnsupported', ...
+            'opt.use_big_sparse=1 requires opt.N_peanut > 0.');
+    end
+    if logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
+        fprintf(['opt.use_big_sparse=1: disabling opt.reuse_pair_basis_by_sep ', ...
+            'for the resistance solve-grid sparse matvec.\n']);
+        opt.reuse_pair_basis_by_sep = false;
+    end
+end
 
 %% SET PARAMS
 if ~exist('solver_name','var') || isempty(solver_name)
@@ -195,6 +220,24 @@ basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 basis.Cmap_FU = Cmap_FU;
 basis.pair_cache = pair_cache;
+basis.Nii = stokSLPmat(rbase_in_c,rbase_out_c,1); 
+
+%% Build solve-grid sparse pair maps when requested.
+big_sparse_stats = initResBigSparseSolveStats( ...
+    use_big_sparse,size(pairs,1));
+if use_big_sparse
+    [big_sparse,big_sparse_stats] = buildResPeanutBigSparseStokes( ...
+        geom,basis);
+    basis.big_sparse = big_sparse;
+    geom.opt.use_big_sparse = true;
+    if get_precomp_time
+        precomp_time.big_sparse = big_sparse_stats.build_time;
+        precomp_time.two_body_or_peanut = precomp_time.pair_setup + ...
+            precomp_time.pair_basis + precomp_time.big_sparse;
+        precomp_time.total = precomp_time.one_body + ...
+            precomp_time.two_body_or_peanut;
+    end
+end
 
 %% Construct rhs
 
@@ -211,6 +254,13 @@ end
 
 fout = [foutx; fouty];
 
+%% Select the GMRES matvec.
+if use_big_sparse
+    matvec_handle = @(x) matvec_peanut_big_sparse(x,geom,basis);
+else
+    matvec_handle = @(x) matvec_res_peanut_enhanced(x,geom,basis);
+end
+
 %% Solve system
 
 % Build the matrix to inspect conditioning/eigenvalues if requested.
@@ -223,7 +273,7 @@ if debug
         fprintf('build col nbr: %u/%u\n', k,ncols);
         x(:) = 0;
         x(k) = 1;
-        uu = matvec_res_peanut_enhanced(x,geom,basis);
+        uu = matvec_handle(x);
         CC(:,k) = uu;
     end
     toc
@@ -257,8 +307,7 @@ ram_check = markRamCheckPhase(ram_check,'precomp_end');
 disp(' == Solving... == ');
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
-[tau,it,resvec,real_res] = helsing_gmres( ...
-    @(x) matvec_res_peanut_enhanced(x,geom,basis), ...
+[tau,it,resvec,real_res] = helsing_gmres(matvec_handle, ...
     fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
 solve_time_cleanup = [];
@@ -276,7 +325,7 @@ end
 
 if visualise_sol
     %check residual
-    restot = matvec_res_peanut_enhanced(tau,geom,basis)-fout;
+    restot = matvec_handle(tau)-fout;
     figure()
     semilogy(abs(restot))
     title('Res at colloc points, peanut resistance')
@@ -284,7 +333,7 @@ if visualise_sol
 end
 
 disp(' == Postprocessing == ');
-%% Reconstruct sources. If the boundary velocities on each disc is sought, the fine sources are needed
+%% Reconstruct sources and optionally evaluate boundary velocities.
 
 if opt.get_bndry_field
     % Create new grid points, for which the accuracy of the solution is
@@ -296,17 +345,19 @@ if opt.get_bndry_field
         rcheck_b = [rcheck_b; q(k)+cos(t)+1i*sin(t)];
     end
 
-    % Prepare for evaluating flow field in rcheck_b.
+    % Boundary postprocessing intentionally uses the local contact loop.
+    % No sparse boundary matrix is built for these off-solve-grid targets.
     geom_eval = geom;
     geom_eval.rcheck = rcheck_b;
     [lam_c_x, lam_self_x, lam_f_x,lam_c_y,lam_self_y,lam_f_y,u_corr,rimage_k] = ...
         transform_peanut_stokes(tau,geom_eval,basis);
 
     %% Do the evaluation of the flow in check points 
-    ftest_b = getVelocityField(rvec_in_c, rcheck_b, lam_c_x, lam_c_y);
+    ftest_b = getVelocityField(rvec_in_c,rcheck_b,lam_c_x,lam_c_y, ...
+        logical(getOptField(opt,'use_fmm',true)));
     ftest_b = ftest_b+u_corr; % Apply corrections on pairs
     
-    %% Compute error at these boundary nodes 
+    %% Compute the postprocessing boundary velocity residual.
     fbound_x = ftest_b(1:length(rcheck_b));
     fbound_y = ftest_b(length(rcheck_b)+1:end);
     
@@ -321,10 +372,18 @@ if opt.get_bndry_field
     end
     
     rel_res = max(sqrt((fb_x-fbound_x).^2+(fb_y-fbound_y).^2))./max(sqrt(fb_x.^2+fb_y.^2));
-    fprintf('Max surf rel res at new nodes %.3e\n', rel_res);
+    fprintf(['Max boundary velocity relative residual on ', ...
+        'postprocessing nodes %.3e\n'], rel_res);
 else
     geom_eval = geom;
-    if opt.cmap
+    if use_big_sparse
+        [lam_c_x, lam_c_y,lam_self,~] = ...
+            transform_res_peanut_big_sparse_stokes(tau,geom_eval,basis);
+        lam_self_x = reshape(lam_self(1:N_c,:),[],1);
+        lam_self_y = reshape(lam_self(N_c+1:2*N_c,:),[],1);
+        lam_f_x = [];
+        lam_f_y = [];
+    elseif opt.cmap
         [lam_c_x, lam_self_x, ~,lam_c_y,lam_self_y,~,~,rimage_k] = ...
             transform_peanut_stokes(tau,geom_eval,basis);
         lam_f_x = [];
@@ -348,8 +407,13 @@ for k= 1:P
 end
 
 % Then, due to all pair sources (fine-body + fine-image).
-if opt.cmap
-    % Use precomputed map 
+if opt.cmap && use_big_sparse && ...
+        isfield(basis,'big_sparse') && isfield(basis.big_sparse,'M_ft_corr')
+    FT_pair = basis.big_sparse.M_ft_corr*[lam_self_x; lam_self_y];
+    FT = addBigSparseForceTorqueCorrections( ...
+        FT,basis.big_sparse.ft_scatter_rows,FT_pair);
+elseif opt.cmap
+    % Use precomputed contact maps.
     for pair_it = 1:size(pairs,1)
         i = pairs(pair_it,1);
         p2 = pairs(pair_it,2);
@@ -432,13 +496,62 @@ sol.lambda_proxy = lambda_proxy;
 sol.it = it;
 sol.gmres_unknowns = 2*size(rout,1);
 sol.gmres_tol = gmres_tol;
+sol.real_res = real_res;
 sol.rel_res = rel_res;
 sol.resvec = resvec;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
 sol.solve_time = solve_time;
+sol.big_sparse_stats = big_sparse_stats;
 sol.ram_estimate = finishRamCheck(ram_check);
 
+end
+
+function stats = initResBigSparseSolveStats(requested,n_pairs)
+stats = struct();
+stats.requested = logical(requested);
+stats.active = false;
+stats.backend = 'global_block_sparse';
+stats.reason = 'not_requested';
+stats.n_pairs = n_pairs;
+stats.N_c = 0;
+stats.N_check = 0;
+stats.used_pair_cache = false;
+stats.source_correction = '';
+stats.velocity_correction = '';
+stats.u_corr_mode = '';
+stats.combined_u_corr = false;
+stats.force_torque_correction = '';
+stats.local_pair_entries = 0;
+stats.local_u_entries = 0;
+stats.local_u_cross_entries = 0;
+stats.local_u_peanut_entries = 0;
+stats.local_ft_entries = 0;
+stats.nnz_pair = 0;
+stats.nnz_u = 0;
+stats.nnz_u_cross = 0;
+stats.nnz_u_peanut = 0;
+stats.nnz_ft = 0;
+stats.nnz_source_scatter = 0;
+stats.nnz_velocity_scatter = 0;
+stats.nnz_ft_scatter = 0;
+stats.big_sparse_matrix_bytes = 0;
+stats.big_sparse_auxiliary_bytes = 0;
+stats.big_sparse_build_bytes = 0;
+stats.big_sparse_peak_bytes = 0;
+stats.build_time = 0;
+if requested
+    stats.reason = 'not_prepared';
+end
+end
+
+function FT = addBigSparseForceTorqueCorrections(FT,rows,FT_pair)
+pair_rows = 6;
+n_pairs = numel(FT_pair)/pair_rows;
+for row = 1:n_pairs
+    idx = (row-1)*pair_rows+1:row*pair_rows;
+    FT(rows(idx)) = FT(rows(idx)) + FT_pair(idx);
+end
 end
 
 

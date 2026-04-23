@@ -3,7 +3,7 @@ clc;
 
 script_name = mfilename;
 script_date = 'Apr 14, 2026';
-repo_root = fileparts(fileparts(mfilename('fullpath')));
+repo_root = fileparts(fileparts(mfilename('fullpath')))
 if ~isempty(repo_root)
     addpath(genpath(repo_root));
 end
@@ -18,7 +18,7 @@ geom.phi = 0.65;
 geom.min_gap = 1e-3;
 
 % Monte Carlo generation
-mc.n_sweeps = 30;
+mc.n_sweeps = 50;
 mc.rng_seed = 1;
 mc.show_generation_plot = false;
 
@@ -26,8 +26,10 @@ mc.show_generation_plot = false;
 loads.rng_seed = 11;
 
 % Solver
-solver.N_c = 120;
-solver.N_f = 150;
+solver.N_c = 80;
+solver.N_f = 60;
+% solver.N_c = 60;
+% solver.N_f = 150;
 solver.N_peanut = 400;
 solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-8;
@@ -56,20 +58,33 @@ else
 end
 
 io.data_filename = build_results_filename(script_name, geom.P, geom.phi, solver.N_c);
-io.name2 = io.data_filename; %build_results_filename(script_name, geom.P, geom.phi, compare.reference_N_c);
+io.name2 = build_results_filename(script_name, geom.P, geom.phi, compare.reference_N_c);
 
 % Reporting and visualisation
-report.count_close_pairs = (geom.P <= 3000) && strcmp(geom.domain,'boxed');
 plots.font_size = 16;
 plots.full_edge_color = [0.10 0.10 0.10];
 plots.line_width_full = 0.15;
 plots.force_colormap = turbo(256);
-plots.speed_colormap = parula(256);
-plots.residual_colormap = hot(256);
+cmap = winter(256);
+cmap = cmap.^1.2;                    % darken
+cmap = cmap + 0.15*(1 - cmap);       % brighten top end
+cmap = min(cmap,1);
+plots.speed_colormap = cmap;
+%plots.speed_colormap = winter(256);
+%plots.residual_colormap = hot(256);
+cmap = copper(256);
+% Stretch contrast
+% alpha = 4;              % >1 = more contrast
+% cmap = (cmap - 0.5)*alpha + 0.5;
+% % Clip to valid range
+% cmap = max(0, min(1, cmap));
+cmap = cmap.^0.7;
+plots.residual_colormap = cmap;
 plots.force_clim = [];
 plots.speed_clim = [];
 plots.residual_clim = [];
 plots.error_colormap = turbo(256);
+plots.error_colormap = summer(256);
 plots.error_clim = [];
 plots.pair_gap_bins = 40;
 plots.pair_gap_face_color = [0.20 0.20 0.24];
@@ -121,19 +136,10 @@ else
 
     [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
-    n_close = nan;
-    if report.count_close_pairs
-        n_close = count_close_pairs(q, solver.delta_pair, geom.rad);
-    elseif strcmp(geom.domain,'periodic')
-        fprintf('Close-pair count skipped: count_close_pairs is not periodic-image aware.\n');
-    else
-        fprintf('Close-pair count skipped.\n');
-    end
-
     opt = build_solver_opt(geom.P, solver, geom);
-    opt.get_bndry_field = 0;
+    opt.get_bndry_field = 1;
     opt.RAM_check = 0; 
-    
+   % opt.Nclust = 40; 
 
     rng(loads.rng_seed,'twister');
     F = randn(geom.P,2);
@@ -159,10 +165,8 @@ else
     results.mc = mc;
     results.loads = loads;
     results.solver = solver;
-    results.report = report;
     results.geom_meta = geom_meta;
     results.q = q;
-    results.n_close = n_close;
     results.F = F;
     results.T = T;
     results.UW = UW;
@@ -206,7 +210,6 @@ geom_run = results.geom;
 solver_run = results.solver;
 geom_meta = results.geom_meta;
 q = results.q;
-n_close = results.n_close;
 F = results.F;
 T = results.T;
 UW = results.UW;
@@ -223,9 +226,6 @@ fprintf('  domain=%s, P=%d, phi_target=%.6f, phi=%.6f, L=%.6f\n', ...
     geom_meta.domain, geom_run.P, geom_meta.phi_target, geom_meta.phi, geom_meta.L);
 fprintf('  min allowed gap=%.3e, measured min gap=%.3e\n', ...
     geom_meta.min_gap, geom_meta.min_surface_gap);
-if isfinite(n_close)
-    fprintf('  close pairs below delta_pair=%.3f: %d\n', solver_run.delta_pair, n_close);
-end
 
 fprintf('Solver:\n');
 fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
@@ -276,9 +276,9 @@ if ~isempty(body_velocity_error)
     triptych_panels = make_triptych_panels( ...
         body_speed, choose_clim(plots.speed_clim, default_speed_clim), plots.speed_colormap, ...
         '$\mathrm{max\ boundary\ speed}$', ...
-        residual_log, choose_clim(plots.residual_clim, default_residual_clim), gray(256), ...
+        residual_log, choose_clim(plots.residual_clim, default_residual_clim), copper(256), ...
         '$\mathrm{max\ boundary\ rel\ res}$', ...
-        error_log, choose_clim(plots.error_clim, default_error_clim), hot(256), ...
+        error_log, choose_clim(plots.error_clim, default_error_clim), plasma(256), ...
         '$\mathrm{max\ boundary\ vel\ err}$');
 end
 
@@ -575,10 +575,8 @@ reference_results.geom = results.geom;
 reference_results.mc = results.mc;
 reference_results.loads = results.loads;
 reference_results.solver = solver_ref;
-reference_results.report = results.report;
 reference_results.geom_meta = results.geom_meta;
 reference_results.q = results.q;
-reference_results.n_close = results.n_close;
 reference_results.F = results.F;
 reference_results.T = results.T;
 reference_results.UW = UW_ref;
@@ -621,7 +619,9 @@ end
 function body_error = max_boundary_velocity_error(UW, UW_ref, rad)
 [U, W] = unpack_UW(UW);
 [U_ref, W_ref] = unpack_UW(UW_ref);
-body_error = sqrt(sum((U - U_ref).^2,2)) + rad*abs(W - W_ref);
+abs_error = sqrt(sum((U - U_ref).^2,2)) + rad*abs(W - W_ref);
+ref_speed = sqrt(sum(U_ref.^2,2)) + rad*abs(W_ref);
+body_error = abs_error ./ ref_speed;
 end
 
 function panels = make_triptych_panels( ...
@@ -698,7 +698,7 @@ box(ax, 'on');
 grid(ax, 'off');
 set(ax, 'XTick', [], 'YTick', [], ...
     'TickLabelInterpreter', 'latex', ...
-    'XColor', 'k', 'YColor', 'k', ...
+    'XColor', 'none', 'YColor', 'none', ...
     'LineWidth', 0.6, ...
     'Color', 'w');
 end
@@ -852,7 +852,6 @@ cb_side_gap = layout.cb_side_gap;
 cb_left = layout.lefts(panel_index) + cb_side_gap;
 cb_width = layout.panel_width - 2*cb_side_gap;
 cb_bottom = layout.cb_bottom;
-cb_height = layout.cb_height;
 
 for j = 1:numel(panel.tick_values)
     x = cb_left + cb_width*(panel.tick_values(j) - panel.clim(1))/(panel.clim(2) - panel.clim(1));
@@ -966,4 +965,30 @@ fprintf(fid,'\\usetikzlibrary{calc}\n');
 fprintf(fid,'\\begin{document}\n');
 fprintf(fid,'\\input{%s}\n', picture_name);
 fprintf(fid,'\\end{document}\n');
+end
+
+function cmap = plasma(n)
+%PLASMA  Perceptually uniform purple–red–yellow colormap
+%   cmap = plasma(n) returns an n-by-3 colormap.
+%   If n is omitted, defaults to current figure colormap size.
+
+if nargin < 1
+    n = size(get(gcf,'colormap'),1);
+end
+
+% Key colors sampled from the original plasma colormap
+base = [
+    0.050383, 0.029803, 0.527975
+    0.293478, 0.010213, 0.629490
+    0.507860, 0.016333, 0.656202
+    0.716387, 0.214982, 0.475290
+    0.901807, 0.425087, 0.359688
+    0.993033, 0.683153, 0.195911
+    0.940015, 0.975158, 0.131326
+];
+
+% Interpolate to n colors
+x = linspace(0,1,size(base,1));
+xi = linspace(0,1,n);
+cmap = interp1(x, base, xi, 'pchip');
 end

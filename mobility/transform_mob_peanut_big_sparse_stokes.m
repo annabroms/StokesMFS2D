@@ -1,11 +1,14 @@
-function [lam_c_x, lam_c_nonpx, lam_self_x, lam_f_x, ...
-    lam_c_y, lam_c_nonpy, lam_self_y, lam_f_y, u_corr, rimage_k] = ...
+function [lam_c_x, lam_c_y, lambda_self_blocks, u_corr, ...
+    lam_c_nonpx, lam_c_nonpy] = ...
     transform_mob_peanut_big_sparse_stokes(tau,geom,basis)
 %TRANSFORM_MOB_PEANUT_BIG_SPARSE_STOKES Apply prebuilt sparse pair maps.
 %
-% This is the solve-grid, cmap/self-correct mobility peanut transform used
-% by matvec_mob_peanut_big_sparse. Fine/image source outputs are empty in
-% this v1 path; postprocessing keeps using transform_mob_peanut_stokes.
+% This is the fast solve-grid, cmap/self-correct mobility peanut transform
+% used by matvec_peanut_big_sparse. The first four outputs match the
+% resistance big-sparse transform: coarse x/y sources, projected one-body
+% sources in block form, and the close-pair velocity correction.
+% Boundary postprocessing can additionally request the nonprojected coarse
+% one-body sources.
 
 if ~isfield(basis,'big_sparse') || isempty(basis.big_sparse)
     error('transform_mob_peanut_big_sparse_stokes:MissingBigSparse', ...
@@ -17,46 +20,36 @@ if ~isequal(geom.rcheck,geom.rvec_out)
 end
 
 rvec_out = geom.rvec_out;
-q = geom.q(:);
 opt = geom.opt;
 U = basis.U;
 Y = basis.Y;
 Lc = basis.Lc;
 
-P = numel(q);
+P = getOptField(opt,'P',numel(geom.q));
 N_c = opt.N_c;
-N_large = numel(rvec_out)/P;
 PM = numel(rvec_out);
+N_large = PM/P;
 n_coarse = P*N_c;
 
-lam_c_nonpx = zeros(n_coarse,1);
-lam_c_nonpy = zeros(n_coarse,1);
-lam_c_x = zeros(n_coarse,1);
-lam_c_y = zeros(n_coarse,1);
+% 1-body: recover sources from boundary unknowns
+% Keep the one-body source construction in the same U{1} then Y{1} order
+% as the serial transform, but apply it to all particle columns at once.
+tau_x = reshape(tau(1:PM),N_large,P);
+tau_y = reshape(tau(PM+1:2*PM),N_large,P);
+tau_blocks = [tau_x; tau_y];
+tau_mapped_blocks = Y{1}*(U{1}*tau_blocks);
 
-% Keep the one-body source construction identical to the serial transform.
-for i = 1:P
-    coarse_ind = (i-1)*N_c+1:i*N_c;
-    tau_particle_x = tau((i-1)*N_large+1:N_large*i);
-    tau_particle_y = tau(PM+(i-1)*N_large+1:PM+N_large*i);
+% project
+tau_proj_blocks = tau_mapped_blocks - Lc*tau_mapped_blocks;
+lambda_self_blocks = tau_proj_blocks;
 
-    tau_mapped = Y{1}*(U{1}*[tau_particle_x; tau_particle_y]);
+lam_c_nonpx = reshape(tau_mapped_blocks(1:N_c,:),[],1);
+lam_c_nonpy = reshape(tau_mapped_blocks(N_c+1:2*N_c,:),[],1);
+lam_c_x = reshape(tau_proj_blocks(1:N_c,:),[],1);
+lam_c_y = reshape(tau_proj_blocks(N_c+1:2*N_c,:),[],1);
 
-    lam_c_nonpx(coarse_ind) = tau_mapped(1:N_c);
-    lam_c_nonpy(coarse_ind) = tau_mapped(N_c+1:end);
-
-    tau_i_x = tau_mapped(1:N_c);
-    tau_i_y = tau_mapped(N_c+1:end);
-    tau_proj = [tau_i_x; tau_i_y] - Lc*[tau_i_x; tau_i_y];
-
-    lam_c_x(coarse_ind) = tau_proj(1:N_c);
-    lam_c_y(coarse_ind) = tau_proj(N_c+1:end);
-end
-
-lam_self_x = lam_c_x;
-lam_self_y = lam_c_y;
-
-lambda_self = [lam_self_x; lam_self_y];
+lambda_self = [reshape(lambda_self_blocks(1:N_c,:),[],1); ...
+    reshape(lambda_self_blocks(N_c+1:2*N_c,:),[],1)];
 if ~isfield(basis.big_sparse,'M_pair_nonp')
     error('transform_mob_peanut_big_sparse_stokes:MissingPairMap', ...
         'The big sparse transform requires M_pair_nonp.');
@@ -79,10 +72,11 @@ pair_proj = applyDensePairProjector(pair_nonp,basis.big_sparse.P_pair);
 corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
     pair_proj,pair_nonp,4*N_c,n_coarse);
 
-lam_c_x = lam_self_x + corr(1:n_coarse);
-lam_c_y = lam_self_y + corr(n_coarse+1:2*n_coarse);
-lam_c_nonpx = lam_c_nonpx + corr(2*n_coarse+1:3*n_coarse);
-lam_c_nonpy = lam_c_nonpy + corr(3*n_coarse+1:4*n_coarse);
+lam_c_x = lam_c_x + corr(1:n_coarse);
+lam_c_y = lam_c_y + corr(n_coarse+1:2*n_coarse);
+% Keep lam_c_nonp on the same convention as transform_mob_peanut_stokes:
+% one-body nonprojected sources only. Pair rigid-motion contributions are
+% recovered separately from Cmap_FU/M_rbm_corr in postprocessing.
 
 use_direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
 if use_direct_u_corr
@@ -102,9 +96,7 @@ else
         basis.big_sparse.M_u_peanut*pair_proj;
 end
 
-lam_f_x = [];
-lam_f_y = [];
-rimage_k = cell(P,1);
+
 end
 
 function pair_proj = applyDensePairProjector(pair_nonp,P_pair)

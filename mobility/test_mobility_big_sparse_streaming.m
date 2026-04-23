@@ -53,6 +53,11 @@ assert(max([result.matrix_cases.max_sparse_diff]) < 5e-10, ...
     'Sparse matrices differ between precomputed and streaming builds.');
 assert(max([result.solve_cases.solve_rel_diff]) < 5e-8, ...
     'Streaming and precomputed mobility solves differ.');
+result.boundary_precomputed = compare_boundary_precomputed(q,base_opt);
+assert(result.boundary_precomputed.UW_rel_diff < 5e-8, ...
+    'Precomputed big sparse with boundary postprocessing changed UW.');
+assert(isfinite(result.boundary_precomputed.big_sparse_rel_res), ...
+    'Boundary postprocessing with precomputed big sparse failed.');
 assert(result.ram_estimates.streaming_retained_pair_basis_bytes == 0, ...
     'Streaming should not retain pair-basis maps.');
 assert(result.ram_estimates.precomputed_retained_pair_basis_bytes > 0, ...
@@ -129,6 +134,14 @@ opt_pre.mob_big_sparse_build_mode = 'precomputed';
 est_pre = estimateMobPeanutBigSparseRamStokes( ...
     numel(q),opt.N_c,N_check,n_pairs,opt_pre);
 
+opt_pre_boundary = opt_pre;
+opt_pre_boundary.get_bndry_field = 1;
+est_pre_boundary = estimateMobPeanutBigSparseRamStokes( ...
+    numel(q),opt.N_c,N_check,n_pairs,opt_pre_boundary);
+assert(est_pre_boundary.retained_pair_basis_bytes > ...
+        est_pre.retained_pair_basis_bytes, ...
+    'Boundary precomputed estimate should include retained UB/YB pair factors.');
+
 opt_stream = opt;
 opt_stream.mob_big_sparse_build_mode = 'streaming';
 est_stream = estimateMobPeanutBigSparseRamStokes( ...
@@ -174,6 +187,32 @@ opt_stream.mob_big_sparse_build_mode = 'streaming';
 solve_rel_diff = norm(UW_stream-UW_pre,inf)/max(1,norm(UW_pre,inf));
 it_pre = sol_pre.it;
 it_stream = sol_stream.it;
+end
+
+function result = compare_boundary_precomputed(q,opt)
+F = [1 -0.5; -0.25 0.7; 0.4 -0.2; -1.15 0.0];
+F = F - mean(F,1);
+T = [0.2; -0.1; 0.05; -0.15];
+
+opt_solve_grid = opt;
+opt_solve_grid.use_big_sparse = true;
+opt_solve_grid.mob_big_sparse_build_mode = 'precomputed';
+opt_solve_grid.get_bndry_field = 0;
+[UW_solve_grid,~] = solve_mob_peanut_enhanced(q,F,T,opt_solve_grid);
+
+opt_boundary = opt;
+opt_boundary.use_big_sparse = true;
+opt_boundary.mob_big_sparse_build_mode = 'precomputed';
+opt_boundary.get_bndry_field = 1;
+[UW_boundary,sol_boundary] = solve_mob_peanut_enhanced(q,F,T,opt_boundary);
+
+result = struct();
+result.UW_rel_diff = norm(UW_boundary-UW_solve_grid,inf)/ ...
+    max(1,norm(UW_solve_grid,inf));
+result.big_sparse_rel_res = sol_boundary.rel_res;
+fprintf(['  boundary precomputed: UW rel diff %.3e, ', ...
+    'boundary rel_res %.3e\n'], ...
+    result.UW_rel_diff,result.big_sparse_rel_res);
 end
 
 function [geom,basis] = build_test_data(q,opt)

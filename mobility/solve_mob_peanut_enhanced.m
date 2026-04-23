@@ -47,7 +47,7 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       use_big_sparse
 %                     if true, use preassembled global sparse close-pair
 %                     correction matrices in the supported GMRES matvec.
-%                     The v1 path always uses factored structured source
+%                     The sparse path uses factored structured source
 %                     correction.
 %       big_sparse_direct_u_corr
 %                     if true, build/apply direct M_u_corr. If false,
@@ -89,7 +89,7 @@ if nargin < 4 || ~isstruct(opt)
     error('solve_mob_peanut_enhanced requires q, F, T, and an options struct opt.');
 end
 
-[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
+[ram_check,~] = startRamCheck(opt,mfilename); 
 
 % Set single-threaded mode if requested (impacts FMM and other parallelized routines)
 single_threaded = logical(getOptField(opt,'single_threaded',false));
@@ -104,22 +104,23 @@ assert(size(F,1)==P,'F must have one row per particle.');
 assert(size(F,2)==2,'F must have two columns [Fx, Fy].');
 assert(numel(T)==P,'T must have one entry per particle.');
 
+opt.resistance = 0; 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
-gmres_tol = getOptField(opt,'gmres_tol',1e-10);
+gmres_tol = opt.gmres_tol;
 debug = logical(getOptField(opt,'debug',false));
 surface_error_mode = getOptField(opt,'surface_error_mode','rel');
-maxit = getOptField(opt,'maxit',800);
+maxit = opt.maxit; 
 rad = getOptField(opt,'rad',1);
-get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
-get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
-get_solve_time = logical(getOptField(opt,'get_solve_time',true));
-parallel_solve_requested = logical(getOptField(opt,'parallel_solve',false));
-use_big_sparse_requested = logical(getOptField(opt,'use_big_sparse',false));
-mob_big_sparse_build_mode = lower(char(getOptField(opt, ...
-    'mob_big_sparse_build_mode','precomputed')));
-N_peanut = getOptField(opt,'N_peanut',400);
-column_weight = logical(getOptField(opt,'column_weight',false));
-left_weight = logical(getOptField(opt,'left_weight',false));
+get_bndry_field = opt.get_bndry_field;
+get_precomp_time = opt.get_precomp_time;
+get_solve_time = opt.get_solve_time;
+parallel_solve_requested = opt.parallel_solve; % use parfor in matlab. Normally false, no big gain
+use_big_sparse = opt.use_big_sparse; % precompute global sparse matrix for all pair corrections
+mob_big_sparse_build_mode = opt.mob_big_sparse_build_mode;
+N_peanut = opt.N_peanut;
+column_weight = opt.column_weight;
+left_weight = opt.left_weight;
+
 svd_opts = struct('column_weight',column_weight,'left_weight',left_weight);
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
     'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
@@ -130,12 +131,12 @@ if N_peanut <= 0
         ['solve_mob_peanut_enhanced requires opt.N_peanut > 0 ', ...
          'to build the peanut-compressed pair basis.']);
 end
-if use_big_sparse_requested && parallel_solve_requested
+if use_big_sparse && parallel_solve_requested
     error('solve_mob_peanut_enhanced:IncompatibleSolveBackends', ...
         ['opt.use_big_sparse=1 and opt.parallel_solve=1 are alternative ', ...
          'GMRES close-pair acceleration paths; enable only one.']);
 end
-if use_big_sparse_requested
+if use_big_sparse
     switch mob_big_sparse_build_mode
         case {'precomputed','streaming'}
             % supported
@@ -145,7 +146,7 @@ if use_big_sparse_requested
                  'or ''streaming''.']);
     end
 end
-streaming_big_sparse = use_big_sparse_requested && ...
+streaming_big_sparse = use_big_sparse && ...
     strcmp(mob_big_sparse_build_mode,'streaming');
 if streaming_big_sparse && get_bndry_field
     error('solve_mob_peanut_enhanced:StreamingBoundaryUnsupported', ...
@@ -157,7 +158,7 @@ if streaming_big_sparse && logical(getOptField(opt,'reuse_pair_basis_by_sep',fal
         ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
          'opt.reuse_pair_basis_by_sep=0.']);
 end
-if use_big_sparse_requested && ~streaming_big_sparse && ...
+if use_big_sparse && ~streaming_big_sparse && ...
         logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
     fprintf(['opt.use_big_sparse=1: disabling opt.reuse_pair_basis_by_sep ', ...
         'for the precomputed big sparse solve-grid matvec.\n']);
@@ -309,6 +310,7 @@ basis_mob.Cmap = Cmap;
 basis_mob.Cmap_FU = Cmap_FU; 
 basis_mob.Lc_pair = Lc_pair;
 basis_mob.pair_cache = pair_cache;
+basis_mob.Nii = stokSLPmat(rbase_in_c,rbase_out_c,1);
 
 geom_check = geom_solve;
 geom_check.opt = opt;
@@ -318,8 +320,8 @@ if opt.cmap
 end
 geom_check.rcheck = rcheck_b;
 
-big_sparse_stats = initBigSparseSolveStats(use_big_sparse_requested,size(pairs,1));
-if use_big_sparse_requested
+big_sparse_stats = initBigSparseSolveStats(use_big_sparse,size(pairs,1));
+if use_big_sparse
     [geom_gmres,basis_gmres,big_sparse_stats] = ...
         prepareBigSparseMobilityMatvec(geom_solve,basis_mob);
     basis_mob.big_sparse = basis_gmres.big_sparse;
@@ -342,7 +344,13 @@ else
     [geom_gmres,basis_gmres,parallel_solve_stats] = prepareParallelSolveMatvec( ...
         geom_solve,basis_mob,rbase_out_c,parallel_solve_requested);
 end
-matvec_gmres = makeMobPeanutSolveMatvec(geom_gmres,basis_gmres);
+
+
+if use_big_sparse
+    matvec_gmres = @(x) matvec_peanut_big_sparse(x,geom_gmres,basis_gmres);
+else
+    matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_gmres,basis_gmres);
+end
 
 %% Solve system
 
@@ -396,7 +404,6 @@ solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres(matvec_gmres,...
     urhs,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
-solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -429,13 +436,17 @@ if get_bndry_field
     geom_post = geom_check;
 end
 
-use_big_sparse_post = use_big_sparse_requested && ...
+use_big_sparse_post = streaming_big_sparse && ...
     isequal(geom_post.rcheck,geom_post.rvec_out) && ...
     isfield(basis_mob,'big_sparse') && ~isempty(basis_mob.big_sparse);
 if use_big_sparse_post
-    [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
-        lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
+    [lam_c_x,lam_c_y,lambda_self_blocks,~,lam_c_nonpx,lam_c_nonpy] = ...
         transform_mob_peanut_big_sparse_stokes(tau,geom_post,basis_mob);
+    lam_self_x = reshape(lambda_self_blocks(1:N_c,:),[],1);
+    lam_self_y = reshape(lambda_self_blocks(N_c+1:2*N_c,:),[],1);
+    lam_f_x = [];
+    lam_f_y = [];
+    rimage_k = cell(P,1);
 else
     [lam_c_x, lam_c_nonpx,lam_self_x, lam_f_x,lam_c_y, ...
         lam_c_nonpy,lam_self_y,lam_f_y,~,rimage_k] = ...
@@ -633,13 +644,6 @@ pair_cache.stats = struct('requested_parallel',false, ...
     'needs_explicit_pair_sources',false);
 end
 
-function matvec_handle = makeMobPeanutSolveMatvec(geom_gmres,basis_gmres)
-if logical(getOptField(geom_gmres.opt,'use_big_sparse',false))
-    matvec_handle = @(x) matvec_mob_peanut_big_sparse(x,geom_gmres,basis_gmres);
-else
-    matvec_handle = @(x) matvec_mob_peanut_enhanced(x,geom_gmres,basis_gmres);
-end
-end
 
 function [geom_gmres,basis_gmres,stats] = prepareBigSparseMobilityMatvec( ...
     geom_solve,basis_mob)
@@ -849,7 +853,7 @@ for row = 1:n_pairs
         Ucross_pair{row} = meta.Ucross_colloc_actual;
         Ecolloc_pair{row} = meta.Ecolloc_actual;
     else
-        [Ucross_pair{row},Ecolloc_pair{row}] = buildActualCoarsePairDense( ...
+        [Ucross_pair{row},Ecolloc_pair{row}] = buildStokesCoarsePairDense( ...
             q,rbase_in_c,rout_base_c,pairs,row);
     end
 end
@@ -865,40 +869,6 @@ tf = isfield(basis_mob,'pair_cache') && ...
     ~isempty(basis_mob.pair_cache.meta(row).Ecolloc_actual);
 end
 
-function [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
-    q,rbase_in_c,rout_base_c,pairs,row)
-i = pairs(row,1);
-j = pairs(row,2);
-
-rin_pair_c = [q(i)+rbase_in_c; q(j)+rbase_in_c];
-rout_pair = [q(i)+rout_base_c; q(j)+rout_base_c];
-
-Ecolloc = stokSLPmat(rin_pair_c,rout_pair,1);
-Ucross = buildCrossPairVelocityMap(Ecolloc,numel(rbase_in_c),numel(rout_base_c));
-end
-
-function Ucross = buildCrossPairVelocityMap(Epair,N_src,N_tgt)
-Ucross = zeros(size(Epair));
-
-tgt_i_x = 1:N_tgt;
-tgt_j_x = N_tgt+1:2*N_tgt;
-tgt_i_y = 2*N_tgt+1:3*N_tgt;
-tgt_j_y = 3*N_tgt+1:4*N_tgt;
-
-src_i_x = 1:N_src;
-src_j_x = N_src+1:2*N_src;
-src_i_y = 2*N_src+1:3*N_src;
-src_j_y = 3*N_src+1:4*N_src;
-
-Ucross(tgt_i_x,[src_j_x src_j_y]) = Epair(tgt_i_x,[src_j_x src_j_y]);
-Ucross(tgt_j_x,[src_i_x src_i_y]) = Epair(tgt_j_x,[src_i_x src_i_y]);
-Ucross(tgt_i_y,[src_j_x src_j_y]) = Epair(tgt_i_y,[src_j_x src_j_y]);
-Ucross(tgt_j_y,[src_i_x src_i_y]) = Epair(tgt_j_y,[src_i_x src_i_y]);
-
-Ucross = -Ucross;
-end
-
-
 function test_solve_mob
 
 close all;
@@ -908,7 +878,7 @@ q = [0; 2.001; 2.001i]; %center coordinates
 
 delta = 1e-3;
 %delta = 0.5; 
-P = 100;
+P = 20;
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
@@ -961,6 +931,9 @@ N_c = 150;
 N_f = 150;
 N_c = 60;
 N_f = 60;
+
+N_c = 80;
+N_f = 60;
 opt = get2Dparams(P,N_c,N_f);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
@@ -977,6 +950,8 @@ opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single b
 opt.pair_basis_debug = 0; 
 opt.RAM_check = 1; 
 opt.get_bndry_field = 1;
+%opt.Nclust = 100; 
+opt.mob_big_sparse_build_mode = 'precomputed';
 % opt.beta = 0.5;
 % opt.Nclust = 200;
 [UWp,solp] = solve_mob_peanut_enhanced(q,F,T,opt); 

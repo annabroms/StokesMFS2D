@@ -1,4 +1,5 @@
-% Compare peanut mobility solve time with and without opt.use_big_sparse.
+% Compare peanut resistance solve time with and without opt.use_big_sparse.
+% As apr21_big_sparse_mobility_timing but for resistance
 
 
 close all;
@@ -7,12 +8,10 @@ clear
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 run(fullfile(repo_root,'startup.m'));
 
-script_date = 'Apr 21, 2026';
+script_date = 'Apr 23, 2026';
 fprintf('=== %s (%s) ===\n',mfilename,script_date);
 
-if ~exist('P','var') || isempty(P)
-    P = 10;
-end
+P = 10; 
 phi = 0.65;
 rad = 1;
 rng_seed = 210421;
@@ -44,10 +43,11 @@ opt.use_dense = 1;
 opt.reuse_pair_basis_by_sep = false;
 opt.single_threaded = 0; 
 opt.big_sparse_direct_u_corr = 1;  % 1 is a little less stable than 0 here
-opt.mob_big_sparse_build_mode = 'precomputed'; %'streaming'
+opt.res_big_sparse_build_mode = 'streaming'; %'streaming'
+opt.res_big_sparse_u_corr_mode = 'combined';%'combined'; %factored
 
 %opt.mob_big_sparse_build_mode = 'streaming';
-opt.mob_big_sparse_chunk_pairs = 8;
+opt.res_big_sparse_chunk_pairs = 8;
 
 fprintf('Geometry: P=%d, phi=%.3f, close pairs=%d\n', ...
     P,meta.phi,count_close_pairs(q,opt.delta_pair,rad));
@@ -55,22 +55,21 @@ fprintf('Geometry: P=%d, phi=%.3f, close pairs=%d\n', ...
 [~,~,~,~,~,pairs] = getEnhancedGrid(q,opt);
 N_check = ceil(opt.a_c*opt.N_c);
 labels = {'serial pair loop','big sparse'};
-for k = 2
+for k = 1:2
     opt.use_big_sparse = (k==2);
 
     if opt.use_big_sparse
-        est = estimateMobPeanutBigSparseRamStokes( ...
+        est = estimateResPeanutBigSparseRamStokes( ...
             numel(q),opt.N_c,N_check,size(pairs,1),opt);
         fprintf(['%-16s  matrix %.2f MB  build %.2f MB  ', ...
-            'big peak %.2f MB  solver peak %.2f MB\n'], ...
+            'big peak %.2f MB \n'], ...
             labels{k},est.big_sparse_matrix_bytes/1024^2, ...
             est.big_sparse_build_bytes/1024^2, ...
-            est.big_sparse_peak_bytes/1024^2, ...
-            est.solver_precompute_peak_bytes/1024^2);
+            est.big_sparse_peak_bytes/1024^2);
     end
 
     wall_timer = tic;
-    [UW(:,k),sol] = solve_mob_peanut_enhanced(q,F,T,opt);
+    [UW(:,k),sol] = solve_res_peanut_enhanced(q,F,T,opt);
     wall_time = toc(wall_timer);
     
     fprintf(['%-16s  wall %.3fs  GMRES %.3fs  fmm/total %.3f  ', ...

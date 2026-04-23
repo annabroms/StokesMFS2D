@@ -7,7 +7,8 @@ function estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,op
 % arrays cover the dense local pair projector and indexed source scatter
 % rows used by the fixed source correction. The explicit
 % retained-pair-basis estimate distinguishes precomputed mode, which keeps
-% dense Cmap/Cmap_FU pair maps, from streaming mode, which discards them.
+% dense pair maps and, when boundary postprocessing needs it, the explicit
+% UB/YB pair source factors, from streaming mode, which discards them.
 %
 % opt.big_sparse_direct_u_corr selects the velocity correction matrices:
 %   true  (default): M_u_corr maps projected one-body sources to u_corr.
@@ -65,12 +66,19 @@ n_source_cols = 2*n_coarse;
 n_u_cols = 2*n_coarse;
 pair_rows = 4*N_c;
 pair_total_rows = n_pairs*pair_rows;
+N_f = getOptField(opt,'N_f',N_c);
+a_f = getOptField(opt,'a_f',1.2);
+Nclust = getOptField(opt,'Nclust',0);
 
 u_entries = n_pairs*(4*N_check)*(4*N_c);
 pair_nonp_entries = n_pairs*pair_rows*(4*N_c);
 rbm_entries = n_pairs*6*(4*N_c);
 source_scatter_index_entries = n_pairs*(8*N_c);
 dense_pair_projector_entries = pair_rows*pair_rows;
+full_pair_basis_entries = estimate_full_pair_basis_entries( ...
+    n_pairs,N_c,N_f,a_f,Nclust);
+retains_full_pair_basis = strcmp(build_mode,'precomputed') && ...
+    uses_full_pair_payload(opt);
 
 counts = struct();
 counts.u = double(direct_u_corr)*u_entries;
@@ -83,7 +91,8 @@ counts.u_peanut = double(~direct_u_corr)*u_entries;
 counts.total = counts.u + counts.pair_nonp + counts.u_cross + ...
     counts.u_peanut + counts.rbm;
 if strcmp(build_mode,'precomputed')
-    counts.retained_pair_basis = pair_nonp_entries + rbm_entries;
+    counts.retained_pair_basis = pair_nonp_entries + rbm_entries + ...
+        double(retains_full_pair_basis)*full_pair_basis_entries;
 else
     counts.retained_pair_basis = 0;
 end
@@ -115,4 +124,33 @@ estimate.big_sparse_peak_bytes = estimate.big_sparse_matrix_bytes + ...
 estimate.retained_pair_basis_bytes = retained_pair_basis_bytes;
 estimate.solver_precompute_peak_bytes = estimate.big_sparse_peak_bytes + ...
     estimate.retained_pair_basis_bytes;
+end
+
+function entries = estimate_full_pair_basis_entries(n_pairs,N_c,N_f,a_f,Nclust)
+% Estimate the explicit UB/YB pair factors retained by precomputed boundary
+% postprocessing. Nclust is a per-side upper bound for enhancement nodes.
+if n_pairs == 0
+    entries = 0;
+    return
+end
+
+nout_f = ceil(a_f*N_f);
+n_enhance_pair = 2*max(0,Nclust);
+n_sources_pair = 2*N_f + n_enhance_pair;
+n_targets_pair = 2*nout_f + n_enhance_pair;
+rank_bound = min(2*n_sources_pair,2*n_targets_pair);
+
+upf_entries = rank_bound*(4*N_c);
+ypf_entries = (2*n_sources_pair)*rank_bound;
+entries = n_pairs*(upf_entries + ypf_entries);
+end
+
+function tf = uses_full_pair_payload(opt)
+N_peanut = getOptField(opt,'N_peanut',0);
+use_pair_map = logical(getOptField(opt,'cmap',false));
+get_bndry_field = logical(getOptField(opt,'get_bndry_field',false));
+self_correct = logical(getOptField(opt,'self_correct',false));
+debug = logical(getOptField(opt,'pair_basis_debug',false));
+tf = ~((N_peanut > 0) && use_pair_map && self_correct && ...
+    ~get_bndry_field && ~debug);
 end

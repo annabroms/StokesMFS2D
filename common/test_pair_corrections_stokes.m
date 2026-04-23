@@ -42,18 +42,12 @@ if ~isfinite(delta_pair) || delta_pair <= 0
 end
 
 opt_eval = prepareStokesOpt(opt, R);
-Rp_c = getOptField(opt_eval,'Rp_c',[]);
-if isempty(Rp_c)
-    error('opt.Rp_c is required to derive delta_star.');
-end
-Rp_c = Rp_c(1);
-if ~(isfinite(Rp_c) && Rp_c > 0)
-    error('opt.Rp_c must be a positive finite scalar.');
-end
+Rp_f = getOptField(opt_eval,'Rp_f',[]);
+
 % For equal radii, the accumulation point measured from the left center is
 % zacc1 = (D - sqrt(D^2 - 4R^2))/2 with D = 2R + delta.
-% Setting zacc1 = Rp_c gives delta_star = (R - Rp_c)^2 / Rp_c.
-delta_star = (R - Rp_c)^2 / Rp_c;
+% Setting zacc1 = Rp_f gives delta_star = (R - Rp_f)^2 / Rp_f.
+delta_star = (R - Rp_f)^2 / Rp_f;
 
 q_pair = [0; 2*R + delta_pair];
 q_star = [0; 2*R + delta_star];

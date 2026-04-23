@@ -154,7 +154,7 @@ if store_full_pair_payload && project_force
     pair.Upair_colloc = stokSLPmat(rin_pair,rout_pair_c,1) * ...
         Ppair * Yf_pair * Upf;
     pair.Ecolloc = stokSLPmat(rin_pair_c,rout_pair_c,1);
-    pair.Ucross_colloc = build_cross_pair_velocity_map( ...
+    pair.Ucross_colloc = buildStokesCrossPairVelocityMap( ...
         pair.Ecolloc,N_c,numel(rout_base_c));
 end
 
@@ -217,27 +217,6 @@ grid on;
 title(sprintf('getPairBasisStokes pair (%d,%d)',i,j), ...
     'Interpreter','none');
 drawnow;
-end
-
-function Ucross = build_cross_pair_velocity_map(Epair,N_src,N_tgt)
-Ucross = zeros(size(Epair));
-
-tgt_i_x = 1:N_tgt;
-tgt_j_x = N_tgt+1:2*N_tgt;
-tgt_i_y = 2*N_tgt+1:3*N_tgt;
-tgt_j_y = 3*N_tgt+1:4*N_tgt;
-
-src_i_x = 1:N_src;
-src_j_x = N_src+1:2*N_src;
-src_i_y = 2*N_src+1:3*N_src;
-src_j_y = 3*N_src+1:4*N_src;
-
-Ucross(tgt_i_x,[src_j_x src_j_y]) = Epair(tgt_i_x,[src_j_x src_j_y]);
-Ucross(tgt_j_x,[src_i_x src_i_y]) = Epair(tgt_j_x,[src_i_x src_i_y]);
-Ucross(tgt_i_y,[src_j_x src_j_y]) = Epair(tgt_i_y,[src_j_x src_j_y]);
-Ucross(tgt_j_y,[src_i_x src_i_y]) = Epair(tgt_j_y,[src_i_x src_i_y]);
-
-Ucross = -Ucross;
 end
 
 function z_canon = map_points_to_canonical(z,mid,rot)

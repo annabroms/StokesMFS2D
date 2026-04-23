@@ -17,13 +17,16 @@ P = 10;
 rad = 1;
 domain = 'boxed';
 phi = 0.65;
-min_gap = 1e-3;
+min_gap = 1e-3; 
 n_sweeps = 30;
 visualise_geometry = false;
 
 % Solver
 N_c = 60;
 N_f = 150;
+
+N_c = 120; %120 for small 2-way error
+N_f = 60;
 N_peanut = 400;
 delta_pair = 0.2;
 gmres_tol = 1e-8;
@@ -39,7 +42,7 @@ geom_opt.rng_seed = geom_seed;
 geom_opt.visualise = visualise_geometry;
 
 [q,geom_meta] = random_discs_mc(P,geom_opt);
-[n_close,pairs] = count_close_pairs(q,delta_pair,rad); %#ok<ASGLU>
+[n_close,pairs] = count_close_pairs(q,delta_pair,rad); 
 
 opt = get2Dparams(P,N_c,N_f);
 opt.rad = rad;
@@ -58,6 +61,8 @@ opt.cmap = 1;
 opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_bndry_field = 1;
+opt.single_threaded = 0;
+opt.mob_big_sparse_build_mode = 'precomputed'; %streaming can't be used with get_bndry_field
 
 rng(load_seed);
 F = randn(P,2);
@@ -97,22 +102,20 @@ fprintf('  N_c=%d, N_f=%d, N_peanut=%d, gmres_tol=%.1e\n', ...
 
 FT_ref = packFT(F,T);
 UW_ref = packUW(U,W);
-
-for k = 1:numel(methods)
+it_start = 1; 
+for k = it_start:numel(methods)
     results(k).name = methods(k).name;
     results(k).label = methods(k).label;
 
     fprintf('\nRunning %s mobility...\n',methods(k).label);
-    tic;
     [results(k).UW,results(k).mob_sol] = methods(k).mob_solver(q,F,T,opt);
-    results(k).mob_time = toc;
-    results(k).mob_gmres_residual = final_gmres_residual(results(k).mob_sol);
+    results(k).mob_time = results(k).mob_sol.solve_time.total;
+    results(k).mob_residual = results(k).mob_sol.rel_res;
 
     fprintf('Running %s resistance...\n',methods(k).label);
-    tic;
     [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
-    results(k).res_time = toc;
-    results(k).res_gmres_residual = final_gmres_residual(results(k).res_sol);
+    results(k).res_time =  results(k).res_sol.solve_time.total;
+    results(k).res_residual = results(k).res_sol.rel_res;
 
 
     [Uk,Wk] = unpackUW(results(k).UW);
@@ -125,23 +128,22 @@ for k = 1:numel(methods)
 end
 
 fprintf('\nMobility results:\n');
-fprintf('  %-22s %8s %10s %14s %14s %14s %10s\n', ...
-    'solver','it','unknowns','gmres_res','surf_rel','surf_abs','time(s)');
-for k = 1:numel(results)
-    fprintf('  %-22s %8d %10d %14.3e %14.3e %14.3e %10.2f\n', ...
+fprintf('  %-22s %8s %10s %14s %14s %10s\n', ...
+    'solver','it','unknowns','surf_rel','surf_abs','time(s)');
+for k = it_start:numel(results)
+    fprintf('  %-22s %8d %10d %14.3e %14.3e %10.2f\n', ...
         results(k).label, ...
         results(k).mob_sol.it, ...
         results(k).mob_sol.gmres_unknowns, ...
-        results(k).mob_gmres_residual, ...
         results(k).mob_sol.rel_res, ...
-        get_abs_res(results(k).mob_sol), ...
+        results(k).mob_sol.abs_res, ...
         results(k).mob_time);
 end
 
 fprintf('\nResistance results:\n');
 fprintf('  %-22s %8s %10s %14s %14s %10s\n', ...
     'solver','it','unknowns','gmres_res','surf_rel','time(s)');
-for k = 1:numel(results)
+for k = it_start:numel(results)
     fprintf('  %-22s %8d %10d %14.3e %14.3e %10.2f\n', ...
         results(k).label, ...
         results(k).res_sol.it, ...
@@ -155,7 +157,7 @@ fprintf('\nTwo-way checks:\n');
 fprintf(['  two-way mob->res = ||R(M(F,T)) - [F;T]||_inf / max(1,||[F;T]||_inf)\n']);
 fprintf(['  two-way res->mob = ||M(R(U,W)) - [U;W]||_inf / max(1,||[U;W]||_inf)\n']);
 fprintf('  %-22s %16s %16s\n','solver','mob->res','res->mob');
-for k = 1:numel(results)
+for k = it_start:numel(results)
     fprintf('  %-22s %16.3e %16.3e\n', ...
         results(k).label, ...
         results(k).two_way_mob_to_res, ...
@@ -167,10 +169,14 @@ fprintf('  mobility iteration ratio   = %.3f\n', ...
     results(1).mob_sol.it / results(2).mob_sol.it);
 fprintf('  mobility unknown ratio     = %.3f\n', ...
     results(1).mob_sol.gmres_unknowns / results(2).mob_sol.gmres_unknowns);
+fprintf('  mobility solve time ratio   = %.3f\n', ...
+    results(1).mob_time / results(2).mob_time);
 fprintf('  resistance iteration ratio = %.3f\n', ...
     results(1).res_sol.it / results(2).res_sol.it);
 fprintf('  resistance unknown ratio   = %.3f\n', ...
     results(1).res_sol.gmres_unknowns / results(2).res_sol.gmres_unknowns);
+fprintf('  resistance solve time ratio   = %.3f\n', ...
+    results(1).res_time / results(2).res_time);
 
 labels = {results.label};
 mob_iter = arrayfun(@(s) s.mob_sol.it, results);
@@ -247,21 +253,7 @@ grid on;
 
 title(t,'Random discs: 1-body vs peanut solvers','Interpreter','none');
 
-function value = final_gmres_residual(sol)
-if isfield(sol,'resvec') && ~isempty(sol.resvec)
-    value = sol.resvec(end);
-else
-    value = nan;
-end
-end
 
-function value = get_abs_res(sol)
-if isfield(sol,'abs_res') && ~isempty(sol.abs_res)
-    value = sol.abs_res;
-else
-    value = nan;
-end
-end
 
 function UW = packUW(U,W)
 P = size(U,1);

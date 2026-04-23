@@ -11,7 +11,7 @@ end
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 1e4;
+geom.P = 1e3;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -26,8 +26,8 @@ mc.show_generation_plot = false;
 loads.rng_seed = 11;
 
 % Solver
-solver.N_c = 60;
-solver.N_f = 150;
+solver.N_c = 80;
+solver.N_f = 60;
 solver.N_peanut = 400;
 solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-8;
@@ -137,7 +137,7 @@ else
     opt = build_solver_opt(geom.P, solver, geom);
     opt.get_bndry_field = 0;
     opt.RAM_check = 0; 
-    opt.single_threaded = 1; 
+    opt.single_threaded = 0; 
     opt.mob_big_sparse_build_mode = 'streaming';
 
     

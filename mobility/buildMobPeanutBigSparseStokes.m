@@ -5,8 +5,8 @@ function [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom,basis)
 % self-test on a small random_discs_mc packing at phi=0.65 and shows the
 % sparse matrix structures with spy.
 %
-% This v1 builder is deliberately actual-pair only. Rotations are not part
-% of this path: solve_mob_peanut_enhanced disables
+% This builder is deliberately actual-pair only. Rotations are not part of
+% this path: solve_mob_peanut_enhanced disables
 % opt.reuse_pair_basis_by_sep when opt.use_big_sparse is true, so every
 % close pair contributes the dense maps for its actual geometry.
 %
@@ -57,6 +57,10 @@ direct_u_corr = plan.direct_u_corr;
 
 stats = initBigSparseStats(n_pairs,N_c,N_check,ram_estimate);
 stats.requested = true;
+fprintf(['buildMobPeanutBigSparseStokes: assembling solve-grid ', ...
+    'sparse pair maps (mode=%s, P=%d, close pairs=%d, N_c=%d, ', ...
+    'N_check=%d, chunk pairs=%d).\n'], ...
+    build_mode,P,n_pairs,N_c,N_check,stats.chunk_pairs);
 
 max_build_bytes = getOptField(opt,'big_sparse_max_build_bytes',inf);
 if stats.big_sparse_build_bytes > max_build_bytes
@@ -294,30 +298,20 @@ local_u = (4*N_check)*(4*N_c);
 local_rbm = 6*(4*N_c);
 
 entries = struct();
-entries.pair_nonp = newSparseBuilder( ...
+entries.pair_nonp = initSparseBuilder( ...
     chunk_pairs*local_pair_nonp,pair_total_rows,n_source_cols);
-entries.rbm = newSparseBuilder( ...
+entries.rbm = initSparseBuilder( ...
     chunk_pairs*local_rbm,n_rbm_rows,n_source_cols);
 if plan.direct_u_corr
-    entries.u = newSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
-    entries.u_cross = newSparseBuilder(0,n_u_rows,n_u_cols);
-    entries.u_peanut = newSparseBuilder(0,n_u_rows,pair_total_rows);
+    entries.u = initSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
+    entries.u_cross = initSparseBuilder(0,n_u_rows,n_u_cols);
+    entries.u_peanut = initSparseBuilder(0,n_u_rows,pair_total_rows);
 else
-    entries.u = newSparseBuilder(0,n_u_rows,n_u_cols);
-    entries.u_cross = newSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
-    entries.u_peanut = newSparseBuilder(chunk_pairs*local_u,n_u_rows, ...
+    entries.u = initSparseBuilder(0,n_u_rows,n_u_cols);
+    entries.u_cross = initSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
+    entries.u_peanut = initSparseBuilder(chunk_pairs*local_u,n_u_rows, ...
         pair_total_rows);
 end
-end
-
-function block = newSparseBuilder(capacity,n_rows,n_cols)
-capacity = max(0,round(capacity));
-block = struct();
-block.rows = zeros(capacity,1);
-block.cols = zeros(capacity,1);
-block.vals = zeros(capacity,1);
-block.next = 1;
-block.S = sparse(n_rows,n_cols);
 end
 
 function entries = appendPrecomputedBlocks(entries,geom,basis, ...
@@ -334,7 +328,7 @@ for row = 1:n_pairs
     j = pairs(row,2);
     C_nonp = basis.Cmap{i,j};
     Cmap_FU = basis.Cmap_FU{i,j};
-    [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
+    [Ucross,Ecolloc] = buildStokesCoarsePairDense( ...
         q,geom.rbase_in_c(:),rout_base_c,pairs,row);
     entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
         C_nonp,Cmap_FU,Ucross,Ecolloc,P_pair,geom.opt);
@@ -364,7 +358,7 @@ for row = 1:n_pairs
     pair = buildStokesMobilityPairData(q,geom.rbase_in_c(:), ...
         geom.rbase_in_f(:),geom.rimage_vec,geom.refine,pairs,pair_opt, ...
         basis.Lc,row,false,svd_opts,false,'maps_only');
-    [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
+    [Ucross,Ecolloc] = buildStokesCoarsePairDense( ...
         q,geom.rbase_in_c(:),rout_base_c,pairs,row);
     entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
         pair.Cmap,pair.Cmap_FU,Ucross,Ecolloc,P_pair,opt);
@@ -385,60 +379,27 @@ pair_idx = (row-1)*(4*N_c)+1:row*(4*N_c);
 rbm_idx = pairRigidOutputIndices(i,j,P);
 direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
 
-entries.pair_nonp = appendSparseBlock(entries.pair_nonp, ...
+entries.pair_nonp = appendSparseBuilderBlock(entries.pair_nonp, ...
     pair_idx,in_idx,C_nonp);
-entries.rbm = appendSparseBlock(entries.rbm,rbm_idx,in_idx,-Cmap_FU);
+entries.rbm = appendSparseBuilderBlock(entries.rbm,rbm_idx,in_idx,-Cmap_FU);
 if direct_u_corr
     C_proj = P_pair*C_nonp;
-    entries.u = appendSparseBlock(entries.u,u_out_idx,in_idx, ...
+    entries.u = appendSparseBuilderBlock(entries.u,u_out_idx,in_idx, ...
         Ucross - Ecolloc*C_proj);
 else
-    entries.u_cross = appendSparseBlock(entries.u_cross,u_out_idx,in_idx, ...
+    entries.u_cross = appendSparseBuilderBlock(entries.u_cross,u_out_idx,in_idx, ...
         Ucross);
-    entries.u_peanut = appendSparseBlock(entries.u_peanut,u_out_idx, ...
+    entries.u_peanut = appendSparseBuilderBlock(entries.u_peanut,u_out_idx, ...
         pair_idx,Ecolloc);
 end
 end
 
-function block = appendSparseBlock(block,row_idx,col_idx,A)
-row_idx = row_idx(:);
-col_idx = col_idx(:);
-nr = numel(row_idx);
-nc = numel(col_idx);
-n = nr*nc;
-if n == 0
-    return
-end
-if block.next+n-1 > numel(block.vals)
-    block = flushSparseBuilder(block);
-end
-if n > numel(block.vals)
-    block.S = block.S + sparse(repmat(row_idx,nc,1), ...
-        repelem(col_idx,nr),real(A(:)),size(block.S,1),size(block.S,2));
-    return
-end
-loc = block.next:block.next+n-1;
-block.rows(loc) = repmat(row_idx,nc,1);
-block.cols(loc) = repelem(col_idx,nr);
-block.vals(loc) = real(A(:));
-block.next = block.next + n;
-end
-
-function block = flushSparseBuilder(block)
-n = block.next - 1;
-if n > 0
-    block.S = block.S + sparse(block.rows(1:n),block.cols(1:n), ...
-        block.vals(1:n),size(block.S,1),size(block.S,2));
-    block.next = 1;
-end
-end
-
 function entries = flushAllSparseBuilders(entries)
-entries.pair_nonp = flushSparseBuilder(entries.pair_nonp);
-entries.rbm = flushSparseBuilder(entries.rbm);
-entries.u = flushSparseBuilder(entries.u);
-entries.u_cross = flushSparseBuilder(entries.u_cross);
-entries.u_peanut = flushSparseBuilder(entries.u_peanut);
+entries.pair_nonp = flushSparseBuilderBlock(entries.pair_nonp);
+entries.rbm = flushSparseBuilderBlock(entries.rbm);
+entries.u = flushSparseBuilderBlock(entries.u);
+entries.u_cross = flushSparseBuilderBlock(entries.u_cross);
+entries.u_peanut = flushSparseBuilderBlock(entries.u_peanut);
 end
 
 function rows = buildSourceScatterRows(pairs,N_c,P)
@@ -456,40 +417,6 @@ function P_pair = buildPairProjectionMatrix(rbase)
 K = getKmat2D(rbase,0);
 L = K*((K'*K)\K');
 P_pair = getILpair(L);
-end
-
-function [Ucross,Ecolloc] = buildActualCoarsePairDense( ...
-    q,rbase_in_c,rout_base_c,pairs,row)
-    i = pairs(row,1);
-    j = pairs(row,2);
-    
-    rin_pair_c = [q(i)+rbase_in_c; q(j)+rbase_in_c];
-    rout_pair = [q(i)+rout_base_c; q(j)+rout_base_c];
-    
-    Ecolloc = stokSLPmat(rin_pair_c,rout_pair,1);
-    Ucross = buildCrossPairVelocityMap(Ecolloc,numel(rbase_in_c), ...
-        numel(rout_base_c));
-end
-
-function Ucross = buildCrossPairVelocityMap(Epair,N_src,N_tgt)
-Ucross = zeros(size(Epair));
-
-tgt_i_x = 1:N_tgt;
-tgt_j_x = N_tgt+1:2*N_tgt;
-tgt_i_y = 2*N_tgt+1:3*N_tgt;
-tgt_j_y = 3*N_tgt+1:4*N_tgt;
-
-src_i_x = 1:N_src;
-src_j_x = N_src+1:2*N_src;
-src_i_y = 2*N_src+1:3*N_src;
-src_j_y = 3*N_src+1:4*N_src;
-
-Ucross(tgt_i_x,[src_j_x src_j_y]) = Epair(tgt_i_x,[src_j_x src_j_y]);
-Ucross(tgt_j_x,[src_i_x src_i_y]) = Epair(tgt_j_x,[src_i_x src_i_y]);
-Ucross(tgt_i_y,[src_j_x src_j_y]) = Epair(tgt_i_y,[src_j_x src_j_y]);
-Ucross(tgt_j_y,[src_i_x src_i_y]) = Epair(tgt_j_y,[src_i_x src_i_y]);
-
-Ucross = -Ucross;
 end
 
 function idx = pairCoarseInputIndices(i,j,N_c,P)
