@@ -360,7 +360,7 @@ end
 function test_buildResPeanutBigSparseStokes
 fprintf('buildResPeanutBigSparseStokes self-test: spy plots\n');
 
-P = 20;
+P = 10;
 delta = 0.1;
 q = grow_cluster(P,delta,2);
 opt = get2Dparams(P,18,24);
@@ -375,9 +375,14 @@ opt.self_correct = 1;
 opt.use_dense = 1;
 opt.reuse_pair_basis_by_sep = false;
 opt.use_fmm = false;
+opt.res_big_sparse_u_corr_mode = 'factored'; 
 
 [geom,basis] = buildSelfTestData(q,opt);
-[big_sparse,stats] = buildResPeanutBigSparseStokes(geom,basis);
+[big_sparse,] = buildResPeanutBigSparseStokes(geom,basis);
+
+opt.res_big_sparse_u_corr_mode = 'combined';
+geom.opt = opt; 
+[big_sparse_comb,stats] = buildResPeanutBigSparseStokes(geom,basis);
 
 fprintf('  P=%d, close pairs=%d\n',P,stats.n_pairs);
 fprintf(['  M_pair nnz=%d, M_u_cross nnz=%d, ', ...
@@ -385,24 +390,46 @@ fprintf(['  M_pair nnz=%d, M_u_cross nnz=%d, ', ...
     stats.nnz_pair,stats.nnz_u_cross,stats.nnz_u_peanut, ...
     stats.nnz_ft);
 
-figure('Name','buildResPeanutBigSparseStokes spy self-test','Color','w');
+% Use factored map for the velocity correction
+figure('Name','buildResPeanutBigSparseStokes factored self-test','Color','w');
 tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 
 nexttile;
 spy(big_sparse.M_pair);
-title('M_pair','Interpreter','none');
+title('Source correction map','Interpreter','none');
 
 nexttile;
 spy(big_sparse.M_u_cross);
-title('M_u_cross','Interpreter','none');
+title('Velocity correction map part 1','Interpreter','none');
 
 nexttile;
 spy(big_sparse.M_u_peanut);
-title('M_u_peanut','Interpreter','none');
+title('Velocity correction map part 2','Interpreter','none');
 
 nexttile;
 spy(big_sparse.M_ft_corr);
-title('M_ft_corr','Interpreter','none');
+title('Force/torque correciton map','Interpreter','none');
+
+sgtitle(sprintf('P=%d, pairs=%d',P,stats.n_pairs));
+
+% Use the combined map for the velocity correction
+figure('Name','buildResPeanutBigSparseStokes factored self-test','Color','w');
+tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
+
+nexttile;
+spy(big_sparse_comb.M_pair);
+title('Source correction map','Interpreter','none');
+
+nexttile;
+spy(big_sparse_comb.M_u_corr);
+title('Velocity correction map','Interpreter','none');
+
+nexttile;
+spy(big_sparse_comb.M_ft_corr);
+title('Force/torque correction map','Interpreter','none');
+
+sgtitle(sprintf('P=%d, pairs=%d',P,stats.n_pairs));
+
 end
 
 function [geom,basis] = buildSelfTestData(q,opt)

@@ -92,10 +92,13 @@ end
 [ram_check,~] = startRamCheck(opt,mfilename); 
 
 % Set single-threaded mode if requested (impacts FMM and other parallelized routines)
-single_threaded = logical(getOptField(opt,'single_threaded',false));
-if single_threaded
-    setenv('OMP_NUM_THREADS','1');
-end
+
+%revert single threaded settings
+setenv('OMP_NUM_THREADS','');
+setenv('MKL_NUM_THREADS','');
+setenv('OPENBLAS_NUM_THREADS','');
+
+maxNumCompThreads('automatic');
 
 q = q(:);
 T = T(:);
@@ -350,6 +353,16 @@ if use_big_sparse
     matvec_gmres = @(x) matvec_peanut_big_sparse(x,geom_gmres,basis_gmres);
 else
     matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_gmres,basis_gmres);
+end
+
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
 end
 
 %% Solve system

@@ -320,7 +320,6 @@ solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,~] = helsing_gmres(matvec_handle, ...
     fout,length(rout),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
-solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol

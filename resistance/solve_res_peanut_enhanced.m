@@ -104,6 +104,13 @@ use_big_sparse = opt.use_big_sparse;
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
     'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
 
+%revert single threaded settings
+setenv('OMP_NUM_THREADS','');
+setenv('MKL_NUM_THREADS','');
+setenv('OPENBLAS_NUM_THREADS','');
+
+maxNumCompThreads('automatic');
+
 if use_big_sparse
     if ~logical(getOptField(opt,'cmap',false))
         error('solve_res_peanut_enhanced:BigSparseUnsupported', ...
@@ -259,6 +266,17 @@ if use_big_sparse
     matvec_handle = @(x) matvec_peanut_big_sparse(x,geom,basis);
 else
     matvec_handle = @(x) matvec_res_peanut_enhanced(x,geom,basis);
+end
+
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
+
 end
 
 %% Solve system

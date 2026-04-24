@@ -456,7 +456,7 @@ end
 function test_buildMobPeanutBigSparseStokes
 fprintf('buildMobPeanutBigSparseStokes self-test: random_discs_mc spy plots\n');
 
-P = 20;
+P = 10;
 phi = 0.65;
 rad = 1;
 geom_opt = struct('domain','boxed','phi',phi,'rad',rad, ...
@@ -464,9 +464,13 @@ geom_opt = struct('domain','boxed','phi',phi,'rad',rad, ...
     'visualise',false);
 [q,meta] = random_discs_mc(P,geom_opt);
 
-opt = get2Dparams(P,24,60);
+N_c = 80; % if values are of interest
+N_f = 60;
+N_c = 24; % only for visualization
+opt = get2Dparams(P,N_c,N_f);
+opt.N_peanut = 120; % only for visualization
+%opt.N_peanut = 400;  % if values are of interest
 opt.delta_pair = 0.2;
-opt.N_peanut = 120;
 opt.get_bndry_field = 0;
 opt.visualise_sol = 0;
 opt.visualise_grid = 0;
@@ -499,32 +503,37 @@ fprintf(['  factored u: M_pair_nonp nnz=%d, M_u_cross nnz=%d, ', ...
     'M_u_peanut nnz=%d\n'],stats_factored.nnz_pair_nonp, ...
     stats_factored.nnz_u_cross,stats_factored.nnz_u_peanut);
 
-figure('Name','buildMobPeanutBigSparseStokes spy self-test','Color','w');
-tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
+% With direct maps for the velocity correction
+figure('Name','buildMobPeanutBigSparseStokes spy direct maps','Color','w');
+tiledlayout(1,2,'TileSpacing','compact','Padding','compact');
 
 nexttile;
 spy(big_direct.M_pair_nonp);
-title('direct: M_pair_nonp','Interpreter','none');
+title('Source correction map','Interpreter','none');
 
 nexttile;
 spy(big_direct.M_u_corr);
-title('direct: M_u_corr','Interpreter','none');
+title('Velocity correction map','Interpreter','none');
 
-nexttile;
-axis off
-title(sprintf('P=%d, phi=%.2f, pairs=%d',P,meta.phi,stats_direct.n_pairs));
+sgtitle(sprintf('P=%d, phi=%.2f, pairs=%d',P,meta.phi,stats_direct.n_pairs));
+
+% With factored maps for the velocity correction
+figure('Name','buildMobPeanutBigSparseStokes spy factored maps','Color','w');
+tiledlayout(1,3,'TileSpacing','compact','Padding','compact');
 
 nexttile;
 spy(big_factored.M_pair_nonp);
-title('factored: M_pair_nonp','Interpreter','none');
+title('Source correction map','Interpreter','none');
 
 nexttile;
 spy(big_factored.M_u_cross);
-title('factored: M_u_cross','Interpreter','none');
+title('factored: Part 1 of velocity correction map','Interpreter','none');
 
 nexttile;
 spy(big_factored.M_u_peanut);
-title('factored: M_u_peanut','Interpreter','none');
+title('factored: Part 2 of velocity correction map','Interpreter','none');
+
+sgtitle(sprintf('P=%d, phi=%.2f, pairs=%d',P,meta.phi,stats_direct.n_pairs));
 
     function [geom,basis] = buildSelfTestMobilityData(q,opt)
     q = q(:);

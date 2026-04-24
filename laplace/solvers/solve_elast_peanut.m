@@ -66,7 +66,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_elast_peanut requires q, Q_body, and an options struct opt.');
 end
 
-[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
+[ram_check,~] = startRamCheck(opt,mfilename); 
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
