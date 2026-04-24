@@ -47,8 +47,11 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       use_big_sparse
 %                     if true, use preassembled global sparse close-pair
 %                     correction matrices in the supported GMRES matvec.
-%                     The sparse path uses factored structured source
-%                     correction.
+%       sparse_map_coarse
+%                     if true, the big-sparse solve-grid path precomposes
+%                     coarse source correction into a direct global
+%                     M_source_corr. If false, it keeps the legacy
+%                     M_pair_nonp -> P_pair -> source_scatter_rows path.
 %       big_sparse_direct_u_corr
 %                     if true, build/apply direct M_u_corr. If false,
 %                     build/apply factored M_u_cross and M_u_peanut for

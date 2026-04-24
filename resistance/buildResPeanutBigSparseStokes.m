@@ -3,6 +3,21 @@ function [big_sparse,stats] = buildResPeanutBigSparseStokes(geom,basis)
 %
 % Calling buildResPeanutBigSparseStokes with no inputs runs a small visual
 % self-test and shows the sparse matrix structures with spy.
+%
+% opt.sparse_map_coarse and opt.res_big_sparse_u_corr_mode select the
+% matrix set built here:
+%   sparse_map_coarse = 0:
+%       M_pair plus source_scatter_rows keep the coarse update as based on 
+%       pair based sorting.
+%   sparse_map_coarse = 1:
+%       M_source_corr maps projected one-body coarse sources directly to
+%       projected coarse-source increments. M_pair is still built because
+%       the current resistance u_corr and M_ft_corr paths both consume
+%       pair-local projected data.
+%   res_big_sparse_u_corr_mode = 'combined':
+%       build one M_u_corr acting on [lambda_self; pair_tau].
+%   res_big_sparse_u_corr_mode = 'factored':
+%       build M_u_cross and M_u_peanut instead.
 
 if nargin == 0
     test_buildResPeanutBigSparseStokes;
@@ -33,6 +48,7 @@ validateBigSparseInputs(geom,basis,N_check);
 % Estimate sparse storage and initialize bookkeeping.
 ram_estimate = estimateResPeanutBigSparseRamStokes( ...
     P,N_c,N_check,n_pairs,opt);
+plan = ram_estimate.matrix_plan;
 stats = initBigSparseStats(n_pairs,N_c,N_check,ram_estimate);
 stats.requested = true;
 fprintf(['buildResPeanutBigSparseStokes: assembling solve-grid ', ...
@@ -80,12 +96,16 @@ big_sparse.matrix_plan = ram_estimate.matrix_plan;
 big_sparse.ram_estimate = ram_estimate;
 big_sparse.N_c = N_c;
 big_sparse.pairs = pairs;
-big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
+if plan.sparse_map_coarse
+    big_sparse.M_source_corr = entries.source_corr.S;
+else
+    big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
+end
 big_sparse.velocity_scatter_rows = buildVelocityScatterRows( ...
     pairs,N_check,P);
 big_sparse.ft_scatter_rows = buildForceTorqueScatterRows(pairs,P);
 big_sparse.M_pair = entries.pair.S;
-if strcmp(ram_estimate.matrix_plan.u_corr_mode,'combined')
+if strcmp(plan.u_corr_mode,'combined')
     big_sparse.M_u_corr = entries.u.S;
 else
     big_sparse.M_u_cross = entries.u_cross.S;
@@ -93,15 +113,20 @@ else
 end
 big_sparse.M_ft_corr = entries.ft.S;
 
+stats.nnz_source_corr = 0;
 stats.nnz_pair = nnz(big_sparse.M_pair);
-if strcmp(ram_estimate.matrix_plan.u_corr_mode,'combined')
+if strcmp(plan.u_corr_mode,'combined')
     stats.nnz_u = nnz(big_sparse.M_u_corr);
 else
     stats.nnz_u_cross = nnz(big_sparse.M_u_cross);
     stats.nnz_u_peanut = nnz(big_sparse.M_u_peanut);
 end
 stats.nnz_ft = nnz(big_sparse.M_ft_corr);
-stats.nnz_source_scatter = numel(big_sparse.source_scatter_rows);
+if plan.sparse_map_coarse
+    stats.nnz_source_corr = nnz(big_sparse.M_source_corr);
+else
+    stats.nnz_source_scatter = numel(big_sparse.source_scatter_rows);
+end
 stats.nnz_velocity_scatter = numel(big_sparse.velocity_scatter_rows);
 stats.nnz_ft_scatter = numel(big_sparse.ft_scatter_rows);
 stats.active = true;
@@ -163,15 +188,18 @@ stats.N_c = N_c;
 stats.N_check = N_check;
 stats.used_pair_cache = false;
 stats.source_correction = plan.source_correction;
+stats.sparse_map_coarse = plan.sparse_map_coarse;
 stats.velocity_correction = plan.velocity_correction;
 stats.u_corr_mode = plan.u_corr_mode;
 stats.combined_u_corr = plan.combined_u_corr;
 stats.force_torque_correction = plan.force_torque_correction;
+stats.local_source_corr_entries = counts.source_corr/max(1,n_pairs);
 stats.local_pair_entries = counts.pair/max(1,n_pairs);
 stats.local_u_entries = counts.u/max(1,n_pairs);
 stats.local_u_cross_entries = counts.u_cross/max(1,n_pairs);
 stats.local_u_peanut_entries = counts.u_peanut/max(1,n_pairs);
 stats.local_ft_entries = counts.ft/max(1,n_pairs);
+stats.nnz_source_corr = 0;
 stats.nnz_pair = 0;
 stats.nnz_u = 0;
 stats.nnz_u_cross = 0;
@@ -194,7 +222,11 @@ big_sparse.matrix_plan = ram_estimate.matrix_plan;
 big_sparse.ram_estimate = ram_estimate;
 big_sparse.N_c = [];
 big_sparse.pairs = zeros(0,2);
-big_sparse.source_scatter_rows = zeros(0,1);
+if ram_estimate.matrix_plan.sparse_map_coarse
+    big_sparse.M_source_corr = sparse(n_source_cols,n_source_cols);
+else
+    big_sparse.source_scatter_rows = zeros(0,1);
+end
 big_sparse.velocity_scatter_rows = zeros(0,1);
 big_sparse.ft_scatter_rows = zeros(0,1);
 big_sparse.M_pair = sparse(pair_total_rows,n_source_cols);
@@ -224,9 +256,17 @@ local_pair = pair_rows*(4*N_c);
 local_u = (4*N_check)*(4*N_c);
 local_ft = 6*(4*N_c);
 u_corr_mode = resolveResBigSparseUCorrMode(opt);
+sparse_map_coarse = logical(getOptField(opt,'sparse_map_coarse',false));
 
 entries = struct();
+entries.sparse_map_coarse = sparse_map_coarse;
 entries.u_corr_mode = u_corr_mode;
+if sparse_map_coarse
+    entries.source_corr = initSparseBuilder( ...
+        chunk_pairs*local_pair,n_source_cols,n_source_cols);
+else
+    entries.source_corr = initSparseBuilder(0,n_source_cols,n_source_cols);
+end
 entries.pair = initSparseBuilder( ...
     chunk_pairs*local_pair,pair_total_rows,n_source_cols);
 switch u_corr_mode
@@ -251,10 +291,15 @@ function entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
 i = pairs(row,1);
 j = pairs(row,2);
 in_idx = pairCoarseInputIndices(i,j,N_c,P);
+source_idx = pairSourceOutputIndices(i,j,N_c,P);
 pair_idx = (row-1)*(4*N_c)+1:row*(4*N_c);
 u_idx = pairVelocityBlockIndices(row,N_check);
 ft_idx = pairForceTorqueBlockIndices(row);
 
+if entries.sparse_map_coarse
+    entries.source_corr = appendSparseBuilderBlock(entries.source_corr, ...
+        source_idx,in_idx,C_pair);
+end
 entries.pair = appendSparseBuilderBlock(entries.pair, ...
     pair_idx,in_idx,C_pair);
 switch entries.u_corr_mode
@@ -275,6 +320,7 @@ entries.ft = appendSparseBuilderBlock(entries.ft, ...
 end
 
 function entries = flushAllSparseBuilders(entries)
+entries.source_corr = flushSparseBuilderBlock(entries.source_corr);
 entries.pair = flushSparseBuilderBlock(entries.pair);
 entries.u = flushSparseBuilderBlock(entries.u);
 entries.u_cross = flushSparseBuilderBlock(entries.u_cross);
@@ -360,11 +406,16 @@ end
 function test_buildResPeanutBigSparseStokes
 fprintf('buildResPeanutBigSparseStokes self-test: spy plots\n');
 
-P = 10;
-delta = 0.1;
-q = grow_cluster(P,delta,2);
+P = 20;
+phi = 0.65;
+rad = 1;
+geom_opt = struct('domain','boxed','phi',phi,'rad',rad, ...
+    'min_gap',1e-3,'n_sweeps',200,'rng_seed',210421, ...
+    'visualise',false);
+[q,meta] = random_discs_mc(P,geom_opt);
+
 opt = get2Dparams(P,18,24);
-opt.delta_pair = 0.12;
+opt.delta_pair = 0.2;
 opt.N_peanut = 60;
 opt.get_bndry_field = 0;
 opt.visualise_sol = 0;
@@ -375,60 +426,31 @@ opt.self_correct = 1;
 opt.use_dense = 1;
 opt.reuse_pair_basis_by_sep = false;
 opt.use_fmm = false;
-opt.res_big_sparse_u_corr_mode = 'factored'; 
 
 [geom,basis] = buildSelfTestData(q,opt);
-[big_sparse,] = buildResPeanutBigSparseStokes(geom,basis);
+cases = struct( ...
+    'sparse_map_coarse',{false,false,true,true}, ...
+    'u_corr_mode',{'combined','factored','combined','factored'}, ...
+    'label',{ ...
+        'pair based sorting of coarse, combined u', ...
+        'pair based sorting of coarse, factored u', ...
+        'direct coarse, combined u', ...
+        'direct coarse, factored u'});
 
-opt.res_big_sparse_u_corr_mode = 'combined';
-geom.opt = opt; 
-[big_sparse_comb,stats] = buildResPeanutBigSparseStokes(geom,basis);
-
-fprintf('  P=%d, close pairs=%d\n',P,stats.n_pairs);
-fprintf(['  M_pair nnz=%d, M_u_cross nnz=%d, ', ...
-    'M_u_peanut nnz=%d, M_ft_corr nnz=%d\n'], ...
-    stats.nnz_pair,stats.nnz_u_cross,stats.nnz_u_peanut, ...
-    stats.nnz_ft);
-
-% Use factored map for the velocity correction
-figure('Name','buildResPeanutBigSparseStokes factored self-test','Color','w');
-tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
-
-nexttile;
-spy(big_sparse.M_pair);
-title('Source correction map','Interpreter','none');
-
-nexttile;
-spy(big_sparse.M_u_cross);
-title('Velocity correction map part 1','Interpreter','none');
-
-nexttile;
-spy(big_sparse.M_u_peanut);
-title('Velocity correction map part 2','Interpreter','none');
-
-nexttile;
-spy(big_sparse.M_ft_corr);
-title('Force/torque correciton map','Interpreter','none');
-
-sgtitle(sprintf('P=%d, pairs=%d',P,stats.n_pairs));
-
-% Use the combined map for the velocity correction
-figure('Name','buildResPeanutBigSparseStokes factored self-test','Color','w');
-tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
-
-nexttile;
-spy(big_sparse_comb.M_pair);
-title('Source correction map','Interpreter','none');
-
-nexttile;
-spy(big_sparse_comb.M_u_corr);
-title('Velocity correction map','Interpreter','none');
-
-nexttile;
-spy(big_sparse_comb.M_ft_corr);
-title('Force/torque correction map','Interpreter','none');
-
-sgtitle(sprintf('P=%d, pairs=%d',P,stats.n_pairs));
+fprintf('  P=%d, target phi=%.3f, actual phi=%.3f\n',P,phi,meta.phi);
+for case_id = 3:numel(cases)
+    geom_case = geom;
+    geom_case.opt.sparse_map_coarse = cases(case_id).sparse_map_coarse;
+    geom_case.opt.res_big_sparse_u_corr_mode = cases(case_id).u_corr_mode;
+    [big_sparse,stats] = buildResPeanutBigSparseStokes(geom_case,basis);
+    fprintf(['  case %d: sparse_map_coarse=%d u_mode=%s pairs=%d ', ...
+        'source_corr nnz=%d pair nnz=%d u_direct nnz=%d ', ...
+        'u_cross nnz=%d u_peanut nnz=%d ft nnz=%d\n'], ...
+        case_id,cases(case_id).sparse_map_coarse,cases(case_id).u_corr_mode, ...
+        stats.n_pairs,stats.nnz_source_corr,stats.nnz_pair,stats.nnz_u, ...
+        stats.nnz_u_cross,stats.nnz_u_peanut,stats.nnz_ft);
+    plotResBigSparseSpyFigure(big_sparse,stats,P,meta.phi,cases(case_id));
+end
 
 end
 
@@ -495,4 +517,54 @@ basis.YC_all = YC_all;
 basis.Cmap = Cmap;
 basis.Cmap_FU = Cmap_FU;
 basis.pair_cache = pair_cache;
+end
+
+function plotResBigSparseSpyFigure(big_sparse,stats,P,phi,case_info)
+if case_info.sparse_map_coarse
+    matrices = {big_sparse.M_source_corr,big_sparse.M_pair};
+    titles = {'Source correction map', ...
+        'Pair source map used by velocity/FT correction'};
+else
+    matrices = {big_sparse.M_pair};
+    titles = {'Source correction map'}; 
+end
+
+if strcmp(case_info.u_corr_mode,'combined')
+    figure_name = 'buildResPeanutBigSparseStokes combined self-test';
+    matrices{end+1} = big_sparse.M_u_corr;
+    titles{end+1} = 'Velocity correction map';
+    velocity_note = 'velocity: M_u_corr';
+else
+    figure_name = 'buildResPeanutBigSparseStokes factored self-test';
+    matrices{end+1} = big_sparse.M_u_cross;
+    titles{end+1} = 'Velocity correction map part 1';
+    matrices{end+1} = big_sparse.M_u_peanut;
+    titles{end+1} = 'Velocity correction map part 2';
+    velocity_note = 'velocity: M_u_cross and M_u_peanut';
+end
+matrices{end+1} = big_sparse.M_ft_corr;
+titles{end+1} = 'Force/torque correction map';
+
+[nrows,ncols] = chooseSpyTileShape(numel(matrices));
+figure('Name',sprintf('%s (%s)',figure_name,case_info.label), ...
+    'Color','w');
+tiledlayout(nrows,ncols,'TileSpacing','compact','Padding','compact');
+for k = 1:numel(matrices)
+    nexttile;
+    spy(matrices{k});
+    title(titles{k},'Interpreter','none');
+end
+
+sgtitle({ ...
+    sprintf('P=%d, phi=%.2f, pairs=%d',P,phi,stats.n_pairs), ...
+    case_info.label});
+end
+
+function [nrows,ncols] = chooseSpyTileShape(nplots)
+if nplots <= 3
+    nrows = 1;
+else
+    nrows = 2;
+end
+ncols = ceil(nplots/nrows);
 end

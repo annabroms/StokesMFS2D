@@ -100,23 +100,36 @@ end
 if project_force || logical(getOptField(opt,'cmap',false))
     Kf1 = getKmat2D(rin_pair(1:end/2),q_pair(1));
     Kf2 = getKmat2D(rin_pair(end/2+1:end),q_pair(2));
+    pair_moment_map = getKftPair(Kf1,Kf2);
+    pair_rbm_map = pair_moment_map';
+    pair_moment_gram = pair_moment_map*pair_rbm_map;
 else
     Kf1 = [];
     Kf2 = [];
+    pair_moment_map = [];
+    pair_rbm_map = [];
+    pair_moment_gram = [];
 end
 
 if project_force
     B1 = getKmat2D([q_pair(1)+rout_base; refine_i],q_pair(1));
     B2 = getKmat2D([q_pair(2)+rout_base; refine_j],q_pair(2));
-    Lr_pair = getLrPair(B1,B2,Kf1,Kf2);
     Lf_pair = getLfPair(Kf1,Kf2);
+    pair_target_rbm_map = getKftPair(B1,B2)';
+    pair_projection_moment_map = pair_moment_map;
+    pair_projection_rbm_map = pair_rbm_map;
+    pair_projection_moment_gram = pair_moment_gram;
 else
-    Lr_pair = [];
     Lf_pair = [];
+    pair_target_rbm_map = [];
+    pair_projection_moment_map = [];
+    pair_projection_rbm_map = [];
+    pair_projection_moment_gram = [];
 end
 
-[Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f,Lf_pair, ...
-    Lr_pair,svd_pair);
+[Uf_pair,Yf_pair] = getPairBlockStokes(rin_pair,rout_f, ...
+    pair_projection_moment_map,pair_projection_rbm_map, ...
+    pair_projection_moment_gram,pair_target_rbm_map,svd_pair);
 Npair = evaluateCoarseOnPair(q_pair,rbase_in_c,rout_f);
 Upf = -Uf_pair'*Npair;
 
@@ -126,7 +139,8 @@ if getOptField(opt,'N_peanut',0)
     rout_peanut = createPeanut(q_pair(1),q_pair(2),opt.N_peanut,0);
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
     [DC,YC] = getPeanutBlockStokes(rin_pair_c,rin_pair,rout_peanut, ...
-        Lc_pair,Lf_pair,svd_opts);
+        Lc_pair,pair_projection_moment_map,pair_projection_rbm_map, ...
+        pair_projection_moment_gram,svd_opts);
     if logical(getOptField(opt,'cmap',false))
         pair.Cmap = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
     end
@@ -135,8 +149,7 @@ else
 end
 
 if logical(getOptField(opt,'cmap',false))
-    Kft_pair = getKftPair(Kf1,Kf2);
-    pair.Cmap_FU = -Kft_pair*Yf_pair*(Uf_pair'*Npair);
+    pair.Cmap_FU = -pair_moment_map*Yf_pair*(Uf_pair'*Npair);
 end
 
 if store_full_pair_payload
@@ -166,6 +179,10 @@ debug_data.Yf_pair = Yf_pair;
 debug_data.Lf_pair = Lf_pair;
 debug_data.Kf1 = Kf1;
 debug_data.Kf2 = Kf2;
+debug_data.pair_moment_map = pair_moment_map;
+debug_data.pair_rbm_map = pair_rbm_map;
+debug_data.pair_moment_gram = pair_moment_gram;
+debug_data.pair_target_rbm_map = pair_target_rbm_map;
 debug_data.Lc_pair = Lc_pair;
 debug_data.DC = DC;
 debug_data.YC = YC;

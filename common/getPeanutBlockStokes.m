@@ -1,91 +1,67 @@
-function [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair, svd_opts)
-%GETPEANUTBLOCKSTOKES Computes factorization for peanut compression for two circular particles
-% in Stokes flow using the method of fundamental solutions (MFS)
+function [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, ...
+    rout_peanut, Lc_pair, pair_moment_map, pair_rbm_map, ...
+    pair_moment_gram, svd_opts)
+%GETPEANUTBLOCKSTOKES Compute the Stokes peanut compression factors.
 %
 % Syntax:
-%   [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair)
-%   [DC, Y] = getPeanutBlockStokes(rin_pair_c, rin_pair_f, rout_peanut, Lc_pair, Lf_pair, svd_opts)
+%   [DC, Y] = getPeanutBlockStokes(rin_pair_c,rin_pair_f,rout_peanut, ...
+%       Lc_pair,pair_moment_map,pair_rbm_map,pair_moment_gram)
+%   [DC, Y] = getPeanutBlockStokes(rin_pair_c,rin_pair_f,rout_peanut, ...
+%       Lc_pair,pair_moment_map,pair_rbm_map,pair_moment_gram,svd_opts)
 %
 % Inputs:
-%   rin_pair_c  - Complex vector of proxy source coordinates on both particles (coarse grid)
-%   rin_pair_f  - Complex vector of proxy source coordinates on both particles (fine grid)
-%   rout_peanut - Complex vector of target points on the peanut interface (separation surface)
-
-%   Lc_pair     - Projection matrix onto the null space of the force/torque constraint
-%                 for coarse sources on both particles
-%   Lf_pair     - Projection matrix onto the null space of the force/torque constraint
-%                 for fine sources on both particles
+%   rin_pair_c        - coarse pair proxy sources
+%   rin_pair_f        - fine pair proxy sources
+%   rout_peanut       - peanut collocation targets
+%   Lc_pair           - coarse pair projector for the mobility solve
+%   pair_moment_map   - 6-by-(2*nsrc) pair force/torque moment map
+%   pair_rbm_map      - (2*nsrc)-by-6 pair rigid-body source map
+%   pair_moment_gram  - 6-by-6 Gram matrix pair_moment_map*pair_rbm_map
 %
 % Outputs:
-%   DC - Product of:
-%          1) left singular vectors matrix from an SVD of the evaluation of the coarse-grid on the peanut interface, and
-%          2) the fine-grid evaluation matrix for the pair on the peanut
-%   Y  - Matrix given by V * S⁺ from the same SVD, where:
-%          - S⁺ is a diagonal matrix with 1/σ for retained singular values σ
-%          - V is the matrix of corresponding right singular vectors
-%
-% Description:
-%   This function enables a backward-stable compression mapping from fine source strengths
-%   (β) to effective coarse proxy strengths (λ_coarse_effective), via:
-%
-%       λ_coarse_effective = Y * (DC * β)
-%
-%   The factorization is used to accelerate and stabilize close interaction corrections between
-%   two near-touching particles in Stokes flow.
-%
-% Notes:
-%   - Only singular values above an internal tolerance are retained
-%   - Designed for use in 2-body preconditioning with peanut compression
-%
-% See also:
-%   getPseudoFactors
+%   DC - Product of the coarse peanut left singular vectors with the
+%        projected fine-grid evaluation matrix.
+%   Y  - Right pseudoinverse factor returned by getPseudoFactors.
 %
 % Anna Broms, Feb 12, 2026
 
-if nargin < 6 || isempty(svd_opts)
+if nargin < 8 || isempty(svd_opts)
     svd_opts = struct();
 end
 
-mu = 1; 
-
-%% Get fine representation: fine proxy grid of Stokeslets, evaluated on peanut boundary 
+mu = 1;
 
 Nf = stokSLPmat(rin_pair_f,rout_peanut,mu);
-
-%% If mobility, need to project so that the fine sources don't contribute to force and torque
-if ~isempty(Lf_pair)
-    Ntot = Nf-Nf*Lf_pair; % we want the I-L action to project off force/torque contribution
-    project = 1; 
+project = ~isempty(pair_moment_map);
+if project
+    validate_projection_inputs(Lc_pair,pair_moment_map,pair_rbm_map, ...
+        pair_moment_gram);
+    Ntot = Nf - (Nf*pair_rbm_map)/pair_moment_gram * pair_moment_map;
 else
-    Ntot = Nf; %matrix in the rhs of the matching LSQ problem representing the fine grid
-    project = 0; 
+    Ntot = Nf;
 end
 
-%% Get coarse representation 
-% %i.e. coarse proxy grid of Stokeslets evaluated on peanut boundary
 Npeanut = stokSLPmat(rin_pair_c,rout_peanut,mu);
-
-% If we solve a mobility problem, the coarse sources equivalent to the fine
-% sources should not contribute to a force/torque on the particle pair.
-% Project off any such contribution.
 if project
     Npeanut = Npeanut*Lc_pair;
 end
 
-%tol = 1e-6;
-tol = 1e-10;
 tol = 1e-14;
-%tol = eps; 
-%tol = 1e-8; 
-
 svd_opts_local = svd_opts;
 if logical(getOptField(svd_opts,'left_weight',false))
     svd_opts_local.row_weights = getPeriodicCurveWeights(rout_peanut);
 end
 
-%Determine factors for the pseudoinverse of the coarse evaluation
-[Y,U]  = getPseudoFactors(Npeanut,tol,0,svd_opts_local);
-%Get mapping to determine (coarse sources) lambda <- beta (fine sources) 
+[Y,U] = getPseudoFactors(Npeanut,tol,0,svd_opts_local);
 DC = U'*Ntot;
+end
 
+function validate_projection_inputs(Lc_pair,pair_moment_map,pair_rbm_map, ...
+    pair_moment_gram)
+if isempty(Lc_pair) || isempty(pair_moment_map) || isempty(pair_rbm_map) || ...
+        isempty(pair_moment_gram)
+    error('getPeanutBlockStokes:MissingProjectionData', ...
+        ['Projected peanut compression requires Lc_pair, ', ...
+         'pair_moment_map, pair_rbm_map, and pair_moment_gram.']);
+end
 end

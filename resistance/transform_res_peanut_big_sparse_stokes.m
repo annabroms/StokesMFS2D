@@ -43,8 +43,13 @@ lambda_self = [lam_self_x; lam_self_y];
 
 %% Apply all pair corrections through a fixed sparse map.
 pair_tau = basis.big_sparse.M_pair*lambda_self;
-lambda_c = addSourceCorrectionsInPairOrder(lambda_self, ...
-    basis.big_sparse.source_scatter_rows,pair_tau,4*N_c);
+if isfield(basis.big_sparse,'M_source_corr') && ...
+        ~isempty(basis.big_sparse.M_source_corr)
+    lambda_c = lambda_self + basis.big_sparse.M_source_corr*lambda_self;
+else
+    lambda_c = addSourceCorrectionsInPairOrder(lambda_self, ...
+        basis.big_sparse.source_scatter_rows,pair_tau,4*N_c);
+end
 lam_c_x = lambda_c(1:n_coarse);
 lam_c_y = lambda_c(n_coarse+1:2*n_coarse);
 

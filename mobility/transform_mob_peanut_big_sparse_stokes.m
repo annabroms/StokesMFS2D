@@ -25,9 +25,9 @@ U = basis.U;
 Y = basis.Y;
 Lc = basis.Lc;
 
-P = getOptField(opt,'P',numel(geom.q));
+P = opt.P;
 N_c = opt.N_c;
-PM = numel(rvec_out);
+PM = round(P*N_c*opt.a_c);
 N_large = PM/P;
 n_coarse = P*N_c;
 
@@ -50,27 +50,33 @@ lam_c_y = reshape(tau_proj_blocks(N_c+1:2*N_c,:),[],1);
 
 lambda_self = [reshape(lambda_self_blocks(1:N_c,:),[],1); ...
     reshape(lambda_self_blocks(N_c+1:2*N_c,:),[],1)];
-if ~isfield(basis.big_sparse,'M_pair_nonp')
-    error('transform_mob_peanut_big_sparse_stokes:MissingPairMap', ...
-        'The big sparse transform requires M_pair_nonp.');
-end
-if ~isfield(basis.big_sparse,'P_pair')
-    error('transform_mob_peanut_big_sparse_stokes:MissingProjector', ...
-        'The big sparse transform requires basis.big_sparse.P_pair.');
-end
-if ~isfield(basis.big_sparse,'source_scatter_rows')
-    error('transform_mob_peanut_big_sparse_stokes:MissingSourceRows', ...
-        'The big sparse transform requires source_scatter_rows.');
-end
+pair_proj = [];
+if isfield(basis.big_sparse,'M_source_corr') && ...
+        ~isempty(basis.big_sparse.M_source_corr)
+    corr = basis.big_sparse.M_source_corr*lambda_self;
+else
+    if ~isfield(basis.big_sparse,'M_pair_nonp')
+        error('transform_mob_peanut_big_sparse_stokes:MissingPairMap', ...
+            'The big sparse transform requires M_pair_nonp.');
+    end
+    if ~isfield(basis.big_sparse,'P_pair')
+        error('transform_mob_peanut_big_sparse_stokes:MissingProjector', ...
+            'The big sparse transform requires basis.big_sparse.P_pair.');
+    end
+    if ~isfield(basis.big_sparse,'source_scatter_rows')
+        error('transform_mob_peanut_big_sparse_stokes:MissingSourceRows', ...
+            'The big sparse transform requires source_scatter_rows.');
+    end
 
-% Fixed source-correction algebra:
-%   pair_nonp = C_nonp*lambda_self
-%   pair_proj = P_pair*pair_nonp
-%   corr = scatter([pair_proj; pair_nonp])
-pair_nonp = basis.big_sparse.M_pair_nonp*lambda_self;
-pair_proj = applyDensePairProjector(pair_nonp,basis.big_sparse.P_pair);
-corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
-    pair_proj,pair_nonp,4*N_c,n_coarse);
+    % Legacy source-correction algebra:
+    %   pair_nonp = C_nonp*lambda_self
+    %   pair_proj = P_pair*pair_nonp
+    %   corr = scatter([pair_proj; pair_nonp])
+    pair_nonp = basis.big_sparse.M_pair_nonp*lambda_self;
+    pair_proj = applyDensePairProjector(pair_nonp,basis.big_sparse.P_pair);
+    corr = scatterSourceCorrections(basis.big_sparse.source_scatter_rows, ...
+        pair_proj,pair_nonp,4*N_c,n_coarse);
+end
 
 lam_c_x = lam_c_x + corr(1:n_coarse);
 lam_c_y = lam_c_y + corr(n_coarse+1:2*n_coarse);
@@ -91,6 +97,14 @@ else
         error('transform_mob_peanut_big_sparse_stokes:MissingFactoredUCorr', ...
             ['opt.big_sparse_direct_u_corr=0 requires M_u_cross ', ...
              'and M_u_peanut.']);
+    end
+    if isempty(pair_proj)
+        if ~isfield(basis.big_sparse,'M_pair_proj')
+            error('transform_mob_peanut_big_sparse_stokes:MissingPairProj', ...
+                ['opt.sparse_map_coarse=1 and opt.big_sparse_direct_u_corr=0 ', ...
+                 'require M_pair_proj.']);
+        end
+        pair_proj = basis.big_sparse.M_pair_proj*lambda_self;
     end
     u_corr = basis.big_sparse.M_u_cross*lambda_self - ...
         basis.big_sparse.M_u_peanut*pair_proj;

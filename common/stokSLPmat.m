@@ -3,15 +3,21 @@ function S = stokSLPmat(rin,rout,mu)
 %2D Stokeslet sources centered at complex valued coordinates rin evaluated
 %at targets rout, given viscosity mu
 %
-%code taken from Alex Barnett (BIE2D)
+%code adapted from Alex Barnett (BIE2D)
 
-r = bsxfun(@minus, rout, rin.');          % C-# displacements mat
-irr = 1./(conj(r).*r);                   % 1/r^2, used in all cases below
-d1 = real(r); d2 = imag(r);              % worth storing I think
-c = 1/(4*pi*mu);              % factor from Hsiao-Wendland book, Ladyzhenskaya
+rin = rin(:).';
+rout = rout(:);
 
-logir = -log(abs(r));  % log(1/r) diag block
-A12 = d1.*d2.*irr;     % off diag vel block
-S = c*[logir + d1.^2.*irr, A12;                         % u_x
-     A12,                logir + d2.^2.*irr];         % u_y)
+dx = real(rout) - real(rin);
+dy = imag(rout) - imag(rin);
+dx2 = dx.^2;
+dy2 = dy.^2;
+r2 = dx2 + dy2;
+irr = 1./r2;
+
+c = 1/(4*pi*mu); % factor from Hsiao-Wendland book, Ladyzhenskaya
+logir = -0.5*log(r2); % log(1/r)
+A12 = dx.*dy.*irr; % off diagonal velocity block
+S = c*[logir + dx2.*irr, A12; ...
+       A12,              logir + dy2.*irr];
 end

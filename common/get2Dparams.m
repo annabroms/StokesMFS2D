@@ -13,6 +13,9 @@ end
 opt.P = P; %number of particles
 opt.N_c = N_c; 
 
+opt.debug = 0; %visualise system matrix by hitting matvec with columns of 
+% the idenitity matrix
+
 %set separation between true boundary and proxy surface
 tol = 1e-12;
 sep = (1/N_c)*log(1/tol); %separation between surfaces based on rule of thumb in Stein & Barnett QFS paper (2021) 
@@ -53,6 +56,7 @@ opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel po
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
 opt.use_big_sparse = true; % use global sparse close-pair correction matrices in supported peanut GMRES solves
+opt.sparse_map_coarse = true; % if true, precompose coarse source correction into a direct global M_source_corr
 opt.mob_big_sparse_build_mode = 'precomputed'; % 'precomputed' | 'streaming'
 opt.mob_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk
 opt.res_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk for resistance

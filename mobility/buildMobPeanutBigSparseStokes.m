@@ -10,16 +10,28 @@ function [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom,basis)
 % opt.reuse_pair_basis_by_sep when opt.use_big_sparse is true, so every
 % close pair contributes the dense maps for its actual geometry.
 %
-% Fixed matrix set:
-%   M_pair_nonp maps projected one-body coarse sources to unprojected
-%       close-pair coarse-source increments.
-%   P_pair is the dense local rigid projection applied to each pair block.
-%   source_scatter_rows accumulates [projected; unprojected] pair blocks
-%       into global coarse-source correction vectors.
-%   M_u_corr maps projected one-body coarse sources directly to u_corr.
-%       This is the default opt.big_sparse_direct_u_corr=true path.
-%   M_u_cross and M_u_peanut are built instead when
-%       opt.big_sparse_direct_u_corr=false for comparison.
+% opt.sparse_map_coarse and opt.big_sparse_direct_u_corr select the matrix
+% set built here:
+%   sparse_map_coarse = 0:
+%       M_pair_nonp, P_pair, and source_scatter_rows keep the pair based
+%       row structure
+%       coarse correction
+%           pair_nonp = M_pair_nonp*lambda_self
+%           pair_proj = P_pair*pair_nonp
+%           corr = scatter([pair_proj; pair_nonp]).
+%   sparse_map_coarse = 1:
+%       M_source_corr maps projected one-body coarse sources directly to
+%       projected coarse-source increments, so the solve matvec applies
+%           corr = M_source_corr*lambda_self.
+%   big_sparse_direct_u_corr = 1:
+%       M_u_corr maps projected one-body coarse sources directly to u_corr.
+%   big_sparse_direct_u_corr = 0:
+%       M_u_cross and M_u_peanut keep the velocity correction factored.
+%       When sparse_map_coarse = 1 this also builds M_pair_proj so the
+%       factored u_corr path can reuse projected pair data without a
+%       runtime dense projector.
+%   M_rbm_corr is always built because the solve-grid mobility path still
+%       uses it when postprocessing rigid-body motion.
 %
 % No canonical-pair rotations are built in this path.
 
@@ -50,10 +62,16 @@ n_u_rows = 2*P*N_check;
 n_u_cols = 2*n_coarse;
 pair_block_rows = 4*N_c;
 pair_total_rows = n_pairs*pair_block_rows;
-P_pair = resolvePairProjectionMatrix(geom,basis);
 ram_estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt);
 plan = ram_estimate.matrix_plan;
 direct_u_corr = plan.direct_u_corr;
+sparse_map_coarse = plan.sparse_map_coarse;
+need_pair_projection_matrix = n_pairs > 0;
+if need_pair_projection_matrix
+    P_pair = resolvePairProjectionMatrix(geom,basis);
+else
+    P_pair = [];
+end
 
 stats = initBigSparseStats(n_pairs,N_c,N_check,ram_estimate);
 stats.requested = true;
@@ -101,26 +119,43 @@ entries = flushAllSparseBuilders(entries);
 big_sparse = struct();
 big_sparse.matrix_plan = plan;
 big_sparse.ram_estimate = ram_estimate;
-big_sparse.P_pair = P_pair;
-big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
-big_sparse.M_pair_nonp = entries.pair_nonp.S;
+if sparse_map_coarse
+    big_sparse.M_source_corr = entries.source_corr.S;
+else
+    big_sparse.P_pair = P_pair;
+    big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
+    big_sparse.M_pair_nonp = entries.pair_nonp.S;
+end
 big_sparse.M_rbm_corr = entries.rbm.S;
 if direct_u_corr
     big_sparse.M_u_corr = entries.u.S;
 else
     big_sparse.M_u_cross = entries.u_cross.S;
     big_sparse.M_u_peanut = entries.u_peanut.S;
+    if sparse_map_coarse
+        big_sparse.M_pair_proj = entries.pair_proj.S;
+    end
 end
 
+stats.nnz_source_corr = 0;
+stats.nnz_pair_nonp = 0;
+stats.nnz_pair_proj = 0;
 if direct_u_corr
     stats.nnz_u = nnz(big_sparse.M_u_corr);
 else
     stats.nnz_u_cross = nnz(big_sparse.M_u_cross);
     stats.nnz_u_peanut = nnz(big_sparse.M_u_peanut);
+    if sparse_map_coarse
+        stats.nnz_pair_proj = nnz(big_sparse.M_pair_proj);
+    end
 end
-stats.nnz_pair_nonp = nnz(big_sparse.M_pair_nonp);
+if sparse_map_coarse
+    stats.nnz_source_corr = nnz(big_sparse.M_source_corr);
+else
+    stats.nnz_pair_nonp = nnz(big_sparse.M_pair_nonp);
+    stats.nnz_source_scatter = numel(big_sparse.source_scatter_rows);
+end
 stats.nnz_rbm = nnz(big_sparse.M_rbm_corr);
-stats.nnz_source_scatter = numel(big_sparse.source_scatter_rows);
 stats.active = true;
 stats.reason = '';
 stats.build_time = toc(timer);
@@ -217,19 +252,24 @@ stats.n_pairs = n_pairs;
 stats.N_c = N_c;
 stats.N_check = N_check;
 stats.used_pair_cache = false;
-stats.source_correction = 'factored_structured';
+stats.source_correction = plan.source_correction;
 stats.velocity_correction = plan.velocity_correction;
 stats.direct_u_corr = plan.direct_u_corr;
+stats.sparse_map_coarse = plan.sparse_map_coarse;
 stats.projector_mode = plan.projector_mode;
+stats.local_source_corr_entries = counts.source_corr/max(1,n_pairs);
 stats.local_pair_nonp_entries = counts.pair_nonp/max(1,n_pairs);
+stats.local_pair_proj_entries = counts.pair_proj/max(1,n_pairs);
 stats.local_u_entries = counts.u/max(1,n_pairs);
 stats.local_u_cross_entries = counts.u_cross/max(1,n_pairs);
 stats.local_u_peanut_entries = counts.u_peanut/max(1,n_pairs);
 stats.local_rbm_entries = counts.rbm/max(1,n_pairs);
+stats.nnz_source_corr = 0;
 stats.nnz_u = 0;
 stats.nnz_u_cross = 0;
 stats.nnz_u_peanut = 0;
 stats.nnz_pair_nonp = 0;
+stats.nnz_pair_proj = 0;
 stats.nnz_rbm = 0;
 stats.nnz_source_scatter = 0;
 stats.rotations_used = false;
@@ -247,15 +287,22 @@ function big_sparse = emptyBigSparse(n_source_cols,n_u_rows,n_u_cols, ...
     pair_total_rows,n_rbm_rows,plan)
 big_sparse = struct();
 big_sparse.matrix_plan = plan;
-big_sparse.P_pair = sparse(0,0);
-big_sparse.source_scatter_rows = zeros(0,1);
-big_sparse.M_pair_nonp = sparse(pair_total_rows,n_source_cols);
+if plan.sparse_map_coarse
+    big_sparse.M_source_corr = sparse(n_source_cols,n_source_cols);
+else
+    big_sparse.P_pair = sparse(0,0);
+    big_sparse.source_scatter_rows = zeros(0,1);
+    big_sparse.M_pair_nonp = sparse(pair_total_rows,n_source_cols);
+end
 big_sparse.M_rbm_corr = sparse(n_rbm_rows,n_source_cols);
 if plan.direct_u_corr
     big_sparse.M_u_corr = sparse(n_u_rows,n_u_cols);
 else
     big_sparse.M_u_cross = sparse(n_u_rows,n_u_cols);
     big_sparse.M_u_peanut = sparse(n_u_rows,pair_total_rows);
+    if plan.sparse_map_coarse
+        big_sparse.M_pair_proj = sparse(pair_total_rows,n_source_cols);
+    end
 end
 end
 
@@ -298,19 +345,33 @@ local_u = (4*N_check)*(4*N_c);
 local_rbm = 6*(4*N_c);
 
 entries = struct();
-entries.pair_nonp = initSparseBuilder( ...
-    chunk_pairs*local_pair_nonp,pair_total_rows,n_source_cols);
+if plan.sparse_map_coarse
+    entries.source_corr = initSparseBuilder( ...
+        chunk_pairs*local_pair_nonp,n_source_cols,n_source_cols);
+    entries.pair_nonp = initSparseBuilder(0,pair_total_rows,n_source_cols);
+else
+    entries.source_corr = initSparseBuilder(0,n_source_cols,n_source_cols);
+    entries.pair_nonp = initSparseBuilder( ...
+        chunk_pairs*local_pair_nonp,pair_total_rows,n_source_cols);
+end
 entries.rbm = initSparseBuilder( ...
     chunk_pairs*local_rbm,n_rbm_rows,n_source_cols);
 if plan.direct_u_corr
     entries.u = initSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
     entries.u_cross = initSparseBuilder(0,n_u_rows,n_u_cols);
     entries.u_peanut = initSparseBuilder(0,n_u_rows,pair_total_rows);
+    entries.pair_proj = initSparseBuilder(0,pair_total_rows,n_source_cols);
 else
     entries.u = initSparseBuilder(0,n_u_rows,n_u_cols);
     entries.u_cross = initSparseBuilder(chunk_pairs*local_u,n_u_rows,n_u_cols);
     entries.u_peanut = initSparseBuilder(chunk_pairs*local_u,n_u_rows, ...
         pair_total_rows);
+    if plan.sparse_map_coarse
+        entries.pair_proj = initSparseBuilder( ...
+            chunk_pairs*local_pair_nonp,pair_total_rows,n_source_cols);
+    else
+        entries.pair_proj = initSparseBuilder(0,pair_total_rows,n_source_cols);
+    end
 end
 end
 
@@ -374,16 +435,27 @@ function entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P, ...
 i = pairs(row,1);
 j = pairs(row,2);
 in_idx = pairCoarseInputIndices(i,j,N_c,P);
+proj_out_idx = pairProjectedSourceOutputIndices(i,j,N_c,P);
 u_out_idx = pairVelocityOutputIndices(i,j,N_check,P);
 pair_idx = (row-1)*(4*N_c)+1:row*(4*N_c);
 rbm_idx = pairRigidOutputIndices(i,j,P);
 direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
+sparse_map_coarse = logical(getOptField(opt,'sparse_map_coarse',false));
 
-entries.pair_nonp = appendSparseBuilderBlock(entries.pair_nonp, ...
-    pair_idx,in_idx,C_nonp);
+if sparse_map_coarse || direct_u_corr
+    C_proj = P_pair*C_nonp;
+else
+    C_proj = [];
+end
+if sparse_map_coarse
+    entries.source_corr = appendSparseBuilderBlock(entries.source_corr, ...
+        proj_out_idx,in_idx,C_proj);
+else
+    entries.pair_nonp = appendSparseBuilderBlock(entries.pair_nonp, ...
+        pair_idx,in_idx,C_nonp);
+end
 entries.rbm = appendSparseBuilderBlock(entries.rbm,rbm_idx,in_idx,-Cmap_FU);
 if direct_u_corr
-    C_proj = P_pair*C_nonp;
     entries.u = appendSparseBuilderBlock(entries.u,u_out_idx,in_idx, ...
         Ucross - Ecolloc*C_proj);
 else
@@ -391,15 +463,21 @@ else
         Ucross);
     entries.u_peanut = appendSparseBuilderBlock(entries.u_peanut,u_out_idx, ...
         pair_idx,Ecolloc);
+    if sparse_map_coarse
+        entries.pair_proj = appendSparseBuilderBlock(entries.pair_proj, ...
+            pair_idx,in_idx,C_proj);
+    end
 end
 end
 
 function entries = flushAllSparseBuilders(entries)
+entries.source_corr = flushSparseBuilderBlock(entries.source_corr);
 entries.pair_nonp = flushSparseBuilderBlock(entries.pair_nonp);
 entries.rbm = flushSparseBuilderBlock(entries.rbm);
 entries.u = flushSparseBuilderBlock(entries.u);
 entries.u_cross = flushSparseBuilderBlock(entries.u_cross);
 entries.u_peanut = flushSparseBuilderBlock(entries.u_peanut);
+entries.pair_proj = flushSparseBuilderBlock(entries.pair_proj);
 end
 
 function rows = buildSourceScatterRows(pairs,N_c,P)
@@ -436,6 +514,13 @@ nonp_idx = [2*n_coarse+idx_i, 2*n_coarse+idx_j, ...
 idx = [proj_idx, nonp_idx]';
 end
 
+function idx = pairProjectedSourceOutputIndices(i,j,N_c,P)
+n_coarse = P*N_c;
+idx_i = (i-1)*N_c+1:i*N_c;
+idx_j = (j-1)*N_c+1:j*N_c;
+idx = [idx_i, idx_j, n_coarse+idx_i, n_coarse+idx_j]';
+end
+
 function idx = pairVelocityOutputIndices(i,j,N_check,P)
 pm_check = P*N_check;
 idx_i = (i-1)*N_check+1:i*N_check;
@@ -456,7 +541,7 @@ end
 function test_buildMobPeanutBigSparseStokes
 fprintf('buildMobPeanutBigSparseStokes self-test: random_discs_mc spy plots\n');
 
-P = 10;
+P = 20;
 phi = 0.65;
 rad = 1;
 geom_opt = struct('domain','boxed','phi',phi,'rad',rad, ...
@@ -464,12 +549,10 @@ geom_opt = struct('domain','boxed','phi',phi,'rad',rad, ...
     'visualise',false);
 [q,meta] = random_discs_mc(P,geom_opt);
 
-N_c = 80; % if values are of interest
+N_c = 24;
 N_f = 60;
-N_c = 24; % only for visualization
 opt = get2Dparams(P,N_c,N_f);
-opt.N_peanut = 120; % only for visualization
-%opt.N_peanut = 400;  % if values are of interest
+opt.N_peanut = 120;
 opt.delta_pair = 0.2;
 opt.get_bndry_field = 0;
 opt.visualise_sol = 0;
@@ -484,125 +567,155 @@ opt.parallel_precomp = false;
 opt.use_big_sparse = true;
 
 [geom,basis] = buildSelfTestMobilityData(q,opt);
+cases = struct( ...
+    'sparse_map_coarse',{false,false,true,true}, ...
+    'direct_u_corr',{true,false,true,false}, ...
+    'label',{ ...
+        'pair based coarse row structure, direct u', ...
+        'pair based coarse row structure, factored u', ...
+        'direct coarse, direct u: SMALLEST storage and FASTEST apply', ...
+        'direct coarse, factored u'});
 
-geom_direct = geom;
-geom_direct.opt.big_sparse_direct_u_corr = true;
-[big_direct,stats_direct] = buildMobPeanutBigSparseStokes( ...
-    geom_direct,basis);
+fprintf('  P=%d, target phi=%.3f, actual phi=%.3f\n',P,phi,meta.phi);
+for case_id = 1:numel(cases)
+    geom_case = geom;
+    geom_case.opt.sparse_map_coarse = cases(case_id).sparse_map_coarse;
+    geom_case.opt.big_sparse_direct_u_corr = cases(case_id).direct_u_corr;
+    [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom_case,basis);
+    fprintf(['  case %d: sparse_map_coarse=%d direct_u_corr=%d ', ...
+        'pairs=%d source_corr nnz=%d pair_nonp nnz=%d pair_proj nnz=%d ', ...
+        'u_direct nnz=%d u_cross nnz=%d u_peanut nnz=%d rbm nnz=%d\n'], ...
+        case_id,cases(case_id).sparse_map_coarse, ...
+        cases(case_id).direct_u_corr,stats.n_pairs, ...
+        stats.nnz_source_corr,stats.nnz_pair_nonp,stats.nnz_pair_proj, ...
+        stats.nnz_u,stats.nnz_u_cross,stats.nnz_u_peanut,stats.nnz_rbm);
+    plotMobilityBigSparseSpyFigure(big_sparse,stats,P,meta.phi,cases(case_id));
+end
 
-geom_factored = geom;
-geom_factored.opt.big_sparse_direct_u_corr = false;
-[big_factored,stats_factored] = buildMobPeanutBigSparseStokes( ...
-    geom_factored,basis);
+end
 
-fprintf('  P=%d, target phi=%.3f, actual phi=%.3f, close pairs=%d\n', ...
-    P,phi,meta.phi,stats_direct.n_pairs);
-fprintf('  direct u:   M_pair_nonp nnz=%d, M_u_corr nnz=%d\n', ...
-    stats_direct.nnz_pair_nonp,stats_direct.nnz_u);
-fprintf(['  factored u: M_pair_nonp nnz=%d, M_u_cross nnz=%d, ', ...
-    'M_u_peanut nnz=%d\n'],stats_factored.nnz_pair_nonp, ...
-    stats_factored.nnz_u_cross,stats_factored.nnz_u_peanut);
+function [geom,basis] = buildSelfTestMobilityData(q,opt)
+q = q(:);
+P = numel(q);
+rad = 1;
+N_c = opt.N_c;
+N_f = opt.N_f;
+a_c = opt.a_c;
+Rp_c = opt.Rp_c;
+Rp_f = opt.Rp_f;
 
-% With direct maps for the velocity correction
-figure('Name','buildMobPeanutBigSparseStokes spy direct maps','Color','w');
-tiledlayout(1,2,'TileSpacing','compact','Padding','compact');
+tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
+tout_c = tout_c_all(1:end-1)';
+rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
+tin_c = linspace(0,2*pi,N_c+1)';
+tin_c = tin_c(1:end-1);
+rbase_in_c = Rp_c*cos(tin_c) + 1i*Rp_c*sin(tin_c);
+tin_f = linspace(0,2*pi,N_f+1)';
+tin_f = tin_f(1:end-1);
+rbase_in_f = Rp_f*cos(tin_f) + 1i*Rp_f*sin(tin_f);
 
-nexttile;
-spy(big_direct.M_pair_nonp);
-title('Source correction map','Interpreter','none');
+[~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
 
-nexttile;
-spy(big_direct.M_u_corr);
-title('Velocity correction map','Interpreter','none');
+rvec_in_c = zeros(P*N_c,1);
+rout = zeros(P*numel(rbase_out_c),1);
+for k = 1:P
+    rvec_in_c((k-1)*N_c+1:k*N_c) = q(k) + rbase_in_c;
+    out_idx = (k-1)*numel(rbase_out_c)+1:k*numel(rbase_out_c);
+    rout(out_idx) = q(k) + rbase_out_c;
+end
 
-sgtitle(sprintf('P=%d, phi=%.2f, pairs=%d',P,meta.phi,stats_direct.n_pairs));
+svd_opts = struct('column_weight',false,'left_weight',false);
+[U,Y,Lc] = getSelfPseudoMobilityStokes( ...
+    1,q,rbase_in_c,rbase_out_c,[],[0,ceil(a_c*N_c)],svd_opts);
 
-% With factored maps for the velocity correction
-figure('Name','buildMobPeanutBigSparseStokes spy factored maps','Color','w');
-tiledlayout(1,3,'TileSpacing','compact','Padding','compact');
+opt_pair = opt;
+opt_pair.project_force = true;
+opt_pair.project = true;
+opt_pair.pair_basis_debug = 0;
+opt_pair.rad = ones(P,1);
+[UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
+    getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine, ...
+    pairs,opt_pair,Lc{1},rbase_out_c,svd_opts);
 
-nexttile;
-spy(big_factored.M_pair_nonp);
-title('Source correction map','Interpreter','none');
+geom = struct();
+geom.rbase_in_c = rbase_in_c;
+geom.rbase_in_f = rbase_in_f;
+geom.rvec_in = rvec_in_c;
+geom.rimage_vec = rimage_vec;
+geom.opt = opt_pair;
+geom.opt.get_bndry_field = 0;
+geom.opt.parallel_solve = false;
+geom.rvec_out = rout;
+geom.rcheck = rout;
+geom.q = q;
+geom.pairs = pairs;
+geom.refine = refine;
 
-nexttile;
-spy(big_factored.M_u_cross);
-title('factored: Part 1 of velocity correction map','Interpreter','none');
+basis = struct();
+basis.U = U;
+basis.Y = Y;
+basis.Lc = Lc{1};
+basis.Upf = UB_all;
+basis.Ypf = YB_all;
+basis.DC_all = UC_all;
+basis.YC_all = YC_all;
+basis.Cmap = Cmap;
+basis.Cmap_FU = Cmap_FU;
+basis.Lc_pair = getILpair(Lc{1});
+basis.pair_cache = pair_cache;
+end
 
-nexttile;
-spy(big_factored.M_u_peanut);
-title('factored: Part 2 of velocity correction map','Interpreter','none');
+function plotMobilityBigSparseSpyFigure(big_sparse,stats,P,phi,case_info)
+source_is_direct = case_info.sparse_map_coarse;
+if source_is_direct
+    matrices = {big_sparse.M_source_corr};
+    titles = {'Source correction map'};
+    source_note = 'source: M_source_corr';
+else
+    matrices = {big_sparse.M_pair_nonp};
+    titles = {'Source correction map'};
+    source_note = 'source: M_pair_nonp with P_pair and source_scatter_rows';
+end
 
-sgtitle(sprintf('P=%d, phi=%.2f, pairs=%d',P,meta.phi,stats_direct.n_pairs));
-
-    function [geom,basis] = buildSelfTestMobilityData(q,opt)
-    q = q(:);
-    P = numel(q);
-    rad = 1;
-    N_c = opt.N_c;
-    N_f = opt.N_f;
-    a_c = opt.a_c;
-    Rp_c = opt.Rp_c;
-    Rp_f = opt.Rp_f;
-
-    tout_c_all = linspace(0,2*pi,ceil(a_c*N_c)+1);
-    tout_c = tout_c_all(1:end-1)';
-    rbase_out_c = rad*(cos(tout_c)+1i*sin(tout_c));
-    tin_c = linspace(0,2*pi,N_c+1)';
-    tin_c = tin_c(1:end-1);
-    rbase_in_c = Rp_c*cos(tin_c) + 1i*Rp_c*sin(tin_c);
-    tin_f = linspace(0,2*pi,N_f+1)';
-    tin_f = tin_f(1:end-1);
-    rbase_in_f = Rp_f*cos(tin_f) + 1i*Rp_f*sin(tin_f);
-
-    [~,~,~,rimage_vec,refine,pairs] = getEnhancedGrid(q,opt);
-
-    rvec_in_c = zeros(P*N_c,1);
-    rout = zeros(P*numel(rbase_out_c),1);
-    for k = 1:P
-        rvec_in_c((k-1)*N_c+1:k*N_c) = q(k) + rbase_in_c;
-        out_idx = (k-1)*numel(rbase_out_c)+1:k*numel(rbase_out_c);
-        rout(out_idx) = q(k) + rbase_out_c;
+if case_info.direct_u_corr
+    figure_name = 'buildMobPeanutBigSparseStokes spy direct maps';
+    matrices{end+1} = big_sparse.M_u_corr;
+    titles{end+1} = 'Velocity correction map';
+    velocity_note = 'velocity: M_u_corr';
+else
+    figure_name = 'buildMobPeanutBigSparseStokes spy factored maps';
+    if source_is_direct
+        matrices{end+1} = big_sparse.M_pair_proj;
+        titles{end+1} = 'Projected pair map for factored velocity correction';
     end
+    matrices{end+1} = big_sparse.M_u_cross;
+    titles{end+1} = 'factored: Part 1 of velocity correction map';
+    matrices{end+1} = big_sparse.M_u_peanut;
+    titles{end+1} = 'factored: Part 2 of velocity correction map';
+    velocity_note = 'velocity: M_u_cross and M_u_peanut';
+end
 
-    svd_opts = struct('column_weight',false,'left_weight',false);
-    [U,Y,Lc] = getSelfPseudoMobilityStokes( ...
-        1,q,rbase_in_c,rbase_out_c,[],[0,ceil(a_c*N_c)],svd_opts);
+[nrows,ncols] = chooseSpyTileShape(numel(matrices));
+figure('Name',sprintf('%s (%s)',figure_name,case_info.label), ...
+    'Color','w');
+tiledlayout(nrows,ncols,'TileSpacing','compact','Padding','compact');
+for k = 1:numel(matrices)
+    nexttile;
+    spy(matrices{k});
+    title(titles{k},'Interpreter','none');
+end
 
-    opt_pair = opt;
-    opt_pair.project_force = true;
-    opt_pair.project = true;
-    opt_pair.pair_basis_debug = 0;
-    opt_pair.rad = ones(P,1);
-    [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
-        getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine, ...
-        pairs,opt_pair,Lc{1},rbase_out_c,svd_opts);
+sgtitle({ ...
+    sprintf('P=%d, phi=%.2f, pairs=%d',P,phi,stats.n_pairs), ...
+    case_info.label, ...
+    sprintf('not shown: RBM correction')});
+end
 
-    geom = struct();
-    geom.rbase_in_c = rbase_in_c;
-    geom.rbase_in_f = rbase_in_f;
-    geom.rvec_in = rvec_in_c;
-    geom.rimage_vec = rimage_vec;
-    geom.opt = opt_pair;
-    geom.opt.get_bndry_field = 0;
-    geom.opt.parallel_solve = false;
-    geom.rvec_out = rout;
-    geom.rcheck = rout;
-    geom.q = q;
-    geom.pairs = pairs;
-    geom.refine = refine;
-
-    basis = struct();
-    basis.U = U;
-    basis.Y = Y;
-    basis.Lc = Lc{1};
-    basis.Upf = UB_all;
-    basis.Ypf = YB_all;
-    basis.DC_all = UC_all;
-    basis.YC_all = YC_all;
-    basis.Cmap = Cmap;
-    basis.Cmap_FU = Cmap_FU;
-    basis.Lc_pair = getILpair(Lc{1});
-    basis.pair_cache = pair_cache;
-    end
+function [nrows,ncols] = chooseSpyTileShape(nplots)
+if nplots <= 3
+    nrows = 1;
+else
+    nrows = 2;
+end
+ncols = ceil(nplots/nrows);
 end

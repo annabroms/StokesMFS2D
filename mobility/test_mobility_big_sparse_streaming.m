@@ -15,17 +15,22 @@ result.matrix_cases = [];
 case_id = 0;
 for direct_u_corr = [true false]
     for matrix_free = [true false]
+        for sparse_map_coarse = [false true]
         case_id = case_id + 1;
         opt = base_opt;
         opt.big_sparse_direct_u_corr = direct_u_corr;
         opt.use_matrix_free_Lc_pair = matrix_free;
+        opt.sparse_map_coarse = sparse_map_coarse;
         result.matrix_cases(case_id).direct_u_corr = direct_u_corr;
         result.matrix_cases(case_id).use_matrix_free_Lc_pair = matrix_free;
+        result.matrix_cases(case_id).sparse_map_coarse = sparse_map_coarse;
         result.matrix_cases(case_id).max_sparse_diff = ...
             compare_build_modes(q,opt);
         fprintf(['  matrix case %d: direct=%d matrix_free=%d ', ...
-            'max_sparse_diff=%.3e\n'],case_id,direct_u_corr, ...
-            matrix_free,result.matrix_cases(case_id).max_sparse_diff);
+            'sparse_map_coarse=%d max_sparse_diff=%.3e\n'], ...
+            case_id,direct_u_corr,matrix_free,sparse_map_coarse, ...
+            result.matrix_cases(case_id).max_sparse_diff);
+        end
     end
 end
 
@@ -33,19 +38,24 @@ result.solve_cases = [];
 case_id = 0;
 for direct_u_corr = [true false]
     for matrix_free = [true false]
+        for sparse_map_coarse = [false true]
         case_id = case_id + 1;
         opt = base_opt;
         opt.big_sparse_direct_u_corr = direct_u_corr;
         opt.use_matrix_free_Lc_pair = matrix_free;
+        opt.sparse_map_coarse = sparse_map_coarse;
         [solve_rel_diff,it_pre,it_stream] = compare_solves(q,opt);
         result.solve_cases(case_id).direct_u_corr = direct_u_corr;
         result.solve_cases(case_id).use_matrix_free_Lc_pair = matrix_free;
+        result.solve_cases(case_id).sparse_map_coarse = sparse_map_coarse;
         result.solve_cases(case_id).solve_rel_diff = solve_rel_diff;
         result.solve_cases(case_id).precomputed_iterations = it_pre;
         result.solve_cases(case_id).streaming_iterations = it_stream;
         fprintf(['  solve case %d: direct=%d matrix_free=%d ', ...
-            'rel_diff=%.3e\n'],case_id,direct_u_corr,matrix_free, ...
+            'sparse_map_coarse=%d rel_diff=%.3e\n'], ...
+            case_id,direct_u_corr,matrix_free,sparse_map_coarse, ...
             solve_rel_diff);
+        end
     end
 end
 
@@ -114,13 +124,10 @@ basis_stream.pair_cache = struct('enabled',false);
 [big_stream,~] = buildMobPeanutBigSparseStokes(geom_stream,basis_stream);
 
 diffs = zeros(4,1);
-diffs(1) = norm(full(big_stream.M_pair_nonp-big_pre.M_pair_nonp),inf);
-diffs(2) = norm(full(big_stream.M_rbm_corr-big_pre.M_rbm_corr),inf);
-if opt.big_sparse_direct_u_corr
-    diffs(3) = norm(full(big_stream.M_u_corr-big_pre.M_u_corr),inf);
-else
-    diffs(3) = norm(full(big_stream.M_u_cross-big_pre.M_u_cross),inf);
-    diffs(4) = norm(full(big_stream.M_u_peanut-big_pre.M_u_peanut),inf);
+names = {'M_source_corr','M_pair_nonp','M_pair_proj','M_rbm_corr', ...
+    'M_u_corr','M_u_cross','M_u_peanut'};
+for k = 1:numel(names)
+    diffs(k) = compare_optional_sparse(big_stream,big_pre,names{k});
 end
 max_diff = max(diffs);
 end
@@ -187,6 +194,18 @@ opt_stream.mob_big_sparse_build_mode = 'streaming';
 solve_rel_diff = norm(UW_stream-UW_pre,inf)/max(1,norm(UW_pre,inf));
 it_pre = sol_pre.it;
 it_stream = sol_stream.it;
+end
+
+function diff_value = compare_optional_sparse(a,b,field_name)
+has_a = isfield(a,field_name);
+has_b = isfield(b,field_name);
+assert(has_a == has_b, ...
+    'Streaming/precomputed sparse builds disagree on field %s.',field_name);
+if ~has_a
+    diff_value = 0;
+    return
+end
+diff_value = norm(full(a.(field_name)-b.(field_name)),inf);
 end
 
 function result = compare_boundary_precomputed(q,opt)
