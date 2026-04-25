@@ -56,12 +56,16 @@ opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel po
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
 opt.use_big_sparse = true; % use global sparse close-pair correction matrices in supported peanut GMRES solves
-opt.sparse_map_coarse = true; % if true, precompose coarse source correction into a direct global M_source_corr
+opt.mob_sparse_map_coarse = true; %precompose coarse source correction into a direct global map per particle, 
+% rather than storing coarse-to-coarse maps per pair
+opt.res_sparse_map_coarse = false; %for resistance, it's faster not to do this
 opt.mob_big_sparse_build_mode = 'precomputed'; % 'precomputed' | 'streaming'
 opt.mob_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk
 opt.res_big_sparse_chunk_pairs = 8; % pairs per sparse-triplet assembly chunk for resistance
 opt.res_big_sparse_max_build_bytes = inf; % guardrail for resistance sparse-build temporary storage
-opt.res_big_sparse_u_corr_mode = 'combined'; % 'combined' uses one resistance M_u_corr; 'factored' preserves solve parity
+opt.res_big_sparse_u_corr_mode = 'combined'; % 'combined' uses one map M_u_corr; 'factored' preserves solve parity
+opt.res_smaller_ucorr = true; % if true, resistance combined big-sparse u_corr uses structured dense cross blocks instead of M_u_corr. Setting this to true is faster
+opt.smaller_ucorr = opt.res_smaller_ucorr; % backward-compatible alias
 opt.big_sparse_direct_u_corr = true; % if false, apply u_corr as M_u_cross*lambda - M_u_peanut*pair_proj. 
                                      % 1 is a little less stable than 0 here
 opt.shared_sep_tol = 1e-4; % separation tolerance for grouping repeated pairs

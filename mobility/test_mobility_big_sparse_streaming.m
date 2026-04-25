@@ -20,14 +20,14 @@ for direct_u_corr = [true false]
         opt = base_opt;
         opt.big_sparse_direct_u_corr = direct_u_corr;
         opt.use_matrix_free_Lc_pair = matrix_free;
-        opt.sparse_map_coarse = sparse_map_coarse;
+        opt.mob_sparse_map_coarse = sparse_map_coarse;
         result.matrix_cases(case_id).direct_u_corr = direct_u_corr;
         result.matrix_cases(case_id).use_matrix_free_Lc_pair = matrix_free;
         result.matrix_cases(case_id).sparse_map_coarse = sparse_map_coarse;
         result.matrix_cases(case_id).max_sparse_diff = ...
             compare_build_modes(q,opt);
         fprintf(['  matrix case %d: direct=%d matrix_free=%d ', ...
-            'sparse_map_coarse=%d max_sparse_diff=%.3e\n'], ...
+            'mob_sparse_map_coarse=%d max_sparse_diff=%.3e\n'], ...
             case_id,direct_u_corr,matrix_free,sparse_map_coarse, ...
             result.matrix_cases(case_id).max_sparse_diff);
         end
@@ -43,7 +43,7 @@ for direct_u_corr = [true false]
         opt = base_opt;
         opt.big_sparse_direct_u_corr = direct_u_corr;
         opt.use_matrix_free_Lc_pair = matrix_free;
-        opt.sparse_map_coarse = sparse_map_coarse;
+        opt.mob_sparse_map_coarse = sparse_map_coarse;
         [solve_rel_diff,it_pre,it_stream] = compare_solves(q,opt);
         result.solve_cases(case_id).direct_u_corr = direct_u_corr;
         result.solve_cases(case_id).use_matrix_free_Lc_pair = matrix_free;
@@ -52,7 +52,7 @@ for direct_u_corr = [true false]
         result.solve_cases(case_id).precomputed_iterations = it_pre;
         result.solve_cases(case_id).streaming_iterations = it_stream;
         fprintf(['  solve case %d: direct=%d matrix_free=%d ', ...
-            'sparse_map_coarse=%d rel_diff=%.3e\n'], ...
+            'mob_sparse_map_coarse=%d rel_diff=%.3e\n'], ...
             case_id,direct_u_corr,matrix_free,sparse_map_coarse, ...
             solve_rel_diff);
         end

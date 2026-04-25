@@ -5,15 +5,18 @@ function estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,op
 % returns conservative byte counts for the sparse matrices and temporary
 % sparse-entry arrays used by buildMobPeanutBigSparseStokes. Auxiliary
 % arrays cover retained source-correction helpers on the legacy
-% sparse_map_coarse=0 path. The explicit
+% mob_sparse_map_coarse=0 path. The explicit
 % retained-pair-basis estimate distinguishes precomputed mode, which keeps
 % dense pair maps and, when boundary postprocessing needs it, the explicit
 % UB/YB pair source factors, from streaming mode, which discards them.
 %
-% opt.sparse_map_coarse selects the coarse source-correction path:
-%   false (default): keep the legacy factored source correction
+% opt.mob_sparse_map_coarse selects the mobility coarse source-correction
+% path:
+%   false: keep the legacy factored source correction
 %                    M_pair_nonp -> P_pair -> source_scatter_rows.
-%   true:            build a direct global M_source_corr instead.
+%   true  (default): build a direct global M_source_corr instead.
+%
+% The legacy shared alias opt.sparse_map_coarse is still accepted.
 %
 % opt.big_sparse_direct_u_corr selects the velocity correction matrices:
 %   true  (default): M_u_corr maps projected one-body sources to u_corr.
@@ -37,7 +40,8 @@ validateattributes(n_pairs,{'numeric'},{'scalar','integer','nonnegative'}, ...
     mfilename,'n_pairs',4);
 
 direct_u_corr = logical(getOptField(opt,'big_sparse_direct_u_corr',true));
-sparse_map_coarse = logical(getOptField(opt,'sparse_map_coarse',false));
+sparse_map_coarse = logical(getOptField(opt,'mob_sparse_map_coarse',...
+    getOptField(opt,'sparse_map_coarse',true)));
 build_mode = lower(char(getOptField(opt,'mob_big_sparse_build_mode', ...
     'precomputed')));
 switch build_mode

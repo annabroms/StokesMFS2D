@@ -24,15 +24,15 @@ for direct_u_corr = [true false]
 end
 
 assert(max([result.cases.transform_rel_diff]) < 5e-10, ...
-    'sparse_map_coarse changed the mobility sparse transform.');
+    'mob_sparse_map_coarse changed the mobility sparse transform.');
 assert(max([result.cases.matvec_rel_diff]) < 5e-10, ...
-    'sparse_map_coarse changed the mobility sparse matvec.');
+    'mob_sparse_map_coarse changed the mobility sparse matvec.');
 assert(max([result.cases.solve_rel_diff]) < 5e-8, ...
-    'sparse_map_coarse changed the mobility solve output.');
+    'mob_sparse_map_coarse changed the mobility solve output.');
 assert(max([result.cases.resvec_diff]) < 5e-10, ...
-    'sparse_map_coarse changed the mobility GMRES residual history.');
+    'mob_sparse_map_coarse changed the mobility GMRES residual history.');
 assert(all([result.cases.it_legacy] == [result.cases.it_direct]), ...
-    'sparse_map_coarse changed the mobility GMRES iteration count.');
+    'mob_sparse_map_coarse changed the mobility GMRES iteration count.');
 
 fprintf('  PASSED\n');
 end
@@ -40,11 +40,11 @@ end
 function case_result = compare_case(q,opt,direct_u_corr)
 opt_legacy = opt;
 opt_legacy.use_big_sparse = true;
-opt_legacy.sparse_map_coarse = false;
+opt_legacy.mob_sparse_map_coarse = false;
 opt_legacy.big_sparse_direct_u_corr = direct_u_corr;
 
 opt_direct = opt_legacy;
-opt_direct.sparse_map_coarse = true;
+opt_direct.mob_sparse_map_coarse = true;
 
 [geom,basis] = build_test_data(q,opt_legacy);
 

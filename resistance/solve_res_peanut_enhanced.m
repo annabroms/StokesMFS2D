@@ -41,11 +41,19 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       use_big_sparse
 %                     if true, use solve-grid sparse close-pair correction
 %                     maps in the GMRES matvec
-%       sparse_map_coarse
+%       res_sparse_map_coarse
 %                     if true, the big-sparse solve-grid path also builds
 %                     a direct global M_source_corr for the coarse source
 %                     correction. If false, it keeps the legacy
 %                     pair_tau + source_scatter_rows update.
+%       res_smaller_ucorr
+%                     if true, the resistance big-sparse solve-grid path
+%                     replaces the combined sparse M_u_corr with a
+%                     structured dense pair apply. This only affects
+%                     opt.use_big_sparse=1 together with
+%                     opt.res_big_sparse_u_corr_mode='combined'; other
+%                     configurations keep the current behavior. The legacy
+%                     alias opt.smaller_ucorr is still accepted.
 %       column_weight if true, scale least-squares matrix columns before
 %                     SVD in the one-body, pair, and peanut factor builds
 %       left_weight   if true, scale least-squares matrix rows by local

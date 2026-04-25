@@ -47,7 +47,7 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       use_big_sparse
 %                     if true, use preassembled global sparse close-pair
 %                     correction matrices in the supported GMRES matvec.
-%       sparse_map_coarse
+%       mob_sparse_map_coarse
 %                     if true, the big-sparse solve-grid path precomposes
 %                     coarse source correction into a direct global
 %                     M_source_corr. If false, it keeps the legacy
