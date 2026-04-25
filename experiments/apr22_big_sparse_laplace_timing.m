@@ -9,7 +9,7 @@ run(fullfile(repo_root,'startup.m'));
 
 fprintf('=== %s (Apr 22, 2026) ===\n',mfilename);
 
-P = 500; 
+P = 50; 
 phi = 0.65;
 rad = 2;
 rng_seed = 220422;
@@ -32,11 +32,13 @@ opt.get_solve_time = true;
 opt.visualise_sol = 0;
 opt.visualise_grid = 0;
 opt.gmres_verbose = 0;
-opt.show_counter = 0;
+opt.show_counter = 1; 
 opt.cmap = 1;
-opt.reuse_pair_basis_by_sep = true;
+opt.reuse_pair_basis_by_sep = false; % change here if running with reused rotations. 
+%                                       Then, the gain is not as large.
 opt.use_fmm = true;
 opt.rotation_mode = 'fft';
+opt.single_threaded = 1; 
 
 [~,~,~,~,~,pairs] = getEnhancedGrid(q,opt);
 N_check = ceil(opt.a_c*opt.N_c);
@@ -48,7 +50,7 @@ variants = struct( ...
     'use_big_sparse',{false,true,true}, ...
     'build_mode',{'auto','precomputed','streaming'});
 
-for k = 2:3%numel(variants)
+for k = 1:3 %numel(variants)
     opt_run = opt;
     opt_run.use_big_sparse = variants(k).use_big_sparse;
     opt_run.lap_big_sparse_build_mode = variants(k).build_mode;
@@ -62,7 +64,7 @@ for k = 2:3%numel(variants)
     end
 
     wall_timer = tic;
-    [v_body(:,k),sol] = solve_elast_peanut(q,Q_body,opt_run); %#ok<SAGROW>
+    [v_body(:,k),sol] = solve_elast_peanut(q,Q_body,opt_run); 
     wall_time = toc(wall_timer);
 
     fmm_fraction = get_fmm_fraction(sol);

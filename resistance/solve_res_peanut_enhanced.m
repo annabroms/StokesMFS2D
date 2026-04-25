@@ -281,17 +281,6 @@ else
     matvec_handle = @(x) matvec_res_peanut_enhanced(x,geom,basis);
 end
 
-single_threaded = opt.single_threaded; 
-if single_threaded
-    %not sure if all of this is needed...
-    setenv('OMP_NUM_THREADS','1');      % OpenMP
-    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
-    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
-
-    maxNumCompThreads(1);               % MATLAB computational threads
-
-end
-
 %% Solve system
 
 % Build the matrix to inspect conditioning/eigenvalues if requested.
@@ -333,6 +322,17 @@ if debug
     end
 end
 
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
+
+end
+
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
@@ -341,7 +341,6 @@ solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres(matvec_handle, ...
     fout,2*size(rout,1),maxit,gmres_tol,opt.gmres_verbose,rout);
 solve_time = manageSolveTimeMeasurement('finish',solve_time_token);
-solve_time_cleanup = [];
 ram_check = markRamCheckPhase(ram_check,'solve_end');
 
 if visualise_sol
@@ -362,6 +361,13 @@ if visualise_sol
     title('Res at colloc points, peanut resistance')
     axis tight
 end
+
+%revert single threaded settings
+setenv('OMP_NUM_THREADS','');
+setenv('MKL_NUM_THREADS','');
+setenv('OPENBLAS_NUM_THREADS','');
+
+maxNumCompThreads('automatic');
 
 disp(' == Postprocessing == ');
 %% Reconstruct sources and optionally evaluate boundary velocities.

@@ -358,16 +358,6 @@ else
     matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_gmres,basis_gmres);
 end
 
-single_threaded = opt.single_threaded; 
-if single_threaded
-    %not sure if all of this is needed...
-    setenv('OMP_NUM_THREADS','1');      % OpenMP
-    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
-    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
-
-    maxNumCompThreads(1);               % MATLAB computational threads
-end
-
 %% Solve system
 
 % Debug mode: build the matrix to check it out
@@ -414,6 +404,16 @@ end
 
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
+end
+
 disp(' == Solving... == ');
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
@@ -443,6 +443,13 @@ if visualise_sol
 end
 
 disp(' == Postprocessing == ');
+
+%revert single threaded settings
+setenv('OMP_NUM_THREADS','');
+setenv('MKL_NUM_THREADS','');
+setenv('OPENBLAS_NUM_THREADS','');
+
+maxNumCompThreads('automatic');
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 

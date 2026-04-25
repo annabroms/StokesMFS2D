@@ -25,7 +25,7 @@ N_large = round(N_c*opt.a_c);
 
 %%  Get source strengths from data on boundary
 [lam_c,lam_self,~,~,u_corr,pair_qv_nonp] = ...
-    transform_lap_peanut(tau,geom,basis);
+      transform_lap_peanut(tau,geom,basis);
 
 %% Evaluate field
 res = lapSLPfield(rvec_in,rcheck,lam_c,opt.use_fmm);

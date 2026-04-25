@@ -67,7 +67,7 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_cap_peanut requires q, v_body, and an options struct opt.');
 end
 
-[ram_check,ram_cleanup] = startRamCheck(opt,mfilename); %#ok<NASGU>
+[ram_check,] = startRamCheck(opt,mfilename);
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
 gmres_tol = getOptField(opt,'gmres_tol',1e-7);
@@ -120,7 +120,15 @@ v_body = v_body(:);
 P = numel(q);
 assert(numel(v_body)==P,'v_body must have one entry per particle.');
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
-    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
+    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);~
+
+
+%revert single threaded settings
+setenv('OMP_NUM_THREADS','');
+setenv('MKL_NUM_THREADS','');
+setenv('OPENBLAS_NUM_THREADS','');
+
+maxNumCompThreads('automatic');
 
 %% Parameters
 maxit = 800;
@@ -312,6 +320,17 @@ if debug
     end
 end
 
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
+
+end
+
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
@@ -350,8 +369,7 @@ else
 end
 
 if use_big_sparse_requested && isequal(geom_eval.rcheck,geom_eval.rvec_out)
-    [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...
-        lam_f_nonp,lam_e_nonp] = ...
+    [lam_c,~,u_corr,pair_qv_nonp,~,lam_self_nonp] = ...
         transform_lap_peanut_big_sparse(tau,geom_eval,basis);
 else
     [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...

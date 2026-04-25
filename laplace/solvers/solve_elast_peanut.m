@@ -308,6 +308,17 @@ if debug
     title([solver_name ': eigenvalues of matvec system matrix'],'interpreter','none')
 end
 
+single_threaded = opt.single_threaded; 
+if single_threaded
+    %not sure if all of this is needed...
+    setenv('OMP_NUM_THREADS','1');      % OpenMP
+    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
+    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
+
+    maxNumCompThreads(1);               % MATLAB computational threads
+
+end
+
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 disp(' == Solving... == ');
@@ -347,9 +358,8 @@ else
 end
 
 if use_big_sparse_requested && isequal(geom_eval.rcheck,geom_eval.rvec_out)
-    [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...
-        lam_f_nonp,lam_e_nonp] = ...
-        transform_lap_peanut_big_sparse(tau,geom_eval,basis);
+    [lam_c,~,u_corr,pair_qv_nonp,~,lam_self_nonp] = ...
+        transform_lap_peanut_big_sparse(tau,geom_eval,basis);   
 else
     [lam_c,~,~,~,u_corr,pair_qv_nonp,~,lam_self_nonp, ...
         lam_f_nonp,lam_e_nonp] = transform_lap_peanut(tau,geom_eval,basis);
