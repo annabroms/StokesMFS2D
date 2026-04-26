@@ -7,6 +7,12 @@ Throughout, 1B serves as a baseline preconditioner, while 2B and peanut variants
 
 Greater gains are achieved for Stokes BVPs than for Laplace, owing to the stronger singularities in close-to-touching geometries.
 
+<p align="center">
+  <img src="demo/figs/10000_phi065_velocities.png" alt="Mobility problem on 10000 circles at packing fraction phi = 0.65: velocities" width="49%" />
+  <img src="demo/figs/10000_phi065_residual.png" alt="Mobility problem on 10000 circles at packing fraction phi = 0.65: residual" width="49%" />
+</p>
+<p align="center"><em>Example mobility problem on 10000 circles, packing fraction phi = 0.65</em></p>
+
 ## Repository overview
 - `mobility/`
   Stokes mobility solvers (input force/torque, output rigid-body velocities), including:
@@ -67,20 +73,6 @@ Run the function with no input arguments, for example:
 
 ---
 
-### Capacitance on a hexagonal grid
-
-![Capacitance example on a hexagonal disk geometry](demo/figs/hexagonal_volt_charge.png)
-
-The figure shows prescribed body voltages and the corresponding net charges recovered by a peanut-compressed capacitance solve on a 271-disk hexagonal geometry with 756 near-contact pairs at separation $10^{-3}$.
-
-GMRES converges to a tolerance of $10^{-8}$ in 89 iterations. The relative boundary residual on independent check nodes is $1.5\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.3 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $6.2\times 10^{-7}$.
-
-For comparison, a 1B preconditioned solve using the same fine discretisation requires 25,998 unknowns on a smaller 61-disk geometry (the four inner rings of the lattice), compared with 19,512 unknowns for the larger peanut-compressed example. With GMRES tolerance $10^{-8}$, the 1B solve requires 378 iterations and stalls at a relative boundary residual of $8.0\times 10^{-3}$.
-
-Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also visualises additional diagnostics.
-
----
-
 ### Mobility/resistance and elastance/capacitance for aligned particles
 
 - `demo/particle_line_mob.m`
@@ -100,13 +92,28 @@ Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also v
 - Outside these `dev_image_based/` paths, the Stokes solvers used in the main comparisons are Stokeslet-only.
 
 ### Precomputations
-The method avoids reconstructing fine source discretisations for every particle pair. Instead, a canonical pair problem is solved for each unique inter-particle distance. For any given pair with this separation, the corresponding source strength vector is interpolated (via FFT-based interpolation) to the canonical configuration, where the pair solution is evaluated. The resulting corrected coarse source strengths are then rotated back to the physical pair frame.
+For each close pair, the peanut compression can be represented as a dense correction matrix that maps coarse source strengths to corrected coarse source strengths for that pair. At the many-body level, these pairwise maps are not applied one pair at a time, but are assembled as blocks of a large sparse correction matrix over the full system. This makes the matrix-vector products predominantly FMM-dominated, often accounting for more than 90% of the solve time depending on the packing fraction. For visual illustrations of these assembled sparse operators, run `mobility/buildMobPeanutBigSparseStokes.m` and `resistance/buildResPeanutBigSparseStokes.m` with no input arguments.
 
-In addition, rotation-compatible coarse-to-body mapping operators are constructed during setup. These enable efficient recovery of physical quantities, such as forces and torques (resistance problems), velocities (mobility problems), charges (capacitance problems), and voltages (elastance problems).
+Setup also constructs coarse-to-body-quantity mapping operators. These enable efficient recovery of physical quantities such as forces and torques (resistance problems), velocities (mobility problems), charges (capacitance problems), and voltages (elastance problems) directly from the compressed representation, without reconstructing the fine source strengths.
 
-With these mappings in place, fine sources are only recovered if the solution field is evaluated at or near the particle boundaries.
+With these mappings in place, fine sources are only reconstructed when the solution field is evaluated at or near the particle boundaries.
 
-**Note:** A remaining task is to assess the impact of interpolation error on the overall accuracy.
+#### Shared compressions
+For pairs that share the same separation, a shared-rotation path is under development. In this experimental path, a canonical pair problem is solved once for each unique inter-particle distance. For any physical pair at that separation, the corresponding source-strength vector is interpolated via FFT to the canonical configuration, the pair solution is evaluated there, and the corrected coarse source strengths are then rotated back to the physical pair frame.
+
+**Note:** A remaining task for the shared-rotation path is to assess how interpolation error affects the overall accuracy, and in particular whether the accuracy depends on the rotation.
+
+##### Capacitance on a hexagonal grid
+
+![Capacitance example on a hexagonal disk geometry](demo/figs/hexagonal_volt_charge.png)
+
+The figure shows prescribed body voltages and the corresponding net charges recovered by a peanut-compressed capacitance solve on a 331-disk hexagonal geometry with 930 near-contact pairs at separation $10^{-3}$.
+
+GMRES converges to a tolerance of $10^{-8}$ in 95 iterations. The relative boundary residual on independent check nodes is $1.4\times 10^{-7}$. The solve uses 72 boundary unknowns and 60 interior source points per body, with a combined setup and solve time of 10.4 seconds on a Lenovo ThinkPad P14s Gen 5 AMD laptop (AMD Ryzen 7 PRO 8840HS). The corresponding capacitance-to-elastance two-way error in the recovered voltages is $3.8\times 10^{-7}$.
+
+For comparison, a 1B preconditioned solve using the same fine discretisation requires 21,728 unknowns on a smaller 61-disk geometry (the four inner rings of the lattice), compared with 19,512 unknowns for the larger peanut-compressed example. With GMRES tolerance $10^{-8}$, the 1B solve requires 376 iterations and stalls at a relative boundary residual of $6.0\times 10^{-3}$.
+
+Reproduce this example with `demo/capacitance_on_hexagonal_pack.m`, which also visualises additional diagnostics.
 
 ## Dependencies
 - [fmm2d](https://github.com/flatironinstitute/fmm2d) for fast 2D kernel summation.

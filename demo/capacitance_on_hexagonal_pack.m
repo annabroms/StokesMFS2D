@@ -24,14 +24,16 @@ R = 2;
 delta = 1e-3;
 
 % Solve capacitance for hexagonal lattice
-rings = 9; %8 rings around the center disk 
+rings = 10; %8 rings around the center disk 
+%rings = 7;
 q = hexagonal_lattice(delta,rings,R);
 P = length(q);
 v_body = buildAlternatingVoltages(q,R);
 
 % Set parameters and settings
 N_c = 60;
-opt = getLaplace2Dparams(P,R,N_c);
+N_f = 60;
+opt = getLaplace2Dparams(P,R,N_c,N_f);
 opt.delta_pair = 0.2;
 opt.Nclust = 100;
 opt.N_peanut = 400;
@@ -43,6 +45,8 @@ opt.use_fmm = true;
 opt.gmres_verbose = 0;
 opt.compress_cmap = 0; % use low rank approximation of coarse-coarse map
 opt.reuse_pair_basis_by_sep = 1;
+opt.use_big_sparse = 0; 
+opt.get_bndry_field = 1;
 
 fprintf('Peanut-compressed capacitance solve\n');
 fprintf('  hex rings=%d, P=%d, R=%.3f, delta=%.1e\n',rings,P,R,delta);
@@ -75,6 +79,7 @@ P = length(q);
 v_body = buildAlternatingVoltages(q,R);
 
 N_c = 150; %use fine grid for more fair accuracy comparison
+N_c = 60;
 opt = getLaplace2Dparams(P,R,N_c);
 opt.visualise_sol = 1;
 opt.visualise_grid = 1;
