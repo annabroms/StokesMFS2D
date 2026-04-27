@@ -1,5 +1,5 @@
-function [big_sparse,stats] = buildResPeanutBigSparseStokes(geom,basis)
-%BUILDRESPEANUTBIGSPARSESTOKES Build solve-grid resistance pair maps. These 
+function [big_sparse,stats] = buildResPeanutBigSparse(geom,basis)
+%BUILDRESPEANUTBIGSPARSE Build solve-grid resistance pair maps. These 
 % are both to correct coarse sources and to correct the velocity 
 % field on the close pairs themselves due to coarse sources.
 %
@@ -33,9 +33,7 @@ function [big_sparse,stats] = buildResPeanutBigSparseStokes(geom,basis)
 % apr24_resistance_sparse_map_coarse_compare.m in the experiments/ folder.
 
 if nargin == 0
-    test_buildResPeanutBigSparseStokes;
-    big_sparse = [];
-    stats      = [];
+    test_buildResPeanutBigSparse;
     return
 end
 
@@ -60,12 +58,12 @@ n_global_u_rows = 2*P*N_check;
 validateBigSparseInputs(geom, basis, N_check);
 
 %% RAM plan & stats
-ram_estimate = estimateResPeanutBigSparseRamStokes(P, N_c, N_check, n_pairs, opt);
+ram_estimate = estimateResPeanutBigSparseRam(P, N_c, N_check, n_pairs, opt);
 plan         = ram_estimate.matrix_plan;
 stats        = initBigSparseStats(n_pairs, N_c, N_check, ram_estimate);
 stats.requested = true;
 
-fprintf(['buildResPeanutBigSparseStokes: assembling solve-grid ',...
+fprintf(['buildResPeanutBigSparse: assembling solve-grid ',...
     'sparse pair maps (P=%d, close pairs=%d, N_c=%d, ',...
     'N_check=%d, velocity=%s, chunk pairs=%d).\n'],...
     P, n_pairs, N_c, N_check, stats.velocity_correction, stats.chunk_pairs);
@@ -74,7 +72,7 @@ fprintf(['buildResPeanutBigSparseStokes: assembling solve-grid ',...
 max_build_bytes = getOptField(opt,'res_big_sparse_max_build_bytes',...
     getOptField(opt,'big_sparse_max_build_bytes',inf));
 if stats.big_sparse_build_bytes > max_build_bytes
-    error('buildResPeanutBigSparseStokes:BuildMemoryLimit',...
+    error('buildResPeanutBigSparse:BuildMemoryLimit',...
         ['Estimated sparse-entry build memory %.3g bytes exceeds ',...
          'the configured limit %.3g bytes.'],...
         stats.big_sparse_build_bytes, max_build_bytes);
@@ -158,7 +156,7 @@ stats.reason     = '';
 stats.build_time = toc(timer);
 big_sparse.stats = stats;
 
-end % buildResPeanutBigSparseStokes
+end % buildResPeanutBigSparse
 
 % =========================================================================
 %  VALIDATION
@@ -169,25 +167,25 @@ opt = geom.opt;
 
 % Required option flags
 if ~logical(getOptField(opt,'cmap',false))
-    error('buildResPeanutBigSparseStokes:UnsupportedOption',...
+    error('buildResPeanutBigSparse:UnsupportedOption',...
         'opt.use_big_sparse=1 requires opt.cmap=1.');
 end
 if ~logical(getOptField(opt,'self_correct',false))
-    error('buildResPeanutBigSparseStokes:UnsupportedOption',...
+    error('buildResPeanutBigSparse:UnsupportedOption',...
         'opt.use_big_sparse=1 requires opt.self_correct=1.');
 end
 if getOptField(opt,'N_peanut',0) <= 0
-    error('buildResPeanutBigSparseStokes:UnsupportedOption',...
+    error('buildResPeanutBigSparse:UnsupportedOption',...
         'opt.use_big_sparse=1 requires opt.N_peanut > 0.');
 end
 
 % Grid compatibility
 if ~isequal(geom.rcheck, geom.rvec_out)
-    error('buildResPeanutBigSparseStokes:UnsupportedGrid',...
+    error('buildResPeanutBigSparse:UnsupportedGrid',...
         'Resistance big sparse pair maps are only built on the solve grid.');
 end
 if N_check ~= round(N_check)
-    error('buildResPeanutBigSparseStokes:BadGridSize',...
+    error('buildResPeanutBigSparse:BadGridSize',...
         'rcheck length must be divisible by the number of particles.');
 end
 
@@ -195,13 +193,13 @@ end
 if size(geom.pairs,1) > 0
     if ~isfield(basis,'Cmap')    || isempty(basis.Cmap) ||...
        ~isfield(basis,'Cmap_FU') || isempty(basis.Cmap_FU)
-        error('buildResPeanutBigSparseStokes:MissingPairMaps',...
+        error('buildResPeanutBigSparse:MissingPairMaps',...
             ['Resistance big sparse assembly requires actual per-pair ',...
              'Cmap and Cmap_FU data.']);
     end
     if isfield(basis,'pair_cache') && isfield(basis.pair_cache,'enabled')...
             && basis.pair_cache.enabled
-        error('buildResPeanutBigSparseStokes:PairCacheUnsupported',...
+        error('buildResPeanutBigSparse:PairCacheUnsupported',...
             ['opt.use_big_sparse=1 requires actual per-pair maps. ',...
              'Set opt.reuse_pair_basis_by_sep=0 before building the pair basis.']);
     end
@@ -563,7 +561,7 @@ ij_local = [bsxfun(@plus, i_starts', local);
 rows = reshape(ij_local + 1, 6*n_pairs, 1);
 
 if max(rows) > 3*P
-    error('buildResPeanutBigSparseStokes:BadForceTorqueIndex',...
+    error('buildResPeanutBigSparse:BadForceTorqueIndex',...
         'Internal force/torque scatter index out of range.');
 end
 end
@@ -581,29 +579,6 @@ idx_j    = (j-1)*N_c+1 : j*N_c;
 idx      = [idx_i, idx_j, n_coarse+idx_i, n_coarse+idx_j]';
 end
 
-% pairSourceOutputIndices has the same layout as pairCoarseInputIndices.
-% It is aliased here for call-site clarity.
-function idx = pairSourceOutputIndices(i, j, N_c, P)
-idx = pairCoarseInputIndices(i, j, N_c, P);
-end
-
-function idx = pairVelocityOutputIndices(i, j, N_check, P)
-pm_check = P * N_check;
-idx_i    = (i-1)*N_check+1 : i*N_check;
-idx_j    = (j-1)*N_check+1 : j*N_check;
-idx      = [idx_i, idx_j, pm_check+idx_i, pm_check+idx_j]';
-end
-
-function idx = pairForceTorqueOutputIndices(i, j, P)
-idx_i = (i-1)*3+1 : 3*i;
-idx_j = (j-1)*3+1 : 3*j;
-idx   = [idx_i, idx_j]';
-if max(idx) > 3*P
-    error('buildResPeanutBigSparseStokes:BadForceTorqueIndex',...
-        'Internal force/torque output index out of range.');
-end
-end
-
 function idx = pairVelocityBlockIndices(row, N_check)
 idx = ((row-1)*(4*N_check)+1 : row*(4*N_check))';
 end
@@ -616,8 +591,8 @@ end
 %  SELF-TEST
 % =========================================================================
 
-function test_buildResPeanutBigSparseStokes
-fprintf(['buildResPeanutBigSparseStokes self-test: spy plots ',...
+function test_buildResPeanutBigSparse
+fprintf(['buildResPeanutBigSparse self-test: spy plots ',...
     '(and imagesc for element magnitudes if plot_magn=1)\n']);
 
 plot_magn = true;
@@ -663,12 +638,12 @@ cases = struct(...
 
 fprintf('  P=%d, target phi=%.3f, actual phi=%.3f\n', P, phi, meta.phi);
 
-for case_id = 3:numel(cases)
+for case_id = 1:numel(cases)
     geom_case = geom;
     geom_case.opt.res_sparse_map_coarse      = cases(case_id).sparse_map_coarse;
     geom_case.opt.res_big_sparse_u_corr_mode = cases(case_id).u_corr_mode;
 
-    [big_sparse, stats] = buildResPeanutBigSparseStokes(geom_case, basis);
+    [big_sparse, stats] = buildResPeanutBigSparse(geom_case, basis);
 
     fprintf(['  case %d: res_sparse_map_coarse=%d u_mode=%s pairs=%d ',...
         'nnz: src_corr=%d pair=%d u=%d u_cross=%d u_peanut=%d ft=%d\n'],...
@@ -768,11 +743,13 @@ matrices{end+1} = big_sparse.M_pair;
 titles{end+1}   = 'Pair source map (used by velocity/FT correction)';
 
 if strcmp(case_info.u_corr_mode,'combined')
-    figure_name     = 'buildResPeanutBigSparseStokes: combined u';
-    matrices{end+1} = big_sparse.M_u_corr;
-    titles{end+1}   = 'Velocity correction map (combined)';
+    figure_name     = 'buildResPeanutBigSparse: combined u';
+    if isfield(big_sparse,'M.u_corr')
+        matrices{end+1} = big_sparse.M_u_corr;
+        titles{end+1}   = 'Velocity correction map (combined)';
+    end
 else
-    figure_name     = 'buildResPeanutBigSparseStokes: factored u';
+    figure_name     = 'buildResPeanutBigSparse: factored u';
     matrices{end+1} = big_sparse.M_u_cross;
     titles{end+1}   = 'Velocity correction: cross part';
     matrices{end+1} = big_sparse.M_u_peanut;

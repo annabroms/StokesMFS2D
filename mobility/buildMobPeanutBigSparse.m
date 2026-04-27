@@ -1,5 +1,5 @@
-function [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom,basis)
-%BUILDMOBPEANUTBIGSPARSESTOKES Build solve-grid sparse pair-correction
+function [big_sparse,stats] = buildMobPeanutBigSparse(geom,basis)
+%BUILDMOBPEANUTBIGSPARSE Build solve-grid sparse pair-correction
 %maps. These are both to correct coarse sources and to correct the velocity 
 % field on the close pairs themselves due to coarse sources
 %
@@ -39,9 +39,7 @@ function [big_sparse,stats] = buildMobPeanutBigSparseStokes(geom,basis)
 % apr24_mobility_sparse_map_coarse_compare.m in the experiments/ folder.
 
 if nargin == 0
-    test_buildMobPeanutBigSparseStokes;
-    big_sparse = [];
-    stats      = [];
+    test_buildMobPeanutBigSparse;
     return
 end
 
@@ -69,7 +67,7 @@ pair_total_rows = n_pairs * pair_block_rows;
 n_rbm_rows     = 3 * P;
 
 %% RAM plan
-ram_estimate      = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt);
+ram_estimate      = estimateMobPeanutBigSparseRam(P,N_c,N_check,n_pairs,opt);
 plan              = ram_estimate.matrix_plan;
 direct_u_corr     = plan.direct_u_corr;
 sparse_map_coarse = plan.sparse_map_coarse;
@@ -85,14 +83,14 @@ end
 stats           = initBigSparseStats(n_pairs, N_c, N_check, ram_estimate);
 stats.requested = true;
 
-fprintf(['buildMobPeanutBigSparseStokes: assembling solve-grid ',...
+fprintf(['buildMobPeanutBigSparse: assembling solve-grid ',...
     'sparse pair maps (mode=%s, P=%d, close pairs=%d, N_c=%d, ',...
     'N_check=%d, chunk pairs=%d).\n'],...
     build_mode, P, n_pairs, N_c, N_check, stats.chunk_pairs);
 
 max_build_bytes = getOptField(opt,'big_sparse_max_build_bytes',inf);
 if stats.big_sparse_build_bytes > max_build_bytes
-    error('buildMobPeanutBigSparseStokes:BuildMemoryLimit',...
+    error('buildMobPeanutBigSparse:BuildMemoryLimit',...
         ['Estimated sparse-entry build memory %.3g bytes exceeds ',...
          'opt.big_sparse_max_build_bytes %.3g bytes.'],...
         stats.big_sparse_build_bytes, max_build_bytes);
@@ -122,7 +120,7 @@ switch build_mode
         entries = appendStreamingBlocks(entries, geom, basis,...
                       rout_base_c, P_pair, plan);
     otherwise
-        error('buildMobPeanutBigSparseStokes:BadMode',...
+        error('buildMobPeanutBigSparse:BadMode',...
             'Unsupported build mode "%s".', build_mode);
 end
 
@@ -160,7 +158,7 @@ stats.reason     = '';
 stats.build_time = toc(timer);
 big_sparse.stats = stats;
 
-end % buildMobPeanutBigSparseStokes
+end % buildMobPeanutBigSparse
 
 % =========================================================================
 %  BUILD-MODE & VALIDATION
@@ -170,7 +168,7 @@ function build_mode = resolveMobBigSparseBuildMode(opt)
 build_mode = lower(char(getOptField(opt,'mob_big_sparse_build_mode',...
     'precomputed')));
 if ~ismember(build_mode, {'precomputed','streaming'})
-    error('buildMobPeanutBigSparseStokes:BadMode',...
+    error('buildMobPeanutBigSparse:BadMode',...
         ['opt.mob_big_sparse_build_mode must be ''precomputed'' ',...
          'or ''streaming''.']);
 end
@@ -183,30 +181,30 @@ opt = geom.opt;
 requiredFlags = {'cmap','self_correct','use_dense'};
 for k = 1:numel(requiredFlags)
     if ~logical(getOptField(opt, requiredFlags{k}, false))
-        error('buildMobPeanutBigSparseStokes:UnsupportedOption',...
+        error('buildMobPeanutBigSparse:UnsupportedOption',...
             'opt.use_big_sparse=1 requires opt.%s=1.', requiredFlags{k});
     end
 end
 
 % --- Grid compatibility ---
 if ~isequal(geom.rcheck, geom.rvec_out)
-    error('buildMobPeanutBigSparseStokes:UnsupportedGrid',...
+    error('buildMobPeanutBigSparse:UnsupportedGrid',...
         'opt.use_big_sparse=1 is only supported on the solve grid.');
 end
 if N_check ~= round(N_check)
-    error('buildMobPeanutBigSparseStokes:BadGridSize',...
+    error('buildMobPeanutBigSparse:BadGridSize',...
         'rcheck length must be divisible by the number of particles.');
 end
 
 % --- Streaming-specific checks ---
 if strcmp(build_mode,'streaming')
     if logical(getOptField(opt,'get_bndry_field',false))
-        error('buildMobPeanutBigSparseStokes:StreamingBoundaryUnsupported',...
+        error('buildMobPeanutBigSparse:StreamingBoundaryUnsupported',...
             ['opt.mob_big_sparse_build_mode=''streaming'' requires ',...
              'opt.get_bndry_field=0.']);
     end
     if logical(getOptField(opt,'reuse_pair_basis_by_sep',false))
-        error('buildMobPeanutBigSparseStokes:StreamingPairReuseUnsupported',...
+        error('buildMobPeanutBigSparse:StreamingPairReuseUnsupported',...
             ['opt.mob_big_sparse_build_mode=''streaming'' requires ',...
              'opt.reuse_pair_basis_by_sep=0.']);
     end
@@ -214,12 +212,12 @@ if strcmp(build_mode,'streaming')
         required_geom = {'rbase_in_f','rimage_vec','refine'};
         for k = 1:numel(required_geom)
             if ~isfield(geom,required_geom{k}) || isempty(geom.(required_geom{k}))
-                error('buildMobPeanutBigSparseStokes:MissingStreamingGeom',...
+                error('buildMobPeanutBigSparse:MissingStreamingGeom',...
                     'Streaming big sparse requires geom.%s.', required_geom{k});
             end
         end
         if ~isfield(basis,'Lc') || isempty(basis.Lc)
-            error('buildMobPeanutBigSparseStokes:MissingLc',...
+            error('buildMobPeanutBigSparse:MissingLc',...
                 'Streaming big sparse requires basis.Lc.');
         end
     end
@@ -229,7 +227,7 @@ end
 if strcmp(build_mode,'precomputed') && size(geom.pairs,1) > 0
     if ~isfield(basis,'Cmap')    || isempty(basis.Cmap) ||...
        ~isfield(basis,'Cmap_FU') || isempty(basis.Cmap_FU)
-        error('buildMobPeanutBigSparseStokes:MissingCmap',...
+        error('buildMobPeanutBigSparse:MissingCmap',...
             'Precomputed big sparse requires actual per-pair Cmap and Cmap_FU data.');
     end
 end
@@ -237,7 +235,7 @@ end
 % --- Pair cache incompatibility ---
 if size(geom.pairs,1) > 0 && isfield(basis,'pair_cache') &&...
         isfield(basis.pair_cache,'enabled') && basis.pair_cache.enabled
-    error('buildMobPeanutBigSparseStokes:PairCacheUnsupported',...
+    error('buildMobPeanutBigSparse:PairCacheUnsupported',...
         ['opt.use_big_sparse=1 currently requires actual per-pair maps. ',...
          'Set opt.reuse_pair_basis_by_sep=0 before building the pair basis.']);
 end
@@ -360,14 +358,14 @@ if isfield(basis,'Lc_pair') && ~isempty(basis.Lc_pair)
 elseif isfield(basis,'Lc') && ~isempty(basis.Lc)
     P_pair = getILpair(basis.Lc);
 else
-    error('buildMobPeanutBigSparseStokes:MissingDensePairProjector',...
+    error('buildMobPeanutBigSparse:MissingDensePairProjector',...
         ['opt.use_matrix_free_Lc_pair=0 requires basis.Lc_pair ',...
          'or basis.Lc.']);
 end
 
 expected = 4 * geom.opt.N_c;
 if ~isequal(size(P_pair), [expected expected])
-    error('buildMobPeanutBigSparseStokes:BadDensePairProjector',...
+    error('buildMobPeanutBigSparse:BadDensePairProjector',...
         'basis.Lc_pair must have size %d-by-%d.', expected, expected);
 end
 end
@@ -497,7 +495,7 @@ for row = 1:n_pairs
     entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
         pair.Cmap, pair.Cmap_FU, Ucross, Ecolloc, P_pair, plan);
     if show_counter
-        fprintf('buildMobPeanutBigSparseStokes: streamed pair %d/%d\n',...
+        fprintf('buildMobPeanutBigSparse: streamed pair %d/%d\n',...
             row, n_pairs);
     end
 end
@@ -594,12 +592,6 @@ idx_j    = (j-1)*N_c+1 : j*N_c;
 idx      = [idx_i, idx_j, n_coarse+idx_i, n_coarse+idx_j]';
 end
 
-% pairProjectedSourceOutputIndices is identical to pairCoarseInputIndices;
-% call through to avoid duplication.
-function idx = pairProjectedSourceOutputIndices(i, j, N_c, P)
-idx = pairCoarseInputIndices(i, j, N_c, P);
-end
-
 function idx = pairVelocityOutputIndices(i, j, N_check, P)
 pm_check = P * N_check;
 idx_i    = (i-1)*N_check+1 : i*N_check;
@@ -612,7 +604,7 @@ idx_i = (i-1)*3+1 : 3*i;
 idx_j = (j-1)*3+1 : 3*j;
 idx   = [idx_i, idx_j]';
 if max(idx) > 3*P
-    error('buildMobPeanutBigSparseStokes:BadRigidIndex',...
+    error('buildMobPeanutBigSparse:BadRigidIndex',...
         'Internal rigid-motion output index out of range.');
 end
 end
@@ -621,8 +613,8 @@ end
 %  SELF-TEST
 % =========================================================================
 
-function test_buildMobPeanutBigSparseStokes
-fprintf(['buildMobPeanutBigSparseStokes self-test: random_discs_mc spy ',...
+function test_buildMobPeanutBigSparse
+fprintf(['buildMobPeanutBigSparse self-test: random_discs_mc spy ',...
     'plots (and element magnitudes if plot_magn=1)\n']);
 
 plot_magn = true;
@@ -677,7 +669,7 @@ for case_id = 1:numel(cases)
     geom_case.opt.mob_sparse_map_coarse   = cases(case_id).sparse_map_coarse;
     geom_case.opt.big_sparse_direct_u_corr = cases(case_id).direct_u_corr;
 
-    [big_sparse, stats] = buildMobPeanutBigSparseStokes(geom_case, basis);
+    [big_sparse, stats] = buildMobPeanutBigSparse(geom_case, basis);
 
     fprintf(['  case %d: mob_sparse_map_coarse=%d direct_u_corr=%d ',...
         'pairs=%d  nnz: src_corr=%d pair_nonp=%d pair_proj=%d ',...
@@ -788,11 +780,11 @@ else
 end
 
 if case_info.direct_u_corr
-    figure_name     = 'buildMobPeanutBigSparseStokes: direct maps';
+    figure_name     = 'buildMobPeanutBigSparse: direct maps';
     matrices{end+1} = big_sparse.M_u_corr;
     titles{end+1}   = 'Velocity correction map (direct)';
 else
-    figure_name = 'buildMobPeanutBigSparseStokes: factored maps';
+    figure_name = 'buildMobPeanutBigSparse: factored maps';
     if case_info.sparse_map_coarse
         matrices{end+1} = big_sparse.M_pair_proj;
         titles{end+1}   = 'Projected pair map (for factored u)';

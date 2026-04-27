@@ -51,13 +51,13 @@ opt_direct.mob_sparse_map_coarse = true;
 geom_legacy = geom;
 geom_legacy.opt = opt_legacy;
 basis_legacy = basis;
-[basis_legacy.big_sparse,stats_legacy] = buildMobPeanutBigSparseStokes( ...
+[basis_legacy.big_sparse,stats_legacy] = buildMobPeanutBigSparse( ...
     geom_legacy,basis_legacy);
 
 geom_direct = geom;
 geom_direct.opt = opt_direct;
 basis_direct = basis;
-[basis_direct.big_sparse,stats_direct] = buildMobPeanutBigSparseStokes( ...
+[basis_direct.big_sparse,stats_direct] = buildMobPeanutBigSparse( ...
     geom_direct,basis_direct);
 
 rng(11);

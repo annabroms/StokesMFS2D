@@ -1,5 +1,5 @@
-function estimate = estimateResPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt)
-%ESTIMATERESPEANUTBIGSPARSERAMSTOKES Estimate resistance sparse-map memory.
+function estimate = estimateResPeanutBigSparseRam(P,N_c,N_check,n_pairs,opt)
+%ESTIMATERESPEANUTBIGSPARSERAM Estimate resistance sparse-map memory.
 %
 % opt.res_sparse_map_coarse selects the resistance coarse
 % source-correction path:

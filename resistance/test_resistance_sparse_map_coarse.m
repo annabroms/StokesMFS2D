@@ -80,13 +80,13 @@ opt_direct.res_sparse_map_coarse = true;
 geom_legacy = geom;
 geom_legacy.opt = opt_legacy;
 basis_legacy = basis;
-[basis_legacy.big_sparse,stats_legacy] = buildResPeanutBigSparseStokes( ...
+[basis_legacy.big_sparse,stats_legacy] = buildResPeanutBigSparse( ...
     geom_legacy,basis_legacy);
 
 geom_direct = geom;
 geom_direct.opt = opt_direct;
 basis_direct = basis;
-[basis_direct.big_sparse,stats_direct] = buildResPeanutBigSparseStokes( ...
+[basis_direct.big_sparse,stats_direct] = buildResPeanutBigSparse( ...
     geom_direct,basis_direct);
 
 rng(11);
@@ -142,13 +142,13 @@ opt_small.res_smaller_ucorr = true;
 geom_sparse = geom;
 geom_sparse.opt = opt_sparse;
 basis_sparse = basis;
-[basis_sparse.big_sparse,stats_sparse] = buildResPeanutBigSparseStokes( ...
+[basis_sparse.big_sparse,stats_sparse] = buildResPeanutBigSparse( ...
     geom_sparse,basis_sparse);
 
 geom_small = geom;
 geom_small.opt = opt_small;
 basis_small = basis;
-[basis_small.big_sparse,stats_small] = buildResPeanutBigSparseStokes( ...
+[basis_small.big_sparse,stats_small] = buildResPeanutBigSparse( ...
     geom_small,basis_small);
 
 rng(17);

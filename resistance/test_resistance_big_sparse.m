@@ -53,7 +53,7 @@ geom_loop.opt.use_big_sparse = false;
 geom_sparse = geom;
 geom_sparse.opt.use_big_sparse = true;
 basis_sparse = basis;
-[basis_sparse.big_sparse,stats] = buildResPeanutBigSparseStokes( ...
+[basis_sparse.big_sparse,stats] = buildResPeanutBigSparse( ...
     geom_sparse,basis_sparse);
 
 rng(11);
@@ -142,7 +142,7 @@ opt0.get_bndry_field = 0;
 [geom,basis] = build_test_data(q,opt0);
 geom_sparse = geom;
 geom_sparse.opt.use_big_sparse = true;
-[big_sparse,stats] = buildResPeanutBigSparseStokes(geom_sparse,basis);
+[big_sparse,stats] = buildResPeanutBigSparse(geom_sparse,basis);
 basis_sparse = basis;
 basis_sparse.big_sparse = big_sparse;
 

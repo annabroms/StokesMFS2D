@@ -673,7 +673,7 @@ function [geom_gmres,basis_gmres,stats] = prepareBigSparseMobilityMatvec( ...
 geom_gmres = geom_solve;
 basis_gmres = basis_mob;
 
-[big_sparse,stats] = buildMobPeanutBigSparseStokes(geom_gmres,basis_gmres);
+[big_sparse,stats] = buildMobPeanutBigSparse(geom_gmres,basis_gmres);
 basis_gmres.big_sparse = big_sparse;
 geom_gmres.opt.use_big_sparse = true;
 end

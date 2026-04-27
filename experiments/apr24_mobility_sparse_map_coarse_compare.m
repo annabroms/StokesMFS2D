@@ -31,7 +31,7 @@ runs = repmat(struct('UW',[],'sol',struct()),2,1);
 for sparse_map_coarse = [false true]
     opt_run = opt;
     opt_run.mob_sparse_map_coarse = sparse_map_coarse;
-    est = estimateMobPeanutBigSparseRamStokes( ...
+    est = estimateMobPeanutBigSparseRam( ...
         P,opt_run.N_c,N_check,size(pairs,1),opt_run);
     wall_timer = tic;
     [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt_run);

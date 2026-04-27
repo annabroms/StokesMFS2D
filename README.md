@@ -92,7 +92,7 @@ Run the function with no input arguments, for example:
 - Outside these `dev_image_based/` paths, the Stokes solvers used in the main comparisons are Stokeslet-only.
 
 ### Precomputations
-For each close pair, the peanut compression can be represented as a dense correction matrix that maps coarse source strengths to corrected coarse source strengths for that pair. At the many-body level, these pairwise maps are not applied one pair at a time, but are assembled as blocks of a large sparse correction matrix over the full system. This makes the matrix-vector products predominantly FMM-dominated, often accounting for more than 90% of the solve time depending on the packing fraction. For visual illustrations of these assembled sparse operators, run `mobility/buildMobPeanutBigSparseStokes.m` and `resistance/buildResPeanutBigSparseStokes.m` with no input arguments.
+For each close pair, the peanut compression can be represented as a dense correction matrix that maps coarse source strengths to corrected coarse source strengths for that pair. At the many-body level, these pairwise maps are not applied one pair at a time, but are assembled as blocks of a large sparse correction matrix over the full system. This makes the matrix-vector products predominantly FMM-dominated, often accounting for more than 90% of the solve time depending on the packing fraction. For visual illustrations of these assembled sparse operators, run `mobility/buildMobPeanutBigSparse.m` and `resistance/buildResPeanutBigSparse.m` with no input arguments.
 
 Setup also constructs coarse-to-body-quantity mapping operators. These enable efficient recovery of physical quantities such as forces and torques (resistance problems), velocities (mobility problems), charges (capacitance problems), and voltages (elastance problems) directly from the compressed representation, without reconstructing the fine source strengths.
 
@@ -103,7 +103,7 @@ For pairs that share the same separation, a shared-rotation path is under develo
 
 **Note:** A remaining task for the shared-rotation path is to assess how interpolation error affects the overall accuracy, and in particular whether the accuracy depends on the rotation.
 
-##### Capacitance on a hexagonal grid
+##### Capacitance on hexagonal grid: shared compressions in action
 
 ![Capacitance example on a hexagonal disk geometry](demo/figs/hexagonal_volt_charge.png)
 

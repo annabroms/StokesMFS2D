@@ -22,9 +22,9 @@ fprintf('=== Compare Cluster Iterations (Apr 14, 2026) ===\n');
 rng_seed = 8;
 rng(rng_seed);
 
-P = 50;
+P = 20;
 rad = 1;
-nruns = 5;
+nruns = 10;
 deltavec = logspace(-3,-1,10);
 
 geom.generator = 'cluster_gen'; % 'cluster_gen' or 'random_mc'
@@ -34,18 +34,21 @@ geom.n_sweeps = 30;             % used for random_mc
 geom.show_generation_plot = false;
 geom_tag = get_geometry_tag(geom);
 
-solve_resistance = false;
+solve_resistance = true;
 if solve_resistance
     problem_tag = 'resistance';
+    N_c = 120;
+    N_f = 60;
 else
     problem_tag = 'mobility';
+    N_c = 80;
+    N_f = 60;
 end
 
-N_c = 80;
-N_f = 150;
+
 N_peanut = 400;
 
-io.run_experiment = 0;
+io.run_experiment = 1;
 
 opt_template = get2Dparams(P,N_c,N_f);
 opt_template.rad = rad;
@@ -65,6 +68,8 @@ opt_template.self_correct = 1;
 opt_template.use_dense = 1;
 opt_template.get_bndry_field = 1;
 opt_template.parallel_precomp = 0;
+opt_template.Nclust = 100; 
+
 
 if solve_resistance
     methods = struct( ...

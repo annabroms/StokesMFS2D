@@ -109,7 +109,7 @@ function max_diff = compare_build_modes(q,opt)
 
 geom_pre = geom;
 geom_pre.opt.mob_big_sparse_build_mode = 'precomputed';
-[big_pre,~] = buildMobPeanutBigSparseStokes(geom_pre,basis);
+[big_pre,~] = buildMobPeanutBigSparse(geom_pre,basis);
 
 geom_stream = geom;
 geom_stream.opt.mob_big_sparse_build_mode = 'streaming';
@@ -121,7 +121,7 @@ basis_stream.YC_all = [];
 basis_stream.Cmap = [];
 basis_stream.Cmap_FU = [];
 basis_stream.pair_cache = struct('enabled',false);
-[big_stream,~] = buildMobPeanutBigSparseStokes(geom_stream,basis_stream);
+[big_stream,~] = buildMobPeanutBigSparse(geom_stream,basis_stream);
 
 diffs = zeros(4,1);
 names = {'M_source_corr','M_pair_nonp','M_pair_proj','M_rbm_corr', ...
@@ -138,12 +138,12 @@ N_check = ceil(opt.a_c*opt.N_c);
 
 opt_pre = opt;
 opt_pre.mob_big_sparse_build_mode = 'precomputed';
-est_pre = estimateMobPeanutBigSparseRamStokes( ...
+est_pre = estimateMobPeanutBigSparseRam( ...
     numel(q),opt.N_c,N_check,n_pairs,opt_pre);
 
 opt_pre_boundary = opt_pre;
 opt_pre_boundary.get_bndry_field = 1;
-est_pre_boundary = estimateMobPeanutBigSparseRamStokes( ...
+est_pre_boundary = estimateMobPeanutBigSparseRam( ...
     numel(q),opt.N_c,N_check,n_pairs,opt_pre_boundary);
 assert(est_pre_boundary.retained_pair_basis_bytes > ...
         est_pre.retained_pair_basis_bytes, ...
@@ -151,7 +151,7 @@ assert(est_pre_boundary.retained_pair_basis_bytes > ...
 
 opt_stream = opt;
 opt_stream.mob_big_sparse_build_mode = 'streaming';
-est_stream = estimateMobPeanutBigSparseRamStokes( ...
+est_stream = estimateMobPeanutBigSparseRam( ...
     numel(q),opt.N_c,N_check,n_pairs,opt_stream);
 
 ram = struct();

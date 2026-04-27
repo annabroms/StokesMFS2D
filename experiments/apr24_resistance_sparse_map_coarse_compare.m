@@ -33,7 +33,7 @@ for sparse_map_coarse = [false true]
         opt_run = opt;
         opt_run.res_sparse_map_coarse = sparse_map_coarse;
         opt_run.res_smaller_ucorr = res_smaller_ucorr;
-        est = estimateResPeanutBigSparseRamStokes( ...
+        est = estimateResPeanutBigSparseRam( ...
             P,opt_run.N_c,N_check,size(pairs,1),opt_run);
         wall_timer = tic;
         [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt_run);

@@ -1,9 +1,9 @@
-function estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt)
-%ESTIMATEMOBPEANUTBIGSPARSERAMSTOKES Estimate big-sparse matrix memory.
+function estimate = estimateMobPeanutBigSparseRam(P,N_c,N_check,n_pairs,opt)
+%ESTIMATEMOBPEANUTBIGSPARSERAM Estimate big-sparse matrix memory.
 %
-% estimate = estimateMobPeanutBigSparseRamStokes(P,N_c,N_check,n_pairs,opt)
+% estimate = estimateMobPeanutBigSparseRam(P,N_c,N_check,n_pairs,opt)
 % returns conservative byte counts for the sparse matrices and temporary
-% sparse-entry arrays used by buildMobPeanutBigSparseStokes. Auxiliary
+% sparse-entry arrays used by buildMobPeanutBigSparse. Auxiliary
 % arrays cover retained source-correction helpers on the legacy
 % mob_sparse_map_coarse=0 path. The explicit
 % retained-pair-basis estimate distinguishes precomputed mode, which keeps
@@ -48,7 +48,7 @@ switch build_mode
     case {'precomputed','streaming'}
         % supported
     otherwise
-        error('estimateMobPeanutBigSparseRamStokes:BadMode', ...
+        error('estimateMobPeanutBigSparseRam:BadMode', ...
             ['opt.mob_big_sparse_build_mode must be ''precomputed'' ', ...
              'or ''streaming''.']);
 end
