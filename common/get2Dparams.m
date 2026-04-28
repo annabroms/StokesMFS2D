@@ -82,4 +82,6 @@ opt.left_weight = false; % scale LS operator rows by local arclength weights in 
 opt.single_threaded = false; % if true, set OMP_NUM_THREADS=1 to run single-threaded (impacts FMM)
 opt.use_fmm = 1; 
 opt.get_precomp_time = 1; 
+
+opt.maxit = 300;
 end

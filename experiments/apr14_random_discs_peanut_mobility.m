@@ -11,10 +11,10 @@ end
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 1e4;
+geom.P = 100;
 geom.rad = 1;
 geom.domain = 'boxed';
-geom.phi = 0.65;
+geom.phi = 0.75;
 geom.min_gap = 1e-3;
 
 % Monte Carlo generation
@@ -27,18 +27,19 @@ loads.rng_seed = 11;
 
 % Solver
 solver.N_c = 80;
-solver.N_f = 60;
+solver.N_f = 40;
 % solver.N_c = 60;
 % solver.N_f = 150;
-solver.N_peanut = 400;
+solver.N_peanut = 200;
 solver.delta_pair = 0.2;
-solver.gmres_tol = 1e-8;
+solver.gmres_tol = 1e-7;
 solver.maxit = 1000;
+solver.Nclust = 80;
 solver.get_precomp_time = true;
 
 % Comparison figure
 compare.make_triptych_figure = true;
-compare.reference_N_c = 120;
+compare.reference_N_c = 160;
 compare.generate_reference_if_missing = true;
 compare.figure_width_cm = 14.0;
 
@@ -46,7 +47,7 @@ compare.figure_width_cm = 14.0;
 % Use io.save_results = true together with plots.make_figure = false to
 % run the solve and store raw data without plotting. Later, set
 % io.load_results = true to load the saved data and plot without rerunning.
-run_test = 1; 
+run_test = 0; 
 if run_test
     io.load_results = false;
     io.save_results = true;
@@ -145,8 +146,8 @@ else
     F = randn(geom.P,2);
     F = F - mean(F,1);
     T = randn(geom.P,1);
-    T = ones(geom.P,1);
-    F = zeros(geom.P,2);
+    % T = ones(geom.P,1);
+    % F = zeros(geom.P,2);
 
     tic;
     [UW, sol] = solve_mob_peanut_enhanced(q, F, T, opt);
@@ -536,6 +537,7 @@ opt = get2Dparams(P, solver.N_c, solver.N_f);
 opt.rad = geom.rad;
 opt.delta_pair = solver.delta_pair;
 opt.N_peanut = solver.N_peanut;
+opt.Nclust = solver.Nclust;
 opt.gmres_tol = solver.gmres_tol;
 opt.maxit = solver.maxit;
 opt.visualise_sol = 0;
@@ -559,6 +561,7 @@ fprintf('Generating reference results with N_c=%d\n', reference_N_c);
 solver_ref = results.solver;
 solver_ref.N_c = reference_N_c;
 opt_ref = build_solver_opt(results.geom.P, solver_ref, results.geom);
+opt_ref.get_bndry_field = 0;
 if isfield(results,'opt') && isfield(results.opt,'parallel_precomp')
     opt_ref.parallel_precomp = results.opt.parallel_precomp;
 end

@@ -295,8 +295,6 @@ geom_solve.rbase_in_f = rbase_in_f;
 geom_solve.rvec_in = rvec_in_c;
 geom_solve.rimage_vec = rimage_vec;
 opt_solve = opt;
-opt_solve.get_bndry_field = false;
-opt_solve.parallel_solve = false;
 geom_solve.opt = opt_solve;
 geom_solve.rvec_out = rout;
 geom_solve.rcheck = rout;
@@ -546,11 +544,13 @@ if get_bndry_field
     geom_check.opt.self_correct = 0; 
     u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
     S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
-    u_rhs = u_rhs-S_0;
+    u_rhs = u_rhs-S_0; %due to sign convention of completion flow
 
     disp('Surface residual')
     diff_vec = u_rhs-u_lhs;
-    max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
+   % max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
+    % Check against the actual boundary data
+    max_abs = max(abs(u_lhs(1:end/2)+1i*u_lhs(end/2+1:end)));
     res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
     abs_res = max(res); 
     if max_abs > 0

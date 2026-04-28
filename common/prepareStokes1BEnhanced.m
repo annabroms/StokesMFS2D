@@ -50,30 +50,10 @@ end
 sep_c = (1/N_c)*log(1/tol_c);
 
 Rp_c = getOptField(opt,'Rp_c',rad0*max([1-sep_c,0.01]));
-if isscalar(Rp_c)
-    Rp_c = repmat(Rp_c,P,1);
-else
-    Rp_c = Rp_c(:);
-    if numel(Rp_c) ~= P
-        error('prepareStokes1BEnhanced:badRpC', ...
-            'opt.Rp_c must be scalar or have one entry per particle.');
-    end
-    if any(abs(Rp_c-Rp_c(1)) > 1e-12)
-        error('prepareStokes1BEnhanced:nonuniformRpC', ...
-            ['prepareStokes1BEnhanced currently assumes equal proxy ', ...
-             'radii for all particles.']);
-    end
-    Rp_c = repmat(Rp_c(1),P,1);
-end
+Rp_f = opt.Rp_f; 
 
 % Fill the commonly used fields so downstream helpers can rely on them.
 opt_clean = opt;
-for fld = {'N_f','a_f','Rp_f','one_body_mode'}
-    if isfield(opt_clean,fld{1})
-        opt_clean = rmfield(opt_clean,fld{1});
-    end
-end
-
 opt_clean.rad = rad0;
 opt_clean.N_c = N_c;
 opt_clean.a_c = a_c;
@@ -90,7 +70,7 @@ opt_clean.pc = 0;
 
 opt = opt_clean;
 opt_grid = opt_clean;
-opt_grid.r_proxy = Rp_c(1);
+opt_grid.r_proxy = max([Rp_c; Rp_f]);
 [cent_clust_cells,~,coll_clust_cells,~,~,pairs] = getEnhancedGrid(q,opt_grid);
 
 nout = ceil(a_c*N_c);

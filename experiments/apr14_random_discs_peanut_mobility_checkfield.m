@@ -28,11 +28,11 @@ loads.rng_seed = 11;
 
 % Solver
 solver.N_c = 80;
-solver.N_f = 40; %was 60
-solver.N_peanut = 200; %was 400
-solver.Nclust = 80; %was 100
+solver.N_f = 40;
+solver.N_peanut = 200;
+solver.Nclust = 80;
 solver.delta_pair = 0.2;
-solver.gmres_tol = 1e-7; %was 1e-8; 
+solver.gmres_tol = 1e-7;
 solver.maxit = 1000;
 solver.get_precomp_time = true;
 
@@ -74,11 +74,11 @@ else
     [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
     opt = build_solver_opt(geom.P, solver, geom);
-    opt.get_bndry_field = 0;
+    opt.get_bndry_field = 1;
     opt.RAM_check = 0; 
     opt.single_threaded = 1; 
-    %opt.mob_big_sparse_build_mode = 'precomputed';
-    opt.mob_big_sparse_build_mode = 'streaming';
+    opt.mob_big_sparse_build_mode = 'precomputed';
+    %opt.mob_big_sparse_build_mode = 'streaming';
     opt.use_big_sparse = 1;
     opt.mob_sparse_map_coarse = 1; 
     

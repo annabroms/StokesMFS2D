@@ -24,7 +24,7 @@ rng(rng_seed);
 
 P = 20;
 rad = 1;
-nruns = 10;
+nruns = 5;
 deltavec = logspace(-3,-1,10);
 
 geom.generator = 'cluster_gen'; % 'cluster_gen' or 'random_mc'
@@ -39,14 +39,17 @@ if solve_resistance
     problem_tag = 'resistance';
     N_c = 120;
     N_f = 60;
+    N_f = 40;
 else
     problem_tag = 'mobility';
     N_c = 80;
     N_f = 60;
+    N_f = 40;
 end
 
 
-N_peanut = 400;
+N_peanut = 200;
+Nclust = 80;
 
 io.run_experiment = 1;
 
@@ -54,7 +57,7 @@ opt_template = get2Dparams(P,N_c,N_f);
 opt_template.rad = rad;
 opt_template.delta_pair = 0.2;
 opt_template.N_peanut = N_peanut;
-opt_template.gmres_tol = 1e-8;
+opt_template.gmres_tol = 1e-7;
 opt_template.maxit = 2000;
 opt_template.visualise_sol = 0;
 opt_template.visualise_grid = 0;
@@ -68,7 +71,7 @@ opt_template.self_correct = 1;
 opt_template.use_dense = 1;
 opt_template.get_bndry_field = 1;
 opt_template.parallel_precomp = 0;
-opt_template.Nclust = 100; 
+opt_template.Nclust = Nclust; 
 
 
 if solve_resistance
@@ -152,17 +155,18 @@ else
             fprintf('  Run %2d/%2d\n', irun, nruns);
 
             [q, geom_meta_run] = generate_geometry_sample(P,delta,rad,geom);
-            U = randn(P,2);
-            W = randn(P,1);
+            UF = randn(P,2); % force or velocity depending of if resistance or mobility is solved
+            UF = UF-mean(UF,2); 
+            WT = randn(P,1);
 
             clusters{idelta,irun} = q;
             geom_meta{idelta,irun} = geom_meta_run;
-            velocities{idelta,irun} = U;
-            rotations{idelta,irun} = W;
+            velocities{idelta,irun} = UF;
+            rotations{idelta,irun} = WT;
 
             for imethod = 1:nmethods
                 opt_run = opt_template;
-                [~,sol] = methods(imethod).solver(q,U,W,opt_run);
+                [~,sol] = methods(imethod).solver(q,UF,WT,opt_run);
 
                 iters(idelta,irun,imethod) = sol.it;
                 gmres_residuals(idelta,irun,imethod) = sol.resvec(end);
