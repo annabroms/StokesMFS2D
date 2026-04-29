@@ -37,9 +37,9 @@ geom_tag = get_geometry_tag(geom);
 solve_resistance = true;
 if solve_resistance
     problem_tag = 'resistance';
-    N_c = 120;
+    N_c = 150;
     N_f = 60;
-    N_f = 40;
+    %N_f = 40;
 else
     problem_tag = 'mobility';
     N_c = 80;
@@ -48,8 +48,8 @@ else
 end
 
 
-N_peanut = 200;
-Nclust = 80;
+N_peanut = 400;
+Nclust = 100;
 
 io.run_experiment = 1;
 

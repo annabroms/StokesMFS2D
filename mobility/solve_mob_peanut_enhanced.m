@@ -68,8 +68,15 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %                     postprocessing using memorygraph
 %       visualise_sol show diagnostic plots in postprocessing
 %       single_threaded
-%                     if true, set OMP_NUM_THREADS=1 to run single-threaded;
-%                     this disables parallelization in FMM and other routines
+%                     if true, force the GMRES solve/postprocessing phase to
+%                     one thread. Any requested maxNumCompThreads cap is
+%                     still used during precomputation.
+%       maxNumCompThreads
+%                     [] or missing leaves MATLAB in automatic threading
+%                     mode. A positive integer caps MATLAB computational
+%                     threads and the OMP/MKL/OpenBLAS thread env vars used
+%                     by this solver. When opt.single_threaded = 1, this
+%                     cap applies only during precomputation.
 %
 %
 % Outputs:
@@ -92,16 +99,11 @@ if nargin < 4 || ~isstruct(opt)
     error('solve_mob_peanut_enhanced requires q, F, T, and an options struct opt.');
 end
 
-[ram_check,~] = startRamCheck(opt,mfilename); 
+[ram_check,~] = startRamCheck(opt,mfilename);
 
-% Set single-threaded mode if requested (impacts FMM and other parallelized routines)
-
-%revert single threaded settings
-setenv('OMP_NUM_THREADS','');
-setenv('MKL_NUM_THREADS','');
-setenv('OPENBLAS_NUM_THREADS','');
-
-maxNumCompThreads('automatic');
+thread_plan = resolveMobilityThreadPlan(opt);
+thread_cleanup = onCleanup(@() applyMobilityThreadSetting([]));
+applyMobilityThreadSetting(thread_plan.precomp_threads);
 
 q = q(:);
 T = T(:);
@@ -402,15 +404,7 @@ end
 
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
-single_threaded = opt.single_threaded; 
-if single_threaded
-    %not sure if all of this is needed...
-    setenv('OMP_NUM_THREADS','1');      % OpenMP
-    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
-    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
-
-    maxNumCompThreads(1);               % MATLAB computational threads
-end
+applyMobilityThreadSetting(thread_plan.solve_threads);
 
 disp(' == Solving... == ');
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
@@ -441,17 +435,13 @@ if visualise_sol
 end
 
 disp(' == Postprocessing == ');
-
-%revert single threaded settings
-setenv('OMP_NUM_THREADS','');
-setenv('MKL_NUM_THREADS','');
-setenv('OPENBLAS_NUM_THREADS','');
-
-maxNumCompThreads('automatic');
+postprocess_time = initMobPostprocessTime();
+postprocess_total_timer = tic;
 %% COMPUTE Rigid body motion
 %And evaluate residual in new points rcheck_b
 
 % Recover coarse and fine sources from data on the boundary / collocation grid.
+source_recovery_timer = tic;
 geom_post = geom_solve;
 if get_bndry_field
     geom_post = geom_check;
@@ -474,9 +464,11 @@ else
         transform_mob_peanut_stokes(tau,geom_post,basis_mob);
 end
 lambda_c = [lam_c_x; lam_c_y];
+postprocess_time.source_recovery = toc(source_recovery_timer);
 
 %%% Get rigid body motion. 
 
+rigid_body_timer = tic;
 %First due to all coarse sources
 Kc = getKmat2D(rbase_in_c,0);
 UW= zeros(3*P,1); 
@@ -511,7 +503,7 @@ elseif opt.cmap
         else
             pair_vel = -Cmap_FU{i,p2}*rhs_pair;
         end
-        UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i)+ pair_vel(1:3); 
+        UW((i-1)*3+1:3*i) = UW((i-1)*3+1:3*i)+ pair_vel(1:3);
         UW((p2-1)*3+1:3*p2) = UW((p2-1)*3+1:3*p2)+ pair_vel(4:6);
 
     end
@@ -532,33 +524,40 @@ else
         UW((k-1)*3+1:3*k) = UW((k-1)*3+1:3*k)-rbm_k;
     end
 end
+postprocess_time.rigid_body = toc(rigid_body_timer);
 
 if get_bndry_field
+    boundary_timer = tic;
     B = getKmat2D(rcheck_b(1:n_bound)-q(1),0); %same for all particles
     u_lhs = zeros(2*P*n_bound,1);
-    for k = 1:P  
-        res = B*UW(3*(k-1)+1:3*k);
-        u_lhs((k-1)*n_bound+1:k*n_bound) = res(1:end/2);
-        u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = res(end/2+1:end); 
+    for k = 1:P
+        res_lhs = B*UW(3*(k-1)+1:3*k);
+        u_lhs((k-1)*n_bound+1:k*n_bound) = res_lhs(1:end/2);
+        u_lhs(P*n_bound+(k-1)*n_bound+1:P*n_bound+k*n_bound) = ...
+            res_lhs(end/2+1:end);
     end
-    geom_check.opt.self_correct = 0; 
+    geom_check.opt.self_correct = 0;
     u_rhs = matvec_mob_peanut_enhanced(tau,geom_check,basis_mob);
-    S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T); 
+    S_0 = getRecompletionFlow(rvec_in_c,rcheck_b,q,F,T);
     u_rhs = u_rhs-S_0; %due to sign convention of completion flow
+    postprocess_time.boundary_velocity = toc(boundary_timer);
 
+    residual_reduce_timer = tic;
     disp('Surface residual')
     diff_vec = u_rhs-u_lhs;
-   % max_abs = max(abs(S_0(1:end/2)+1i*S_0(end/2+1:end)));
-    % Check against the actual boundary data
+    % Check against the actual boundary data.
     max_abs = max(abs(u_lhs(1:end/2)+1i*u_lhs(end/2+1:end)));
     res = abs(diff_vec(1:end/2)+1i*diff_vec(end/2+1:end));
-    abs_res = max(res); 
+    abs_res = max(res);
     if max_abs > 0
         rel_vec = res/max_abs;
     else
         rel_vec = res;
     end
     rel_res = max(rel_vec);
+    rel_grid = reshape(rel_vec,n_bound,P);
+    body_rel_res_max = max(rel_grid,[],1).';
+    postprocess_time.residual_reduce = toc(residual_reduce_timer);
     fprintf('Relative boundary error: %1.3e \n', rel_res);
     fprintf('Absolute boundary error: %1.3e \n', abs_res);
 else
@@ -569,11 +568,7 @@ else
     body_rel_res_max = [];
     fprintf('Boundary field evaluation skipped (opt.get_bndry_field=0)\n');
 end
-
-if get_bndry_field
-    rel_grid = reshape(rel_vec,n_bound,P);
-    body_rel_res_max = max(rel_grid,[],1).';
-end
+postprocess_time.total = toc(postprocess_total_timer);
 
  
 if visualise_sol && get_bndry_field
@@ -633,13 +628,65 @@ sol.body_rel_res_max = body_rel_res_max;
 sol.precomp_time = precomp_time;
 sol.pair_precomp_stats = pair_cache.stats;
 sol.solve_time = solve_time;
+sol.postprocess_time = postprocess_time;
 sol.parallel_solve_stats = parallel_solve_stats;
 sol.big_sparse_stats = big_sparse_stats;
+sol.thread_settings = thread_plan;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 
 end
 
+
+function thread_plan = resolveMobilityThreadPlan(opt)
+single_threaded = logical(getOptField(opt,'single_threaded',false));
+thread_count = getOptField(opt,'maxNumCompThreads',[]);
+
+if ~isempty(thread_count)
+    if ~(isnumeric(thread_count) && isscalar(thread_count) && ...
+            isfinite(thread_count) && thread_count >= 1 && ...
+            thread_count == round(thread_count))
+        error('solve_mob_peanut_enhanced:BadThreadCount', ...
+            ['opt.maxNumCompThreads must be empty or a positive integer ', ...
+             'thread count.']);
+    end
+    thread_count = double(thread_count);
+end
+
+solve_threads = thread_count;
+if single_threaded
+    solve_threads = 1;
+end
+
+thread_plan = struct( ...
+    'single_threaded',single_threaded, ...
+    'maxNumCompThreads',thread_count, ...
+    'precomp_threads',thread_count, ...
+    'solve_threads',solve_threads);
+end
+
+
+function applyMobilityThreadSetting(thread_count)
+if isempty(thread_count)
+    setenv('OMP_NUM_THREADS','');
+    setenv('MKL_NUM_THREADS','');
+    setenv('OPENBLAS_NUM_THREADS','');
+    maxNumCompThreads('automatic');
+    return
+end
+
+thread_str = sprintf('%d',thread_count);
+setenv('OMP_NUM_THREADS',thread_str);
+setenv('MKL_NUM_THREADS',thread_str);
+setenv('OPENBLAS_NUM_THREADS',thread_str);
+maxNumCompThreads(thread_count);
+end
+
+
+function postprocess_time = initMobPostprocessTime()
+postprocess_time = struct('total',0,'source_recovery',0, ...
+    'rigid_body',0,'boundary_velocity',0,'residual_reduce',0);
+end
 
 function pair_cache = initStreamingMobPairCache(n_pairs)
 pair_cache = struct();

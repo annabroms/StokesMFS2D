@@ -34,8 +34,14 @@ solver.N_peanut = 200;
 solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-7;
 solver.maxit = 1000;
-solver.Nclust = 80;
+solver.Nclust = 80; % set to 40 for lighter test runs
 solver.get_precomp_time = true;
+solver.max_num_comp_threads = []; % [] = automatic; this machine currently reports 16 logical CPUs via nproc
+
+% Solver opt overrides
+opt_cfg = struct();
+opt_cfg.get_bndry_field = 1;
+opt_cfg.RAM_check = 0;
 
 % Comparison figure
 compare.make_triptych_figure = true;
@@ -137,10 +143,7 @@ else
 
     [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
-    opt = build_solver_opt(geom.P, solver, geom);
-    opt.get_bndry_field = 1;
-    opt.RAM_check = 0; 
-   % opt.Nclust = 40; 
+    opt = build_solver_opt(geom.P, solver, geom, opt_cfg);
 
     rng(loads.rng_seed,'twister');
     F = randn(geom.P,2);
@@ -532,7 +535,11 @@ save(data_path,'results');
 fprintf('Saved results to %s\n', data_path);
 end
 
-function opt = build_solver_opt(P, solver, geom)
+function opt = build_solver_opt(P, solver, geom, overrides)
+if nargin < 4
+    overrides = struct();
+end
+
 opt = get2Dparams(P, solver.N_c, solver.N_f);
 opt.rad = geom.rad;
 opt.delta_pair = solver.delta_pair;
@@ -552,7 +559,22 @@ opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_bndry_field = 1;
 opt.get_precomp_time = solver.get_precomp_time;
+if isfield(solver,'max_num_comp_threads')
+    opt.maxNumCompThreads = solver.max_num_comp_threads;
+end
 opt.parallel_precomp = 1;
+opt = apply_struct_overrides(opt, overrides);
+end
+
+function target = apply_struct_overrides(target, overrides)
+if nargin < 2 || isempty(overrides)
+    return
+end
+
+names = fieldnames(overrides);
+for k = 1:numel(names)
+    target.(names{k}) = overrides.(names{k});
+end
 end
 
 function reference_results = generate_reference_results(results, reference_N_c)
@@ -560,11 +582,12 @@ fprintf('Generating reference results with N_c=%d\n', reference_N_c);
 
 solver_ref = results.solver;
 solver_ref.N_c = reference_N_c;
-opt_ref = build_solver_opt(results.geom.P, solver_ref, results.geom);
-opt_ref.get_bndry_field = 0;
+reference_opt_overrides = struct('get_bndry_field',0);
 if isfield(results,'opt') && isfield(results.opt,'parallel_precomp')
-    opt_ref.parallel_precomp = results.opt.parallel_precomp;
+    reference_opt_overrides.parallel_precomp = results.opt.parallel_precomp;
 end
+opt_ref = build_solver_opt(results.geom.P, solver_ref, results.geom, ...
+    reference_opt_overrides);
 
 tic;
 [UW_ref, sol_ref] = solve_mob_peanut_enhanced(results.q, results.F, results.T, opt_ref);

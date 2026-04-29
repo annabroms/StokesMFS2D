@@ -1,5 +1,4 @@
 close all;
-clc;
 
 script_name = mfilename;
 script_date = 'Apr 14, 2026';
@@ -12,7 +11,7 @@ data_root = get_data_root(repo_root);
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 1e4;
+geom.P = 200;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -35,6 +34,20 @@ solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-7; %was 1e-8; 
 solver.maxit = 1000;
 solver.get_precomp_time = true;
+solver.max_num_comp_threads = []; % [] = automatic; this machine currently reports 16 logical CPUs via nproc
+
+% Solver opt overrides
+opt_cfg = struct();
+opt_cfg.get_bndry_field = 1;
+opt_cfg.RAM_check = 0;
+opt_cfg.single_threaded = 0;
+opt_cfg.mob_big_sparse_build_mode = 'precomputed';
+%opt_cfg.mob_big_sparse_build_mode = 'streaming';
+opt_cfg.use_big_sparse = 0;
+opt_cfg.mob_sparse_map_coarse = 1;
+opt_cfg.parallel_precomp = 1; 
+opt_cfg.maxNumCompThreads = 16;
+opt_cfg.mob_big_sparse_chunk_pairs = 8;
 
 % Data I/O
 % This experiment stores or loads raw solver data only.
@@ -73,15 +86,7 @@ else
 
     [q, geom_meta] = random_discs_mc(geom.P, geom_opt);
 
-    opt = build_solver_opt(geom.P, solver, geom);
-    opt.get_bndry_field = 0;
-    opt.RAM_check = 0; 
-    opt.single_threaded = 1; 
-    %opt.mob_big_sparse_build_mode = 'precomputed';
-    opt.mob_big_sparse_build_mode = 'streaming';
-    opt.use_big_sparse = 1;
-    opt.mob_sparse_map_coarse = 1; 
-    
+    opt = build_solver_opt(geom.P, solver, geom, opt_cfg);
 
     rng(loads.rng_seed,'twister');
     F = randn(geom.P,2);
@@ -203,7 +208,11 @@ end
 results = loaded.results;
 end
 
-function opt = build_solver_opt(P, solver, geom)
+function opt = build_solver_opt(P, solver, geom, overrides)
+if nargin < 4
+    overrides = struct();
+end
+
 opt = get2Dparams(P, solver.N_c, solver.N_f);
 opt.rad = geom.rad;
 opt.delta_pair = solver.delta_pair;
@@ -217,11 +226,25 @@ opt.debug = 0;
 opt.gmres_verbose = 0;
 opt.surface_error_mode = 'rel';
 opt.reuse_pair_basis_by_sep = false;
-opt.show_counter = 1;
+opt.show_counter = 0;
 opt.cmap = 1;
 opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_precomp_time = solver.get_precomp_time;
+if isfield(solver,'max_num_comp_threads')
+    opt.maxNumCompThreads = solver.max_num_comp_threads;
+end
 opt.parallel_precomp = 1;
-opt.maxit = 300;
+opt = apply_struct_overrides(opt, overrides);
+end
+
+function target = apply_struct_overrides(target, overrides)
+if nargin < 2 || isempty(overrides)
+    return
+end
+
+names = fieldnames(overrides);
+for k = 1:numel(names)
+    target.(names{k}) = overrides.(names{k});
+end
 end
