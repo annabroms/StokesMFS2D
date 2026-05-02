@@ -12,7 +12,7 @@ data_root = get_data_root(repo_root);
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 1e4;
+geom.P = 1e3;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -46,6 +46,9 @@ opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 %opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1;
 opt_cfg.mob_sparse_map_coarse = 1;
+opt_cfg.parallel_precomp = 1; 
+opt_cfg.parallel_precomp_chunk_pairs = 8;
+opt_cfg.parallel_big_sparse_build = 0; 
 
 % Data I/O
 % This experiment stores or loads raw solver data only.

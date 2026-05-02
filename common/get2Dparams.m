@@ -40,6 +40,7 @@ opt.alpha = 0; %use two lines?
 opt.proj_all = 0; %only for the mobility problem
 
 % Pair corrections
+opt.resistance = 0; % mobility defaults to the Stokes mobility formulation
 opt.pc = 0; %use pair corrections? Only for old image based solvers
 opt.delta_pair = 0.2; %activate pair_corrections
 opt.cmap = 1; %use coarse-to-coarse mapping. Only applicable with peanut compression.
@@ -53,6 +54,8 @@ opt.RAM_check = false; % estimate/report RAM usage for precomp, solve, and postp
 opt.project_force = false; % project out net force/torque-producing modes, needed in Stokes mobility solves
 opt.reuse_pair_basis_by_sep = true; % reuse canonical pair bases for repeated pair separations
 opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
+opt.parallel_precomp_chunk_pairs = []; % [] chooses pair rows per parallel precompute task automatically
+opt.parallel_big_sparse_build = false; % parallelise mobility big-sparse assembly when a parallel pool is available
 opt.parallel_solve = false; % parallelise the peanut mobility solve matvec pair loop when supported
 opt.parallel_solve_chunk_size = 16; % pairs per parfor chunk in parallel solve matvec
 opt.use_big_sparse = true; % use global sparse close-pair correction matrices in supported peanut GMRES solves

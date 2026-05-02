@@ -1,5 +1,5 @@
 function result = test_mobility_sparse_map_coarse
-%TEST_MOBILITY_SPARSE_MAP_COARSE Compare legacy and direct coarse sparse maps.
+%TEST_MOBILITY_SPARSE_MAP_COARSE Small parity checks for serial vs parallel pair precompute.
 
 fprintf('--- test_mobility_sparse_map_coarse ---\n');
 
@@ -19,83 +19,89 @@ result = struct();
 result.cases = repmat(struct(),0,1);
 case_id = 0;
 for direct_u_corr = [true false]
-    case_id = case_id + 1;
-    result.cases(case_id) = compare_case(q,opt,direct_u_corr);
+    for sparse_map_coarse = [false true]
+        case_id = case_id + 1;
+        result.cases(case_id) = compare_case( ...
+            q,opt,direct_u_corr,sparse_map_coarse);
+    end
 end
 
 assert(max([result.cases.transform_rel_diff]) < 5e-10, ...
-    'mob_sparse_map_coarse changed the mobility sparse transform.');
+    'Parallel precompute changed the mobility sparse transform.');
 assert(max([result.cases.matvec_rel_diff]) < 5e-10, ...
-    'mob_sparse_map_coarse changed the mobility sparse matvec.');
+    'Parallel precompute changed the mobility sparse matvec.');
 assert(max([result.cases.solve_rel_diff]) < 5e-8, ...
-    'mob_sparse_map_coarse changed the mobility solve output.');
-assert(max([result.cases.resvec_diff]) < 5e-10, ...
-    'mob_sparse_map_coarse changed the mobility GMRES residual history.');
-assert(all([result.cases.it_legacy] == [result.cases.it_direct]), ...
-    'mob_sparse_map_coarse changed the mobility GMRES iteration count.');
+    'Parallel precompute changed the mobility solve output.');
+assert(max([result.cases.resvec_overlap_diff]) < 5e-10, ...
+    'Parallel precompute changed the mobility GMRES residual history.');
+assert(max([result.cases.final_resvec_diff]) < 5e-10, ...
+    'Parallel precompute changed the final mobility GMRES residual.');
+assert(all([result.cases.it_serial] == [result.cases.it_parallel]), ...
+    'Parallel precompute changed the mobility GMRES iteration count.');
 
 fprintf('  PASSED\n');
 end
 
-function case_result = compare_case(q,opt,direct_u_corr)
-opt_legacy = opt;
-opt_legacy.use_big_sparse = true;
-opt_legacy.mob_sparse_map_coarse = false;
-opt_legacy.big_sparse_direct_u_corr = direct_u_corr;
+function case_result = compare_case(q,opt,direct_u_corr,sparse_map_coarse)
+ensure_pool(2);
 
-opt_direct = opt_legacy;
-opt_direct.mob_sparse_map_coarse = true;
+opt_serial = opt;
+opt_serial.use_big_sparse = true;
+opt_serial.mob_sparse_map_coarse = sparse_map_coarse;
+opt_serial.big_sparse_direct_u_corr = direct_u_corr;
+opt_serial.parallel_precomp = false;
 
-[geom,basis] = build_test_data(q,opt_legacy);
+opt_parallel = opt_serial;
+opt_parallel.parallel_precomp = true;
+opt_parallel.parallel_precomp_chunk_pairs = 2;
 
-geom_legacy = geom;
-geom_legacy.opt = opt_legacy;
-basis_legacy = basis;
-[basis_legacy.big_sparse,stats_legacy] = buildMobPeanutBigSparse( ...
-    geom_legacy,basis_legacy);
+[geom_serial,basis_serial] = build_test_data(q,opt_serial);
+[geom_parallel,basis_parallel] = build_test_data(q,opt_parallel);
 
-geom_direct = geom;
-geom_direct.opt = opt_direct;
-basis_direct = basis;
-[basis_direct.big_sparse,stats_direct] = buildMobPeanutBigSparse( ...
-    geom_direct,basis_direct);
+[basis_serial.big_sparse,stats_serial] = buildMobPeanutBigSparse( ...
+    geom_serial,basis_serial);
+[basis_parallel.big_sparse,stats_parallel] = buildMobPeanutBigSparse( ...
+    geom_parallel,basis_parallel);
 
 rng(11);
-tau = randn(2*numel(geom.rvec_out),1);
-[lam_legacy_x,lam_legacy_y,lambda_self_legacy,u_corr_legacy] = ...
-    transform_mob_peanut_big_sparse_stokes(tau,geom_legacy,basis_legacy);
-[lam_direct_x,lam_direct_y,lambda_self_direct,u_corr_direct] = ...
-    transform_mob_peanut_big_sparse_stokes(tau,geom_direct,basis_direct);
+tau = randn(2*numel(geom_serial.rvec_out),1);
+[lam_serial_x,lam_serial_y,lambda_self_serial,u_corr_serial] = ...
+    transform_mob_peanut_big_sparse_stokes(tau,geom_serial,basis_serial);
+[lam_parallel_x,lam_parallel_y,lambda_self_parallel,u_corr_parallel] = ...
+    transform_mob_peanut_big_sparse_stokes(tau,geom_parallel,basis_parallel);
 
-y_legacy = matvec_peanut_big_sparse(tau,geom_legacy,basis_legacy);
-y_direct = matvec_peanut_big_sparse(tau,geom_direct,basis_direct);
+y_serial = matvec_peanut_big_sparse(tau,geom_serial,basis_serial);
+y_parallel = matvec_peanut_big_sparse(tau,geom_parallel,basis_parallel);
 
 F = randn(numel(q),2);
 F = F - mean(F,1);
 T = randn(numel(q),1);
-[UW_legacy,sol_legacy] = solve_mob_peanut_enhanced(q,F,T,opt_legacy);
-[UW_direct,sol_direct] = solve_mob_peanut_enhanced(q,F,T,opt_direct);
+[UW_serial,sol_serial] = solve_mob_peanut_enhanced(q,F,T,opt_serial);
+[UW_parallel,sol_parallel] = solve_mob_peanut_enhanced(q,F,T,opt_parallel);
 
 case_result = struct();
 case_result.direct_u_corr = direct_u_corr;
+case_result.sparse_map_coarse = sparse_map_coarse;
 case_result.transform_rel_diff = max([ ...
-    relerr(lam_direct_x,lam_legacy_x), ...
-    relerr(lam_direct_y,lam_legacy_y), ...
-    relerr(lambda_self_direct,lambda_self_legacy), ...
-    relerr(u_corr_direct,u_corr_legacy)]);
-case_result.matvec_rel_diff = relerr(y_direct,y_legacy);
-case_result.solve_rel_diff = relerr(UW_direct,UW_legacy);
-case_result.resvec_diff = norm(sol_direct.resvec-sol_legacy.resvec,inf);
-case_result.it_legacy = sol_legacy.it;
-case_result.it_direct = sol_direct.it;
-case_result.stats_legacy = stats_legacy;
-case_result.stats_direct = stats_direct;
+    relerr(lam_parallel_x,lam_serial_x), ...
+    relerr(lam_parallel_y,lam_serial_y), ...
+    relerr(lambda_self_parallel,lambda_self_serial), ...
+    relerr(u_corr_parallel,u_corr_serial)]);
+case_result.matvec_rel_diff = relerr(y_parallel,y_serial);
+case_result.solve_rel_diff = relerr(UW_parallel,UW_serial);
+case_result.resvec_overlap_diff = compare_vec_overlap( ...
+    sol_parallel.resvec,sol_serial.resvec);
+case_result.final_resvec_diff = compare_final_entry( ...
+    sol_parallel.resvec,sol_serial.resvec);
+case_result.it_serial = sol_serial.it;
+case_result.it_parallel = sol_parallel.it;
 
-fprintf(['  direct_u_corr=%d transform %.3e matvec %.3e ', ...
-    'solve %.3e it %d/%d resvec %.3e\n'], ...
-    direct_u_corr,case_result.transform_rel_diff, ...
+fprintf(['  direct_u_corr=%d mob_sparse_map_coarse=%d transform %.3e ', ...
+    'matvec %.3e solve %.3e it %d/%d resvec %.3e final %.3e\n'], ...
+    direct_u_corr,sparse_map_coarse,case_result.transform_rel_diff, ...
     case_result.matvec_rel_diff,case_result.solve_rel_diff, ...
-    case_result.it_legacy,case_result.it_direct,case_result.resvec_diff);
+    case_result.it_serial,case_result.it_parallel, ...
+    case_result.resvec_overlap_diff,case_result.final_resvec_diff);
 end
 
 function [q,meta] = build_small_geometry(P,phi,rng_seed)
@@ -107,6 +113,7 @@ end
 
 function opt = make_small_options(P)
 opt = get2Dparams(P,12,18);
+opt.a_c = 1.25;
 opt.delta_pair = 0.2;
 opt.N_peanut = 48;
 opt.gmres_tol = 1e-7;
@@ -124,6 +131,7 @@ opt.use_dense = 1;
 opt.use_big_sparse = true;
 opt.reuse_pair_basis_by_sep = false;
 opt.parallel_precomp = false;
+opt.parallel_precomp_chunk_pairs = 2;
 opt.use_fmm = false;
 opt.mob_big_sparse_chunk_pairs = 2;
 end
@@ -169,6 +177,9 @@ opt_pair.project_force = true;
 opt_pair.project = true;
 opt_pair.pair_basis_debug = false;
 opt_pair.rad = ones(P,1);
+if logical(opt_pair.parallel_precomp)
+    opt_pair.parallel_precomp_chunk_pairs = 2;
+end
 [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_FU,pair_cache] = ...
     getPairBasisStokes(q,rbase_in_c,rbase_in_f,rimage_vec,refine, ...
     pairs,opt_pair,Lc{1},rbase_out_c,svd_opts);
@@ -181,6 +192,7 @@ geom.rimage_vec = rimage_vec;
 geom.opt = opt_pair;
 geom.opt.get_bndry_field = 0;
 geom.opt.parallel_solve = false;
+geom.opt.resistance = 0;
 geom.rvec_out = rout;
 geom.rcheck = rout;
 geom.q = q;
@@ -205,4 +217,34 @@ end
 function e = relerr(a,b)
 den = max(1,norm(b(:),inf));
 e = norm(a(:)-b(:),inf)/den;
+end
+
+function value = compare_vec_overlap(a,b)
+a = a(:);
+b = b(:);
+n = min(numel(a),numel(b));
+if n == 0
+    value = 0;
+    return
+end
+value = norm(a(1:n)-b(1:n),inf);
+end
+
+function value = compare_final_entry(a,b)
+a = a(:);
+b = b(:);
+assert(~isempty(a) && ~isempty(b), ...
+    'Residual history is empty in mobility sparse-map comparison.');
+value = abs(a(end) - b(end));
+end
+
+function ensure_pool(pool_size)
+pool = gcp('nocreate');
+if ~isempty(pool) && pool.NumWorkers ~= pool_size
+    delete(pool);
+    pool = [];
+end
+if isempty(pool)
+    parpool('local',pool_size);
+end
 end

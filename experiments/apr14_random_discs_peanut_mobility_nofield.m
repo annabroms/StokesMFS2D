@@ -1,4 +1,5 @@
 close all;
+clear;
 
 script_name = mfilename;
 script_date = 'Apr 14, 2026';
@@ -11,7 +12,7 @@ data_root = get_data_root(repo_root);
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
 % Geometry
-geom.P = 200;
+geom.P = 1000;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -38,16 +39,19 @@ solver.max_num_comp_threads = []; % [] = automatic; this machine currently repor
 
 % Solver opt overrides
 opt_cfg = struct();
-opt_cfg.get_bndry_field = 1;
+opt_cfg.get_bndry_field = 0;
 opt_cfg.RAM_check = 0;
 opt_cfg.single_threaded = 0;
 opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 %opt_cfg.mob_big_sparse_build_mode = 'streaming';
-opt_cfg.use_big_sparse = 0;
+opt_cfg.use_big_sparse = 1; %switch here!
 opt_cfg.mob_sparse_map_coarse = 1;
 opt_cfg.parallel_precomp = 1; 
-opt_cfg.maxNumCompThreads = 16;
+%opt_cfg.maxNumCompThreads = 8;
 opt_cfg.mob_big_sparse_chunk_pairs = 8;
+opt_cfg.parallel_precomp_chunk_pairs = 8;
+opt_cfg.parallel_big_sparse_build = 0; 
+
 
 % Data I/O
 % This experiment stores or loads raw solver data only.

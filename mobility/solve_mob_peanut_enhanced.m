@@ -38,6 +38,15 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       cmap          if true, use coarse-to-coarse pair map without
 %                     recovering fine sources (other than for evaluating the 
 %                     field at or near the boundaries)
+%       parallel_precomp
+%                     if true, parallelise supported pair-basis
+%                     precomputations when a parallel pool is available
+%       parallel_precomp_chunk_pairs
+%                     pair rows assigned to each parallel precompute task;
+%                     [] selects a chunk size automatically
+%       parallel_big_sparse_build
+%                     if true, parallelise supported mobility big-sparse
+%                     assembly when a parallel pool is available
 %       parallel_solve
 %                     if true, parallelise the supported peanut mobility
 %                     GMRES solve matvec pair loop with a parallel pool
@@ -123,6 +132,7 @@ get_bndry_field = opt.get_bndry_field;
 get_precomp_time = opt.get_precomp_time;
 get_solve_time = opt.get_solve_time;
 parallel_solve_requested = opt.parallel_solve; % use parfor in matlab. Normally false, no big gain
+parallel_precomp_requested = logical(getOptField(opt,'parallel_precomp',false));
 use_big_sparse = opt.use_big_sparse; % precompute global sparse matrix for all pair corrections
 mob_big_sparse_build_mode = opt.mob_big_sparse_build_mode;
 N_peanut = opt.N_peanut;
@@ -156,6 +166,8 @@ if use_big_sparse
 end
 streaming_big_sparse = use_big_sparse && ...
     strcmp(mob_big_sparse_build_mode,'streaming');
+parallel_big_sparse_requested = use_big_sparse && ...
+    logical(getOptField(opt,'parallel_big_sparse_build',false));
 if streaming_big_sparse && get_bndry_field
     error('solve_mob_peanut_enhanced:StreamingBoundaryUnsupported', ...
         ['opt.mob_big_sparse_build_mode=''streaming'' requires ', ...
@@ -209,6 +221,14 @@ if get_precomp_time
     pair_timer = tic;
 end
 [~, ~, ~, rimage_vec, refine,pairs] = getEnhancedGrid(q, opt);
+n_pairs = size(pairs,1);
+chunk_pool_size = [];
+if (parallel_precomp_requested || parallel_big_sparse_requested) && ...
+        n_pairs > 1
+    [~,chunk_pool_size] = resolveParallelPrecomp( ...
+        true,'solve_mob_peanut_enhanced');
+end
+[~,opt] = resolveMobilityChunkPairs(n_pairs,opt,chunk_pool_size);
 if get_precomp_time
     pair_setup_time = toc(pair_timer);
     precomp_time.pair_setup = pair_setup_time;
@@ -711,6 +731,7 @@ pair_cache.stats = struct('requested_parallel',false, ...
     'n_pairs',n_pairs,'n_groups',0,'pool_size',0, ...
     'payload_mode','maps_only_streamed_to_sparse', ...
     'parallel_backend','none','max_inflight',0, ...
+    'chunk_pairs',0,'n_tasks',0, ...
     'needs_explicit_pair_sources',false);
 end
 
@@ -733,6 +754,12 @@ stats.backend = 'global_block_sparse';
 stats.reason = 'not_requested';
 stats.build_mode = '';
 stats.chunk_pairs = 0;
+stats.requested_parallel = false;
+stats.used_parallel = false;
+stats.pool_size = 0;
+stats.pool_type = 'none';
+stats.parallel_backend = 'none';
+stats.n_tasks = 0;
 stats.n_pairs = n_pairs;
 stats.N_c = 0;
 stats.N_check = 0;

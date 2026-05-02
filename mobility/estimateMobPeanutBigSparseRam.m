@@ -52,8 +52,7 @@ switch build_mode
             ['opt.mob_big_sparse_build_mode must be ''precomputed'' ', ...
              'or ''streaming''.']);
 end
-chunk_pairs = max(1,round(getOptField(opt,'mob_big_sparse_chunk_pairs',8)));
-chunk_pairs = min(max(1,n_pairs),chunk_pairs);
+[chunk_pairs,opt] = resolveMobilityChunkPairs(n_pairs,opt,[]);
 if direct_u_corr
     velocity_correction = 'direct_sparse';
 else
