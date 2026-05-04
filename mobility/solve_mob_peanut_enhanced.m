@@ -363,7 +363,7 @@ end
 if use_big_sparse
     matvec_gmres = @(x) matvec_peanut_big_sparse(x,geom_solve,basis_mob);
 else
-    matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_gmres);
+    matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_mob);
 end
 
 %% Solve system

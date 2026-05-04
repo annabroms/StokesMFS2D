@@ -19,13 +19,16 @@ if ~isnan(N_workers)
 else
     N_workers = 4; % run locally
     N_threads = 2; 
-    pool = gcp;
-    if pool.NumWorkers ~= N_workers
-        delete(gcp('nocreate'));
+    pool = gcp('nocreate');
+    if isempty(pool)
+        pool = parpool(N_workers);  
+    elseif pool.NumWorkers ~= N_workers
+        delete(gcp('nocreate'));      
         pool = parpool(N_workers);
-    end
-    spmd; maxNumCompThreads(N_threads); end
+    end  
 end
+
+spmd; maxNumCompThreads(N_threads); end
 
 
 % Geometry
@@ -62,7 +65,7 @@ opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1; %switch here!
 opt_cfg.mob_sparse_map_coarse = 1;
-opt_cfg.parallel_precomp = 0; 
+opt_cfg.parallel_precomp = 1; 
 opt_cfg.mob_big_sparse_chunk_pairs = '';
 opt_cfg.parallel_precomp_chunk_pairs = '';
 opt_cfg.parallel_big_sparse_build = 1; 

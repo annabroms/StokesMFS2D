@@ -2,6 +2,10 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     q, rbase_in_c, rbase_in_f, rimage_pairs, refine, pairs, opt, Lc, row,...
     debug, svd_opts, use_canonical, payload_mode)
 %BUILDSTOKESMOBILITYPAIRDATA Build one Stokes mobility pair payload.
+%
+% This helper contains the pair solve used by getPairBasisStokes and by the
+% streamed Stokes big-sparse builder. The caller decides whether to keep the
+% full fine-source payload or only the compressed maps.
 
     % --- Default arguments ---
     if nargin < 10 || isempty(debug);         debug         = false;      end
@@ -12,13 +16,13 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     store_full = strcmp(payload_mode, 'full');
 
     % --- Cache frequently used opt fields up front ---
-    N_c            = opt.N_c;
-    a_c            = getOptField(opt, 'a_c', 1.2);
-    a_f            = opt.a_f;
-    N_f            = opt.N_f;
-    project_force  = logical(getOptField(opt, 'project_force', false));
-    use_cmap       = logical(getOptField(opt, 'cmap',          false));
-    N_peanut       = getOptField(opt, 'N_peanut', 0);
+    N_c             = opt.N_c;
+    a_c             = getOptField(opt, 'a_c', 1.2);
+    a_f             = opt.a_f;
+    N_f             = opt.N_f;
+    project_force   = logical(getOptField(opt, 'project_force', false));
+    use_cmap        = logical(getOptField(opt, 'cmap',          false));
+    N_peanut        = getOptField(opt, 'N_peanut', 0);
     use_left_weight = logical(getOptField(svd_opts, 'left_weight', false));
 
     % --- Ensure column vectors ---
@@ -34,8 +38,13 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     % --- Geometry ---
     delta = q(j) - q(i);
     sep   = abs(delta);
-    rot   = (sep == 0) + (sep ~= 0) * delta / sep;   % avoids branch
-    mid   = 0.5 * (q(i) + q(j));
+
+    if sep == 0
+        rot = 1;
+    else
+        rot = delta / sep;
+    end
+    mid = 0.5 * (q(i) + q(j));
 
     % --- Canonical or physical frame ---
     if use_canonical
@@ -60,8 +69,8 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     nout_c      = ceil(a_c * N_c);
     rout_base_c = exp(1i * linspace(0, 2*pi*(1-1/nout_c), nout_c)');
 
-    nout_f      = ceil(a_f * N_f);
-    rout_base   = exp(1i * linspace(0, 2*pi*(1-1/nout_f), nout_f)');
+    nout_f    = ceil(a_f * N_f);
+    rout_base = exp(1i * linspace(0, 2*pi*(1-1/nout_f), nout_f)');
 
     % --- Source and target point arrays ---
     rin_1_f  = q_pair(1) + rbase_in_f;
@@ -100,8 +109,8 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
 
     % --- Moment / RBM maps (shared by project_force and cmap) ---
     if project_force || use_cmap
-        Kf1              = getKmat2D(rin_pair(1:rin_half),        q_pair(1));
-        Kf2              = getKmat2D(rin_pair(rin_half+1:end),    q_pair(2));
+        Kf1              = getKmat2D(rin_pair(1:rin_half),     q_pair(1));
+        Kf2              = getKmat2D(rin_pair(rin_half+1:end), q_pair(2));
         pair_moment_map  = getKftPair(Kf1, Kf2);
         pair_rbm_map     = pair_moment_map';
         pair_moment_gram = pair_moment_map * pair_rbm_map;
@@ -116,11 +125,11 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     if project_force
         B1 = getKmat2D([rout_1; refine_i], q_pair(1));
         B2 = getKmat2D([rout_2; refine_j], q_pair(2));
-        Lf_pair                      = getLfPair(Kf1, Kf2);
-        pair_target_rbm_map          = getKftPair(B1, B2)';
-        pair_proj_moment_map         = pair_moment_map;
-        pair_proj_rbm_map            = pair_rbm_map;
-        pair_proj_moment_gram        = pair_moment_gram;
+        Lf_pair               = getLfPair(Kf1, Kf2);
+        pair_target_rbm_map   = getKftPair(B1, B2)';
+        pair_proj_moment_map  = pair_moment_map;
+        pair_proj_rbm_map     = pair_rbm_map;
+        pair_proj_moment_gram = pair_moment_gram;
     else
         Lf_pair               = [];
         pair_target_rbm_map   = [];
@@ -134,10 +143,12 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
         pair_proj_moment_map, pair_proj_rbm_map,...
         pair_proj_moment_gram, pair_target_rbm_map, svd_pair);
 
-    % Compute Npair and Upf once — reused in Cmap expressions
+    % Separate the unsigned intermediate UfTN = Uf_pair'*Npair
+    % from the stored Upf = -UfTN, to avoid sign confusion in Cmap
+    % expressions. UfTN is a direct substitute for Uf_pair'*Npair everywhere.
     Npair = evaluateCoarseOnPair(q_pair, rbase_in_c, rout_f);
-    UfT   = Uf_pair';          % cache transpose — used up to 3 times
-    Upf   = -UfT * Npair;
+    UfTN  = Uf_pair' * Npair;    % = Uf_pair'*Npair, used in Cmap expressions
+    Upf   = -UfTN;               % stored quantity, used in colloc block
 
     % --- Coarse (peanut) block ---
     DC = []; YC = [];
@@ -148,14 +159,13 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
         [DC, YC] = getPeanutBlockStokes(rin_pair_c, rin_pair, rout_peanut,...
             Lc_pair, pair_proj_moment_map, pair_proj_rbm_map,...
             pair_proj_moment_gram, svd_opts);
-        if use_cmap
-            % Reuse Upf = -UfT*Npair already computed
-            pair.Cmap = -YC * (DC * Yf_pair * Upf);
+        if use_cmap           
+            pair.Cmap = -YC * (DC * Yf_pair * UfTN);
         end
     end
 
     if use_cmap
-        pair.Cmap_FU = -pair_moment_map * Yf_pair * Upf;
+        pair.Cmap_FU = -pair_moment_map * Yf_pair * UfTN;
     end
 
     % --- Store full payload ---
@@ -171,10 +181,10 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     % --- Collocation maps (only when full payload + project_force) ---
     if store_full && project_force
         rout_pair_c = [q_pair(1) + rout_base_c; q_pair(2) + rout_base_c];
-        Ppair       = eye(size(Lf_pair)) - Lf_pair;   % projection: I - Lf
+        Ppair       = eye(size(Lf_pair)) - Lf_pair;
 
-        % stokSLPmat calls with distinct source sets — no reuse possible
-        pair.Upair_colloc  = stokSLPmat(rin_pair,   rout_pair_c, 1) *...
+        % Upf = -UfTN is correct here — matches original definition
+        pair.Upair_colloc  = stokSLPmat(rin_pair, rout_pair_c, 1) *...
                              Ppair * Yf_pair * Upf;
         pair.Ecolloc       = stokSLPmat(rin_pair_c, rout_pair_c, 1);
         pair.Ucross_colloc = buildStokesCrossPairVelocityMap(...
@@ -182,24 +192,23 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     end
 
     if debug
-        % --- Debug data (reference pair fields directly, avoid re-assignment) ---
         debug_data = struct(...
-            'q_pair',            q_pair,...
-            'rin_pair',          rin_pair,...
-            'Upf',               Upf,...
-            'Yf_pair',           Yf_pair,...
-            'Lf_pair',           Lf_pair,...
-            'Kf1',               Kf1,...
-            'Kf2',               Kf2,...
-            'pair_moment_map',   pair_moment_map,...
-            'pair_rbm_map',      pair_rbm_map,...
-            'pair_moment_gram',  pair_moment_gram,...
+            'q_pair',              q_pair,...
+            'rin_pair',            rin_pair,...
+            'Upf',                 Upf,...
+            'Yf_pair',             Yf_pair,...
+            'Lf_pair',             Lf_pair,...
+            'Kf1',                 Kf1,...
+            'Kf2',                 Kf2,...
+            'pair_moment_map',     pair_moment_map,...
+            'pair_rbm_map',        pair_rbm_map,...
+            'pair_moment_gram',    pair_moment_gram,...
             'pair_target_rbm_map', pair_target_rbm_map,...
-            'Lc_pair',           Lc_pair,...
-            'DC',                DC,...
-            'YC',                YC,...
-            'rout_f',            rout_f,...
-            'Npair',             Npair...
+            'Lc_pair',             Lc_pair,...
+            'DC',                  DC,...
+            'YC',                  YC,...
+            'rout_f',              rout_f,...
+            'Npair',               Npair...
         );
     else
         debug_data = [];

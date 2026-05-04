@@ -11,8 +11,28 @@ data_root = get_data_root(repo_root);
 
 fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
 
+N_threads = str2double(getenv('SLURM_CPUS_PER_TASK'));
+N_workers = str2double(getenv('SLURM_NTASKS'));
+if ~isnan(N_workers)
+    fprintf('Number of cores %u \n',N_workers);
+    fprintf('Number of threads per core %u \n', N_threads);
+else
+    N_workers = 4; % run locally
+    N_threads = 2; 
+    pool = gcp('nocreate');
+    if isempty(pool)
+        pool = parpool(N_workers);  
+    elseif pool.NumWorkers ~= N_workers
+        delete(gcp('nocreate'));      
+        pool = parpool(N_workers);
+    end
+
+end
+
+spmd; maxNumCompThreads(N_threads); end
+
 % Geometry
-geom.P = 1e3;
+geom.P = 20;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -41,12 +61,11 @@ opt_cfg = struct();
 opt_cfg.get_bndry_field = 1;
 opt_cfg.RAM_check = 0;
 opt_cfg.mob_big_sparse_build_mode = 'precomputed';
-%opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1;
 opt_cfg.mob_sparse_map_coarse = 1;
 opt_cfg.parallel_precomp = 1; 
 opt_cfg.parallel_precomp_chunk_pairs = 8;
-opt_cfg.parallel_big_sparse_build = 0; 
+opt_cfg.parallel_big_sparse_build = 1; 
 
 opt_cfg.solve_threads = 8; 
 

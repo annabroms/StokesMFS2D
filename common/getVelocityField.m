@@ -56,7 +56,7 @@ n_src = numel(rvec_in);
 
 if n_src > 0
     if use_fmm
-        fmm_eps = 1e-10; %old setting
+        %fmm_eps = 1e-10; %old setting
         fmm_eps = 1e-9;
         targ = [real(rcheck)'; imag(rcheck)'];
         srcinfo.sources = [real(rvec_in)'; imag(rvec_in)'];
