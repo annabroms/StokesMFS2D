@@ -482,8 +482,15 @@ for row = 1:n_pairs
     Cmap_FU  = basis.Cmap_FU{i,j};
     [Ucross, Ecolloc] = buildStokesCoarsePairDense(...
         q, geom.rbase_in_c(:), rout_base_c, pairs, row);
+
+    if  plan.sparse_map_coarse || plan.direct_u_corr 
+        Ucorr =  Ucross - Ecolloc*C_map;
+    else
+        Ucorr = [];
+    end
+
     entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-        C_map, Cmap_FU, Ucross, Ecolloc, plan);
+        C_map, Cmap_FU, Ucross, Ecolloc,Ucorr, plan);
 end
 
 end
@@ -515,12 +522,15 @@ for row = 1:n_pairs
         pair_opt, basis.Lc, row, false, svd_opts, false, 'maps_only');
     [Ucross, Ecolloc] = buildStokesCoarsePairDense(...
         q, geom.rbase_in_c(:), rout_base_c, pairs, row);
+
     if plan.sparse_map_coarse || plan.direct_u_corr
+        Cmap = P_pair*pair.Cmap;
+        Ucorr = Ucross - Ecolloc*Cmap;
         entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-        P_pair*pair.Cmap, pair.Cmap_FU, Ucross, Ecolloc, plan);   
+        Cmap, pair.Cmap_FU, Ucross, Ecolloc, Ucorr, plan);   
     else
         entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-        pair.Cmap, pair.Cmap_FU, Ucross, Ecolloc, plan);
+        pair.Cmap, pair.Cmap_FU, Ucross, Ecolloc, [],plan);
     end
     if show_counter
         fprintf('buildMobPeanutBigSparse: streamed pair %d/%d\n',...
@@ -530,7 +540,7 @@ end
 end
 
 function entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-    C_map, Cmap_FU, Ucross, Ecolloc, plan)
+    C_map, Cmap_FU, Ucross, Ecolloc, Ucorr,plan)
 %APPENDPAIRBLOCKS Insert one pair's contribution into all sparse builders.
 %
 % plan.direct_u_corr and plan.sparse_map_coarse are resolved once from the
@@ -566,7 +576,7 @@ entries.rbm = appendSparseBuilderBlock(entries.rbm, rbm_idx, in_idx, -Cmap_FU);
 % --- Velocity correction ---
 if plan.direct_u_corr
     entries.u = appendSparseBuilderBlock(entries.u, u_out_idx, in_idx,...
-        Ucross - Ecolloc*C_map);
+        Ucorr);
 else
     entries.u_cross  = appendSparseBuilderBlock(entries.u_cross,...
         u_out_idx, in_idx, Ucross);
@@ -655,7 +665,7 @@ for cc = 1:n_chunks
         row = chunk.rows(kk);
         entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P,...
             chunk.Cmap{kk},chunk.Cmap_FU{kk},chunk.Ucross{kk},...
-            chunk.Ecolloc{kk},plan);
+            chunk.Ecolloc{kk},chunk.Ucorr{kk},plan);
     end
 end
 entries = flushAllSparseBuilders(entries);
@@ -692,26 +702,45 @@ chunk_input.Cmap = cell(n_rows,1);
 chunk_input.Cmap_FU = cell(n_rows,1);
 chunk_input.Ucross = cell(n_rows,1);
 chunk_input.Ecolloc = cell(n_rows,1);
+chunk_input.Ucorr = cell(n_rows,1);
 chunk_input.pair_inputs = struct([]);
 
-for kk = 1:n_rows
-    i = chunk_input.pairs(kk,1);
-    j = chunk_input.pairs(kk,2);
-
-    if  plan.sparse_map_coarse || plan.direct_u_corr     
-        chunk_input.Cmap{kk} =  P_pair * basis.Cmap{i,j}; 
-    else
-        chunk_input.Cmap{kk}  = basis.Cmap{i,j};
+if  plan.sparse_map_coarse || plan.direct_u_corr 
+    for kk = 1:n_rows
+        i = chunk_input.pairs(kk,1);
+        j = chunk_input.pairs(kk,2);
+    
+        [Ucross,Ecolloc] = ...
+            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,...
+            chunk_input.pairs,kk);
+        chunk_input.Ecolloc{kk} = Ecolloc;
+        chunk_input.Ucross{kk} = Ucross;
+          
+        Cmap = P_pair * basis.Cmap{i,j};
+        chunk_input.Cmap{kk} =  Cmap; 
+        chunk_input.Ucorr{kk} = Ucross - Ecolloc*Cmap;
+       
+        chunk_input.Cmap_FU{kk} = basis.Cmap_FU{i,j};
     end
+        
+else
 
-    chunk_input.Cmap_FU{kk} = basis.Cmap_FU{i,j};
-    [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
-        buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,...
-        chunk_input.pairs,kk);
+     for kk = 1:n_rows
+        i = chunk_input.pairs(kk,1);
+        j = chunk_input.pairs(kk,2);
+    
+        [Ucross,Ecolloc] = ...
+            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,...
+            chunk_input.pairs,kk);
+        chunk_input.Ecolloc{kk} = Ecolloc;
+        chunk_input.Ucross{kk} = Ucross;
+
+        chunk_input.Cmap{kk}  = basis.Cmap{i,j};
+        chunk_input.Cmap_FU{kk} = basis.Cmap_FU{i,j};
+     end
 end
 
 end
-
 
 function chunk_input = buildParallelStreamingChunkInput(rows,local_pairs,...
     local_pair_inputs,q,rbase_in_c,rbase_in_f,rout_base_c,pair_opt,Lc,P_pair,plan,svd_opts)
@@ -723,36 +752,31 @@ chunk_input.rows = rows(:);
 chunk_input.pairs = local_pairs;
 chunk_input.Cmap = cell(n_rows,1);
 chunk_input.Cmap_FU = cell(n_rows,1);
+chunk_input.Ucorr = cell(n_rows,1);
 chunk_input.Ucross = cell(n_rows,1);
 chunk_input.Ecolloc = cell(n_rows,1);
 
 if plan.sparse_map_coarse || plan.direct_u_corr 
+    
     for kk = 1:n_rows
         pair = buildStreamingSparsePairMap( ...
             local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
              
-        chunk_input.Cmap{kk} =  P_pair * pair.Cmap; 
+        Cmap =  P_pair * pair.Cmap; 
         chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
     
-        [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
+        [Ucross,Ecolloc] = ...
             buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
+        chunk_input.Ucorr{kk} = Ucross - Ecolloc*Cmap;
+        chunk_input.Cmap{kk} = Cmap;
+
     end
 else
     for kk = 1:n_rows
         pair = buildStreamingSparsePairMap( ...
             local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
-        
-            chunk_input.Cmap{kk}  = pair.Cmap;
-        chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
-    
-        [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
-            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
-    end
-    for kk = 1:n_rows
-        pair = buildStreamingSparsePairMap( ...
-            local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
              
-        chunk_input.Cmap{kk} =  P_pair * pair.Cmap; 
+        chunk_input.Cmap{kk} =   pair.Cmap; 
         chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
     
         [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
