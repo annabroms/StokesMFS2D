@@ -336,7 +336,8 @@ geom_check.rcheck = rcheck_b;
 big_sparse_stats = initBigSparseSolveStats(use_big_sparse,size(pairs,1));
 if use_big_sparse
 
-    [big_sparse,big_sparse_stats] = buildMobPeanutBigSparse(geom_solve,basis_mob);
+   % [big_sparse,big_sparse_stats] = buildMobPeanutBigSparse(geom_solve,basis_mob);
+    [big_sparse,big_sparse_stats] = buildMobPeanutBigSparseFast(geom_solve,basis_mob);
     basis_gmres.big_sparse = big_sparse;
     basis_mob.big_sparse = basis_gmres.big_sparse;
     if get_precomp_time
