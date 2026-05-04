@@ -472,13 +472,20 @@ n_pairs = size(pairs,1);
 for row = 1:n_pairs
     i = pairs(row,1);
     j = pairs(row,2);
-    C_nonp   = basis.Cmap{i,j};
+
+    if  plan.sparse_map_coarse || plan.direct_u_corr     
+        C_map = P_pair * basis.Cmap{i,j}; 
+    else
+        C_map   = basis.Cmap{i,j};
+    end
+
     Cmap_FU  = basis.Cmap_FU{i,j};
     [Ucross, Ecolloc] = buildStokesCoarsePairDense(...
         q, geom.rbase_in_c(:), rout_base_c, pairs, row);
     entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-        C_nonp, Cmap_FU, Ucross, Ecolloc, P_pair, plan);
+        C_map, Cmap_FU, Ucross, Ecolloc, plan);
 end
+
 end
 
 function entries = appendStreamingBlocks(entries, geom, basis,...
@@ -518,7 +525,7 @@ end
 end
 
 function entries = appendPairBlocks(entries, pairs, row, N_c, N_check, P,...
-    C_nonp, Cmap_FU, Ucross, Ecolloc, P_pair, plan)
+    C_map, Cmap_FU, Ucross, Ecolloc, plan)
 %APPENDPAIRBLOCKS Insert one pair's contribution into all sparse builders.
 %
 % plan.direct_u_corr and plan.sparse_map_coarse are resolved once from the
@@ -533,20 +540,19 @@ u_out_idx    = pairVelocityOutputIndices(i, j, N_check, P);
 pair_idx     = (row-1)*(4*N_c)+1 : row*(4*N_c);
 rbm_idx      = pairRigidOutputIndices(i, j, P);
 
-% C_proj is needed for direct-u or sparse-map-coarse paths
-if plan.sparse_map_coarse || plan.direct_u_corr
-    C_proj = P_pair * C_nonp;
-else
-    C_proj = [];
-end
+% C_map is needed for direct-u or sparse-map-coarse paths
+% if plan.sparse_map_coarse || plan.direct_u_corr
+%     C_map = P_pair * C_nonp;    
+% else
+%     C_map = C_nonp;
 
 % --- Source correction ---
 if plan.sparse_map_coarse
     entries.source_corr = appendSparseBuilderBlock(entries.source_corr,...
-        proj_out_idx, in_idx, C_proj);
+        proj_out_idx, in_idx, C_map);
 else
     entries.pair_nonp = appendSparseBuilderBlock(entries.pair_nonp,...
-        pair_idx, in_idx, C_nonp);
+        pair_idx, in_idx, C_map);
 end
 
 % --- Rigid-body motion correction ---
@@ -555,7 +561,7 @@ entries.rbm = appendSparseBuilderBlock(entries.rbm, rbm_idx, in_idx, -Cmap_FU);
 % --- Velocity correction ---
 if plan.direct_u_corr
     entries.u = appendSparseBuilderBlock(entries.u, u_out_idx, in_idx,...
-        Ucross - Ecolloc*C_proj);
+        Ucross - Ecolloc*C_map);
 else
     entries.u_cross  = appendSparseBuilderBlock(entries.u_cross,...
         u_out_idx, in_idx, Ucross);
@@ -563,7 +569,7 @@ else
         u_out_idx, pair_idx, Ecolloc);
     if plan.sparse_map_coarse
         entries.pair_proj = appendSparseBuilderBlock(entries.pair_proj,...
-            pair_idx, in_idx, C_proj);
+            pair_idx, in_idx, C_map);
     end
 end
 end
@@ -594,49 +600,57 @@ svd_opts = struct(...
     'left_weight',   logical(getOptField(opt,'left_weight',false)));
 
 chunk_inputs = cell(n_chunks,1);
+rbase_in_c = geom.rbase_in_c;
+
 switch plan.build_mode
+    
     case 'precomputed'
-        for cc = 1:n_chunks
+        parfor cc = 1:n_chunks
             rows = chunk_starts(cc):min(n_pairs,chunk_starts(cc)+chunk_pairs-1);
             chunk_inputs{cc} = buildParallelPrecomputedChunkInput( ...
-                rows,pairs,basis,q,geom.rbase_in_c(:),rout_base_c(:));
+                rows,pairs,basis,q,rbase_in_c,rout_base_c,P_pair,plan);
         end
     case 'streaming'
-        pair_inputs_all(n_pairs,1) = extractStreamingSparsePairInput( ...
-            geom.rimage_vec,geom.refine,pairs,n_pairs);
-        for row = 1:n_pairs-1
-            pair_inputs_all(row) = extractStreamingSparsePairInput( ...
-                geom.rimage_vec,geom.refine,pairs,row);
+        Lc         = basis.Lc;
+        rbase_in_f = geom.rbase_in_f;
+        rimage_vec = geom.rimage_vec;   % broadcast into parfor (read-only)
+        refine     = geom.refine;       % broadcast into parfor (read-only)
+
+        parfor cc = 1:n_chunks
+            rows        = chunk_starts(cc):min(n_pairs, chunk_starts(cc)+chunk_pairs-1);
+            local_pairs = pairs(rows,:);
+
+            % Extract pair inputs locally inside the parallel worker — no serial pre-loop
+            n_local          = numel(rows);
+            local_pair_inputs = repmat(...
+                extractStreamingSparsePairInput(rimage_vec,refine,local_pairs,1,1),...
+                n_local, 1);
+            for kk = 1:n_local
+                local_pair_inputs(kk) = extractStreamingSparsePairInput(...
+                    rimage_vec, refine, local_pairs, kk, rows(kk));
+            end
+
+            chunk_inputs{cc} = buildParallelStreamingChunkInput(...
+                rows, local_pairs, local_pair_inputs, q, rbase_in_c,...
+                rbase_in_f, rout_base_c, pair_opt, Lc, P_pair,plan,svd_opts);
         end
-        for cc = 1:n_chunks
-            rows = chunk_starts(cc):min(n_pairs,chunk_starts(cc)+chunk_pairs-1);
-            chunk_inputs{cc} = buildParallelStreamingChunkInput( ...
-                rows,pairs,pair_inputs_all,q,geom.rbase_in_c(:),...
-                geom.rbase_in_f(:),rout_base_c(:),pair_opt,basis.Lc,svd_opts);
-        end
+        
+
     otherwise
         error('buildMobPeanutBigSparse:BadMode',...
             'Unsupported build mode "%s".', plan.build_mode);
 end
 
-worker_ctx = struct(...
-    'plan',plan);
-
-chunk_payloads = cell(n_chunks,1);
-parfor cc = 1:n_chunks
-    chunk_payloads{cc} = assembleBigSparseChunkPayload( ...
-        chunk_inputs{cc},worker_ctx);
-end
 
 stats.n_tasks = n_chunks;
 entries = initSparseBuilders(P,N_c,N_check,n_pairs,plan);
 for cc = 1:n_chunks
-    chunk = chunk_payloads{cc};
+    chunk = chunk_inputs{cc};
     for kk = 1:numel(chunk.rows)
         row = chunk.rows(kk);
         entries = appendPairBlocks(entries,pairs,row,N_c,N_check,P,...
-            chunk.C_nonp{kk},chunk.Cmap_FU{kk},chunk.Ucross{kk},...
-            chunk.Ecolloc{kk},P_pair,plan);
+            chunk.Cmap{kk},chunk.Cmap_FU{kk},chunk.Ucross{kk},...
+            chunk.Ecolloc{kk},plan);
     end
 end
 entries = flushAllSparseBuilders(entries);
@@ -664,7 +678,7 @@ end
 end
 
 function chunk_input = buildParallelPrecomputedChunkInput(rows,pairs,basis,...
-    q,rbase_in_c,rout_base_c)
+    q,rbase_in_c,rout_base_c,P_pair,plan)
 n_rows = numel(rows);
 chunk_input = struct();
 chunk_input.rows = rows(:);
@@ -678,18 +692,27 @@ chunk_input.pair_inputs = struct([]);
 for kk = 1:n_rows
     i = chunk_input.pairs(kk,1);
     j = chunk_input.pairs(kk,2);
-    chunk_input.Cmap{kk} = basis.Cmap{i,j};
+
+    if  plan.sparse_map_coarse || plan.direct_u_corr     
+        chunk_input.Cmap{kk} =  P_pair * basis.Cmap{i,j}; 
+    else
+        chunk_input.Cmap{kk}  = basis.Cmap{i,j};
+    end
+
     chunk_input.Cmap_FU{kk} = basis.Cmap_FU{i,j};
     [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
         buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,...
         chunk_input.pairs,kk);
 end
+
 end
 
-function chunk_input = buildParallelStreamingChunkInput(rows,pairs,...
-    pair_inputs_all,q,rbase_in_c,rbase_in_f,rout_base_c,pair_opt,Lc,svd_opts)
-local_pairs = pairs(rows,:);
+
+function chunk_input = buildParallelStreamingChunkInput(rows,local_pairs,...
+    local_pair_inputs,q,rbase_in_c,rbase_in_f,rout_base_c,pair_opt,Lc,P_pair,plan,svd_opts)
+
 n_rows = numel(rows);
+
 chunk_input = struct();
 chunk_input.rows = rows(:);
 chunk_input.pairs = local_pairs;
@@ -697,38 +720,68 @@ chunk_input.Cmap = cell(n_rows,1);
 chunk_input.Cmap_FU = cell(n_rows,1);
 chunk_input.Ucross = cell(n_rows,1);
 chunk_input.Ecolloc = cell(n_rows,1);
-for kk = 1:n_rows
-    pair = buildStreamingSparsePairMap( ...
-        pair_inputs_all(rows(kk)),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
-    chunk_input.Cmap{kk} = pair.Cmap;
-    chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
-    [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
-        buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
-end
+
+if plan.sparse_map_coarse || plan.direct_u_corr 
+    for kk = 1:n_rows
+        pair = buildStreamingSparsePairMap( ...
+            local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
+             
+        chunk_input.Cmap{kk} =  P_pair * pair.Cmap; 
+        chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
+    
+        [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
+            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
+    end
+else
+    for kk = 1:n_rows
+        pair = buildStreamingSparsePairMap( ...
+            local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
+        
+            chunk_input.Cmap{kk}  = pair.Cmap;
+        chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
+    
+        [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
+            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
+    end
+    for kk = 1:n_rows
+        pair = buildStreamingSparsePairMap( ...
+            local_pair_inputs(kk),q,rbase_in_c,rbase_in_f,pair_opt,Lc,svd_opts);
+             
+        chunk_input.Cmap{kk} =  P_pair * pair.Cmap; 
+        chunk_input.Cmap_FU{kk} = pair.Cmap_FU;
+    
+        [chunk_input.Ucross{kk},chunk_input.Ecolloc{kk}] = ...
+            buildStokesCoarsePairDense(q,rbase_in_c,rout_base_c,local_pairs,kk);
+    end
 end
 
-function pair_input = extractStreamingSparsePairInput(rimage_pairs,refine,pairs,row)
-i = pairs(row,1);
-j = pairs(row,2);
-
-pair_input = struct();
-pair_input.row = row;
-pair_input.i = i;
-pair_input.j = j;
-pair_input.rimage_ij = rimage_pairs{i,j};
-pair_input.rimage_ji = rimage_pairs{j,i};
-pair_input.refine_ij = refine{i,j};
-pair_input.refine_ji = refine{j,i};
 end
 
-function chunk_payload = assembleBigSparseChunkPayload(chunk_input,worker_ctx)
-chunk_payload = struct();
-chunk_payload.rows = chunk_input.rows;
-chunk_payload.C_nonp = chunk_input.Cmap;
-chunk_payload.Cmap_FU = chunk_input.Cmap_FU;
-chunk_payload.Ucross = chunk_input.Ucross;
-chunk_payload.Ecolloc = chunk_input.Ecolloc;
+
+function pair_input = extractStreamingSparsePairInput(...
+        rimage_pairs, refine, pairs, local_row, global_row)
+% EXTRACTSTREAMINGSPARSEPAIRINPUT  Extract per-pair cell data into a struct.
+%   local_row   — index into pairs (row of the local pairs sub-array)
+%   global_row  — (optional) global pair index stored in pair_input.row
+%                 defaults to local_row when omitted
+
+if nargin < 5
+    global_row = local_row;
 end
+
+i = pairs(local_row, 1);
+j = pairs(local_row, 2);
+
+pair_input            = struct();
+pair_input.row        = global_row;   % global index for correct block placement
+pair_input.i          = i;
+pair_input.j          = j;
+pair_input.rimage_ij  = rimage_pairs{i,j};
+pair_input.rimage_ji  = rimage_pairs{j,i};
+pair_input.refine_ij  = refine{i,j};
+pair_input.refine_ji  = refine{j,i};
+end
+
 
 function pair = buildStreamingSparsePairMap(pair_input,q,rbase_in_c,...
     rbase_in_f,pair_opt,Lc,svd_opts)
@@ -749,211 +802,6 @@ pair = buildStokesMobilityPairData(q,rbase_in_c,rbase_in_f,...
     false,'maps_only');
 end
 
-function triplets = initChunkTriplets(n_pairs_chunk,N_c,N_check,plan)
-pair_rows = 4*N_c;
-local_pair_nonp = pair_rows*(4*N_c);
-local_u = (4*N_check)*(4*N_c);
-local_rbm = 6*(4*N_c);
-
-triplets = struct();
-if plan.sparse_map_coarse
-    triplets.source_corr = initTripletAccumulator( ...
-        n_pairs_chunk*local_pair_nonp);
-    triplets.pair_nonp = initTripletAccumulator(0);
-else
-    triplets.source_corr = initTripletAccumulator(0);
-    triplets.pair_nonp = initTripletAccumulator( ...
-        n_pairs_chunk*local_pair_nonp);
-end
-
-triplets.rbm = initTripletAccumulator(n_pairs_chunk*local_rbm);
-
-if plan.direct_u_corr
-    triplets.u = initTripletAccumulator(n_pairs_chunk*local_u);
-    triplets.u_cross = initTripletAccumulator(0);
-    triplets.u_peanut = initTripletAccumulator(0);
-    triplets.pair_proj = initTripletAccumulator(0);
-else
-    triplets.u = initTripletAccumulator(0);
-    triplets.u_cross = initTripletAccumulator(n_pairs_chunk*local_u);
-    triplets.u_peanut = initTripletAccumulator(n_pairs_chunk*local_u);
-    if plan.sparse_map_coarse
-        triplets.pair_proj = initTripletAccumulator( ...
-            n_pairs_chunk*local_pair_nonp);
-    else
-        triplets.pair_proj = initTripletAccumulator(0);
-    end
-end
-end
-
-function triplets = appendPairTriplets(triplets,i,j,row,N_c,N_check,P,...
-    C_nonp,Cmap_FU,Ucross,Ecolloc,P_pair,plan,C_proj)
-if nargin < 14
-    C_proj = [];
-end
-
-in_idx = pairCoarseInputIndices(i,j,N_c,P);
-proj_out_idx = in_idx;
-u_out_idx = pairVelocityOutputIndices(i,j,N_check,P);
-pair_idx = (row-1)*(4*N_c)+1 : row*(4*N_c);
-rbm_idx = pairRigidOutputIndices(i,j,P);
-
-if isempty(C_proj) && (plan.sparse_map_coarse || plan.direct_u_corr)
-    C_proj = P_pair * C_nonp;
-elseif isempty(C_proj)
-    C_proj = [];
-end
-
-if plan.sparse_map_coarse
-    triplets.source_corr = appendTripletBlock( ...
-        triplets.source_corr,proj_out_idx,in_idx,C_proj);
-else
-    triplets.pair_nonp = appendTripletBlock( ...
-        triplets.pair_nonp,pair_idx,in_idx,C_nonp);
-end
-
-triplets.rbm = appendTripletBlock(triplets.rbm,rbm_idx,in_idx,-Cmap_FU);
-
-if plan.direct_u_corr
-    triplets.u = appendTripletBlock(triplets.u,u_out_idx,in_idx,...
-        Ucross - Ecolloc*C_proj);
-else
-    triplets.u_cross = appendTripletBlock( ...
-        triplets.u_cross,u_out_idx,in_idx,Ucross);
-    triplets.u_peanut = appendTripletBlock( ...
-        triplets.u_peanut,u_out_idx,pair_idx,Ecolloc);
-    if plan.sparse_map_coarse
-        triplets.pair_proj = appendTripletBlock( ...
-            triplets.pair_proj,pair_idx,in_idx,C_proj);
-    end
-end
-end
-
-function C_proj = computeProjectedPairMap(C_nonp,P_pair,plan)
-if plan.sparse_map_coarse || plan.direct_u_corr
-    C_proj = P_pair * C_nonp;
-else
-    C_proj = [];
-end
-end
-
-function big_sparse = buildParallelBigSparseOutput(chunk_results,pairs,N_c,...
-    N_check,P,P_pair,plan,ram_estimate)
-n_coarse = P*N_c;
-n_source_cols = 2*n_coarse;
-n_u_rows = 2*P*N_check;
-n_u_cols = 2*n_coarse;
-pair_total_rows = size(pairs,1) * (4*N_c);
-n_rbm_rows = 3*P;
-
-big_sparse = struct();
-big_sparse.matrix_plan = plan;
-big_sparse.ram_estimate = ram_estimate;
-
-if plan.sparse_map_coarse
-    big_sparse.M_source_corr = sparseFromChunkResults( ...
-        chunk_results,'source_corr',n_source_cols,n_source_cols);
-else
-    big_sparse.P_pair = P_pair;
-    big_sparse.source_scatter_rows = buildSourceScatterRows(pairs,N_c,P);
-    big_sparse.M_pair_nonp = sparseFromChunkResults( ...
-        chunk_results,'pair_nonp',pair_total_rows,n_source_cols);
-end
-
-big_sparse.M_rbm_corr = sparseFromChunkResults( ...
-    chunk_results,'rbm',n_rbm_rows,n_source_cols);
-
-if plan.direct_u_corr
-    big_sparse.M_u_corr = sparseFromChunkResults( ...
-        chunk_results,'u',n_u_rows,n_u_cols);
-else
-    big_sparse.M_u_cross = sparseFromChunkResults( ...
-        chunk_results,'u_cross',n_u_rows,n_u_cols);
-    big_sparse.M_u_peanut = sparseFromChunkResults( ...
-        chunk_results,'u_peanut',n_u_rows,pair_total_rows);
-    if plan.sparse_map_coarse
-        big_sparse.M_pair_proj = sparseFromChunkResults( ...
-            chunk_results,'pair_proj',pair_total_rows,n_source_cols);
-    end
-end
-end
-
-function S = sparseFromChunkResults(chunk_results,field_name,n_rows,n_cols)
-nnz_total = 0;
-for cc = 1:numel(chunk_results)
-    nnz_total = nnz_total + numel(chunk_results{cc}.(field_name).vals);
-end
-
-if nnz_total == 0
-    S = sparse(n_rows,n_cols);
-    return
-end
-
-rows = zeros(nnz_total,1);
-cols = zeros(nnz_total,1);
-vals = zeros(nnz_total,1);
-next = 1;
-for cc = 1:numel(chunk_results)
-    chunk_field = chunk_results{cc}.(field_name);
-    n_local = numel(chunk_field.vals);
-    if n_local == 0
-        continue
-    end
-    loc = next:next+n_local-1;
-    rows(loc) = chunk_field.rows;
-    cols(loc) = chunk_field.cols;
-    vals(loc) = chunk_field.vals;
-    next = next + n_local;
-end
-
-S = sparse(rows,cols,vals,n_rows,n_cols);
-end
-
-function triplets = finalizeChunkTriplets(triplets)
-fields = fieldnames(triplets);
-for ff = 1:numel(fields)
-    triplets.(fields{ff}) = finalizeTripletAccumulator(triplets.(fields{ff}));
-end
-end
-
-function acc = initTripletAccumulator(capacity)
-capacity = max(0,round(capacity));
-acc = struct();
-acc.rows = zeros(capacity,1);
-acc.cols = zeros(capacity,1);
-acc.vals = zeros(capacity,1);
-acc.next = 1;
-end
-
-function acc = appendTripletBlock(acc,row_idx,col_idx,A)
-row_idx = row_idx(:);
-col_idx = col_idx(:);
-nr = numel(row_idx);
-nc = numel(col_idx);
-n = nr*nc;
-if n == 0
-    return
-end
-
-if acc.next+n-1 > numel(acc.vals)
-    error('buildMobPeanutBigSparse:ChunkAccumulatorOverflow',...
-        'Parallel chunk triplet accumulator overflowed its capacity.');
-end
-
-loc = acc.next:acc.next+n-1;
-acc.rows(loc) = repmat(row_idx,nc,1);
-acc.cols(loc) = repelem(col_idx,nr);
-acc.vals(loc) = A(:);
-acc.next = acc.next + n;
-end
-
-function acc = finalizeTripletAccumulator(acc)
-n = acc.next - 1;
-acc = struct(...
-    'rows',acc.rows(1:n),...
-    'cols',acc.cols(1:n),...
-    'vals',acc.vals(1:n));
-end
 
 % =========================================================================
 %  INDEX HELPERS

@@ -76,16 +76,6 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       RAM_check     estimate/report RAM usage for precomp, solve, and
 %                     postprocessing using memorygraph
 %       visualise_sol show diagnostic plots in postprocessing
-%       single_threaded
-%                     if true, force the GMRES solve/postprocessing phase to
-%                     one thread. Any requested maxNumCompThreads cap is
-%                     still used during precomputation.
-%       maxNumCompThreads
-%                     [] or missing leaves MATLAB in automatic threading
-%                     mode. A positive integer caps MATLAB computational
-%                     threads and the OMP/MKL/OpenBLAS thread env vars used
-%                     by this solver. When opt.single_threaded = 1, this
-%                     cap applies only during precomputation.
 %
 %
 % Outputs:
@@ -110,9 +100,6 @@ end
 
 [ram_check,~] = startRamCheck(opt,mfilename);
 
-thread_plan = resolveMobilityThreadPlan(opt);
-thread_cleanup = onCleanup(@() applyMobilityThreadSetting([]));
-applyMobilityThreadSetting(thread_plan.precomp_threads);
 
 q = q(:);
 T = T(:);
@@ -348,8 +335,9 @@ geom_check.rcheck = rcheck_b;
 
 big_sparse_stats = initBigSparseSolveStats(use_big_sparse,size(pairs,1));
 if use_big_sparse
-    [geom_gmres,basis_gmres,big_sparse_stats] = ...
-        prepareBigSparseMobilityMatvec(geom_solve,basis_mob);
+
+    [big_sparse,big_sparse_stats] = buildMobPeanutBigSparse(geom_solve,basis_mob);
+    basis_gmres.big_sparse = big_sparse;
     basis_mob.big_sparse = basis_gmres.big_sparse;
     if get_precomp_time
         precomp_time.big_sparse = big_sparse_stats.build_time;
@@ -367,18 +355,24 @@ if use_big_sparse
     parallel_solve_stats = initParallelSolveStats(false,size(pairs,1));
     parallel_solve_stats.reason = 'disabled_by_big_sparse';
 else
-    [geom_gmres,basis_gmres,parallel_solve_stats] = prepareParallelSolveMatvec( ...
+    [geom_solve,basis_mob,parallel_solve_stats] = prepareParallelSolveMatvec( ...
         geom_solve,basis_mob,rbase_out_c,parallel_solve_requested);
 end
 
 
 if use_big_sparse
-    matvec_gmres = @(x) matvec_peanut_big_sparse(x,geom_gmres,basis_gmres);
+    matvec_gmres = @(x) matvec_peanut_big_sparse(x,geom_solve,basis_mob);
 else
-    matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_gmres,basis_gmres);
+    matvec_gmres = @(x) matvec_mob_peanut_enhanced(x,geom_solve,basis_gmres);
 end
 
 %% Solve system
+if isempty(opt.solve_threads)
+    maxNumCompThreads('automatic');
+else
+    maxNumCompThreads(opt.solve_threads); 
+end
+
 
 % Debug mode: build the matrix to check it out
 if debug
@@ -424,9 +418,8 @@ end
 
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
-applyMobilityThreadSetting(thread_plan.solve_threads);
 
-disp(' == Solving... == ');
+fprintf(' == Solving using %u threads...  == \n',maxNumCompThreads);
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres(matvec_gmres,...
@@ -646,61 +639,19 @@ sol.abs_res = abs_res;
 sol.resvec = resvec;
 sol.body_rel_res_max = body_rel_res_max;
 sol.precomp_time = precomp_time;
-sol.pair_precomp_stats = pair_cache.stats;
+sol.pair_precomp_stats = big_sparse_stats;
 sol.solve_time = solve_time;
 sol.postprocess_time = postprocess_time;
 sol.parallel_solve_stats = parallel_solve_stats;
 sol.big_sparse_stats = big_sparse_stats;
-sol.thread_settings = thread_plan;
+sol.thread_settings = maxNumCompThreads;
 sol.ram_estimate = finishRamCheck(ram_check);
 
 
 end
 
 
-function thread_plan = resolveMobilityThreadPlan(opt)
-single_threaded = logical(getOptField(opt,'single_threaded',false));
-thread_count = getOptField(opt,'maxNumCompThreads',[]);
 
-if ~isempty(thread_count)
-    if ~(isnumeric(thread_count) && isscalar(thread_count) && ...
-            isfinite(thread_count) && thread_count >= 1 && ...
-            thread_count == round(thread_count))
-        error('solve_mob_peanut_enhanced:BadThreadCount', ...
-            ['opt.maxNumCompThreads must be empty or a positive integer ', ...
-             'thread count.']);
-    end
-    thread_count = double(thread_count);
-end
-
-solve_threads = thread_count;
-if single_threaded
-    solve_threads = 1;
-end
-
-thread_plan = struct( ...
-    'single_threaded',single_threaded, ...
-    'maxNumCompThreads',thread_count, ...
-    'precomp_threads',thread_count, ...
-    'solve_threads',solve_threads);
-end
-
-
-function applyMobilityThreadSetting(thread_count)
-if isempty(thread_count)
-    setenv('OMP_NUM_THREADS','');
-    setenv('MKL_NUM_THREADS','');
-    setenv('OPENBLAS_NUM_THREADS','');
-    maxNumCompThreads('automatic');
-    return
-end
-
-thread_str = sprintf('%d',thread_count);
-setenv('OMP_NUM_THREADS',thread_str);
-setenv('MKL_NUM_THREADS',thread_str);
-setenv('OPENBLAS_NUM_THREADS',thread_str);
-maxNumCompThreads(thread_count);
-end
 
 
 function postprocess_time = initMobPostprocessTime()
@@ -735,16 +686,6 @@ pair_cache.stats = struct('requested_parallel',false, ...
     'needs_explicit_pair_sources',false);
 end
 
-
-function [geom_gmres,basis_gmres,stats] = prepareBigSparseMobilityMatvec( ...
-    geom_solve,basis_mob)
-geom_gmres = geom_solve;
-basis_gmres = basis_mob;
-
-[big_sparse,stats] = buildMobPeanutBigSparse(geom_gmres,basis_gmres);
-basis_gmres.big_sparse = big_sparse;
-geom_gmres.opt.use_big_sparse = true;
-end
 
 function stats = initBigSparseSolveStats(requested,n_pairs)
 stats = struct();
@@ -828,7 +769,7 @@ if n_pairs < 2
     return
 end
 
-pool = ensureParallelSolvePool();
+
 ctx = buildParallelSolveContext(geom_solve,basis_mob,rout_base_c);
 basis_gmres.parallel_solve_context = parallel.pool.Constant(ctx);
 geom_gmres.opt.parallel_solve = true;
@@ -852,7 +793,8 @@ stats = struct();
 stats.requested = logical(requested);
 stats.active = false;
 stats.n_pairs = n_pairs;
-stats.pool_size = 0;
+pool_info = gcp;
+stats.pool_size = pool_info.NumWorkers;
 stats.backend = 'serial';
 stats.reason = '';
 stats.used_pair_cache = false;
@@ -861,19 +803,6 @@ stats.chunk_size = 0;
 stats.n_chunks = 0;
 end
 
-function pool = ensureParallelSolvePool()
-if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox') || ...
-        exist('gcp','file') ~= 2
-    error('solve_mob_peanut_enhanced:ParallelToolboxRequired', ...
-        ['opt.parallel_solve requires Parallel Computing Toolbox. ', ...
-         'Open a pool before timing if you want to exclude startup overhead.']);
-end
-
-pool = gcp('nocreate');
-if isempty(pool)
-    pool = gcp();
-end
-end
 
 function ctx = buildParallelSolveContext(geom_solve,basis_mob,rout_base_c)
 pairs = geom_solve.pairs;

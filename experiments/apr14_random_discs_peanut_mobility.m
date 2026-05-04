@@ -36,12 +36,12 @@ solver.gmres_tol = 1e-7;
 solver.maxit = 1000;
 solver.Nclust = 80; % set to 40 for lighter test runs
 solver.get_precomp_time = true;
-solver.max_num_comp_threads = []; % [] = automatic; this machine currently reports 16 logical CPUs via nproc
 
 % Solver opt overrides
 opt_cfg = struct();
 opt_cfg.get_bndry_field = 1;
 opt_cfg.RAM_check = 0;
+opt_cfg.solve_threads = 8;
 
 % Comparison figure
 compare.make_triptych_figure = true;
@@ -559,9 +559,6 @@ opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_bndry_field = 1;
 opt.get_precomp_time = solver.get_precomp_time;
-if isfield(solver,'max_num_comp_threads')
-    opt.maxNumCompThreads = solver.max_num_comp_threads;
-end
 opt.parallel_precomp = 1;
 opt = apply_struct_overrides(opt, overrides);
 end

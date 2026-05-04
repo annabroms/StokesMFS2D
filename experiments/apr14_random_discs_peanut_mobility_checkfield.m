@@ -35,13 +35,11 @@ solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-7;
 solver.maxit = 1000;
 solver.get_precomp_time = true;
-solver.max_num_comp_threads = []; % [] = automatic; this machine currently reports 16 logical CPUs via nproc
 
 % Solver opt overrides
 opt_cfg = struct();
 opt_cfg.get_bndry_field = 1;
 opt_cfg.RAM_check = 0;
-opt_cfg.single_threaded = 1;
 opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 %opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1;
@@ -49,6 +47,8 @@ opt_cfg.mob_sparse_map_coarse = 1;
 opt_cfg.parallel_precomp = 1; 
 opt_cfg.parallel_precomp_chunk_pairs = 8;
 opt_cfg.parallel_big_sparse_build = 0; 
+
+opt_cfg.solve_threads = 8; 
 
 % Data I/O
 % This experiment stores or loads raw solver data only.
@@ -232,9 +232,7 @@ opt.cmap = 1;
 opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_precomp_time = solver.get_precomp_time;
-if isfield(solver,'max_num_comp_threads')
-    opt.maxNumCompThreads = solver.max_num_comp_threads;
-end
+
 opt.parallel_precomp = 1;
 opt = apply_struct_overrides(opt, overrides);
 end

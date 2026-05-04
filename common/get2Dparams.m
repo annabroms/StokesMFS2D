@@ -82,10 +82,9 @@ opt.use_direct = true; % in parallel solve, use direct local Stokeslet evals ins
 opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares problem
 opt.column_weight = false; % scale LS operator columns before SVD in peanut solvers
 opt.left_weight = false; % scale LS operator rows by local arclength weights in peanut solvers
-opt.single_threaded = false; % solver-specific single-threaded mode; peanut mobility uses 1 thread during solve/postprocessing
-opt.maxNumCompThreads = []; % [] keeps MATLAB automatic threading; positive integer caps MATLAB computational threads when supported
 opt.use_fmm = 1; 
 opt.get_precomp_time = 1; 
+opt.solve_threads = maxNumCompThreads('automatic');
 
 opt.maxit = 300;
 end

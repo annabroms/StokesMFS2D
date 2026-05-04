@@ -9,10 +9,10 @@ if ~isempty(repo_root)
 end
 data_root = get_data_root(repo_root);
 
-fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n');
+fprintf('=== Random Discs Peanut Mobility (Apr 14, 2026) ===\n'); 
 
 % Geometry
-geom.P = 1000;
+geom.P = 100;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -35,22 +35,22 @@ solver.delta_pair = 0.2;
 solver.gmres_tol = 1e-7; %was 1e-8; 
 solver.maxit = 1000;
 solver.get_precomp_time = true;
-solver.max_num_comp_threads = []; % [] = automatic; this machine currently reports 16 logical CPUs via nproc
+
 
 % Solver opt overrides
 opt_cfg = struct();
 opt_cfg.get_bndry_field = 0;
 opt_cfg.RAM_check = 0;
-opt_cfg.single_threaded = 0;
 opt_cfg.mob_big_sparse_build_mode = 'precomputed';
-%opt_cfg.mob_big_sparse_build_mode = 'streaming';
+opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1; %switch here!
 opt_cfg.mob_sparse_map_coarse = 1;
 opt_cfg.parallel_precomp = 1; 
-%opt_cfg.maxNumCompThreads = 8;
-opt_cfg.mob_big_sparse_chunk_pairs = 8;
-opt_cfg.parallel_precomp_chunk_pairs = 8;
-opt_cfg.parallel_big_sparse_build = 0; 
+opt_cfg.mob_big_sparse_chunk_pairs = '';
+opt_cfg.parallel_precomp_chunk_pairs = '';
+opt_cfg.parallel_big_sparse_build = 1; 
+opt_cfg.solve_threads = '';
+
 
 
 % Data I/O
@@ -235,11 +235,9 @@ opt.cmap = 1;
 opt.self_correct = 1;
 opt.use_dense = 1;
 opt.get_precomp_time = solver.get_precomp_time;
-if isfield(solver,'max_num_comp_threads')
-    opt.maxNumCompThreads = solver.max_num_comp_threads;
-end
 opt.parallel_precomp = 1;
 opt = apply_struct_overrides(opt, overrides);
+
 end
 
 function target = apply_struct_overrides(target, overrides)

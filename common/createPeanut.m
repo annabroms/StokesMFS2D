@@ -1,98 +1,89 @@
-function z = createPeanut(q1,q2,Np,debug,R)
-%CREATEPEANUT creates discretisation of separation surface for two circular particles
+function z = createPeanut(q1, q2, Np, debug, R)
+%CREATEPEANUT Creates discretisation of separation surface for two circular
+% particles.
 %
-% Syntax: z = createPeanut(q1,q2,Np,debug)
-%         z = createPeanut(q1,q2,Np,debug,R)
+% Syntax:
+%   z = createPeanut(q1, q2, Np, debug)
+%   z = createPeanut(q1, q2, Np, debug, R)
 %
-% Input: 
-% q1    - Complex valued center coordinate of circle 1
-% q2    - Complex valued center coordinate of circle 2
-% Np    - Number of discrete points on peanut 
-% debug - Boolean to draw peanut
-% R     - Optional circle radius (default 1)
-%
+% Input:
+%   q1    - Complex center of circle 1
+%   q2    - Complex center of circle 2
+%   Np    - Number of discrete points on peanut
+%   debug - Boolean to draw peanut
+%   R     - Optional circle radius (default 1)
 
-if nargin < 5 || isempty(R)
-    R = 1;
-end
+    if nargin < 5 || isempty(R)
+        R = 1;
+    end
 
-d = abs(q1-q2);
-delta = d-2*R;
-theta = acos(real(q2-q1)/d);
-if imag(q2)<imag(q1)
-    theta = 2*pi-theta;
-end
-Rot = [cos(theta) -sin(theta); sin(theta) cos(theta)];
+    % --- Geometry ---
+    dz    = q2 - q1;
+    d     = abs(dz);
+    delta = d - 2*R;
 
+    % Rotation angle via angle() — avoids manual acos + sign correction
+    theta = angle(dz);
 
-alpha = acos((2*R+delta)/(4*R));
+    % Peanut opening half-angle
+    alpha = acos((2*R + delta) / (4*R));
 
-% h1 = (2*pi-2*alpha)/Np/4;
-% %t1 = alpha:h1:2*pi-alpha;
-% t1 = linspace(alpha,2*pi-alpha,Np/4);
-% %t2 = pi+alpha:h1:3*pi-alpha;
-% t2 = linspace(pi+alpha,3*pi-alpha,Np/4);
-% 
-% h2 = (pi-2*alpha)/Np/4;
-% %t3 = alpha+h2:h2:pi-alpha-h2;
-% t3 = linspace(h1+alpha,pi-alpha-h1,Np/4);
-% %t4 = pi+alpha+h2:h2:2*pi-alpha;
-% t4 = linspace(pi+alpha+h1,2*pi-alpha-h1,Np/4);
+    % --- Segment point counts ---
+    n_long  = 3*Np/8;       % points on long arcs (t1, t2)
+    n_short = Np/8;         % interior points on bridge arcs (t3, t4)
 
-%% The peanut consists of four segments
-%h1 = (2*pi-2*alpha)/(3*Np)/8; %disc of particle curve 1
-%t1 = alpha:h1:2*pi-alpha;
-t1 = linspace(alpha,2*pi-alpha,3*Np/8);
-%t2 = pi+alpha:h1:3*pi-alpha;
-t2 = linspace(pi+alpha,3*pi-alpha,3*Np/8); %disc of particle curve 2
-%t1 = pi; %debugging
-%t2 = 0;
-%warning('Only two points')
+    % --- Parametric angles ---
+    t1 = linspace(alpha,        2*pi - alpha,   n_long);
+    t2 = linspace(pi + alpha,   3*pi - alpha,   n_long);
 
-%For the remaining part of the peanut
-%h2 = (pi-2*alpha)/Np/8; 
-%t3 = alpha+h2:h2:pi-alpha-h2;
-t3 = linspace(alpha,pi-alpha,Np/8+2);
-t3 = t3(2:end-1);
-%t4 = pi+alpha+h2:h2:2*pi-alpha;
-t4 = linspace(pi+alpha,2*pi-alpha,Np/8+2);
-t4 = t4(2:end-1); 
+    % Endpoint-exclusive linspace: avoids the +2 / trim pattern
+    dt3 = (pi  - alpha - alpha) / (n_short + 1);
+    dt4 = (pi  - alpha - alpha) / (n_short + 1);
+    t3  = alpha + dt3 * (1:n_short);
+    t4  = (pi + alpha) + dt4 * (1:n_short);
 
+    % --- Complex arc points using exp(1i*t) — single trig call per segment ---
+    e1 = exp(1i * t1);
+    e2 = exp(1i * t2);
+    e3 = exp(1i * t3);
+    e4 = exp(1i * t4);
 
-z1 = R*(cos(t1)+1i*sin(t1));
-z2 = (2*R+delta)+R*(cos(t2)+1i*sin(t2)); 
-z3 = (R+delta/2)+R*cos(t3)+(-2*R*sin(alpha)+R*sin(t3))*1i;
-z4 = (R+delta/2)+R*cos(t4)+(2*R*sin(alpha)+R*sin(t4))*1i;
+    % Precompute repeated scalar
+    sa = sin(alpha);   % used in z3, z4 imaginary offsets
 
-z = [z1 z2 z3 z4];
-%z = [z1 z2];
+    z1 = R * e1;
+    z2 = (2*R + delta) + R * e2;
+    z3 = (R + delta/2) + R*real(e3) + 1i*(-2*R*sa + R*imag(e3));
+    z4 = (R + delta/2) + R*real(e4) + 1i*( 2*R*sa + R*imag(e4));
 
-%Now, rotate
+    % --- Concatenate all segments ---
+    z = [z1, z2, z3, z4];
 
-zmap = Rot*[real(z); imag(z)];
+    % --- Rotate using complex multiplication (no rotation matrix needed) ---
+    rot = exp(1i * theta);   % unit complex rotation
+    z   = rot * z;
 
-zmap = zmap(1,:)'+1i*zmap(2,:)'; 
+    % --- Translate to midpoint of q1, q2 ---
+    qmid = 0.5 * (q1 + q2);
+    z    = z - mean(z) + qmid;
 
-z = zmap-mean(zmap)+mean([q1,q2]);
+    % Ensure column vector output
+    z = z(:);
 
+    % --- Debug plot ---
+    if debug
+        figure(101)
+        subplot(1,2,1)
+        plot(real(z1), imag(z1), 'r.--');  hold on
+        plot(real(z2), imag(z2), 'b+--');
+        plot(real(z3), imag(z3), 'mo--');
+        plot(real(z4), imag(z4), 'cs--');
+        axis equal;  hold off
 
-if debug
-
-    figure(101)
-    subplot(1,2,1)
-    plot(real(z1),imag(z1),'r.--');
-    hold on
-    plot(real(z2),imag(z2),'b+--');
-    plot(real(z3),imag(z3),'mo--');
-    plot(real(z4),imag(z4),'cs--');
-    axis equal
-    
-    %subplot(1,2,2)
-    figure(2)
-    magenta = [0.8, 0.0, 0.8];
-    plot(real(z),imag(z),'.','Color',magenta)
-    axis equal
-end
-
+        figure(2)
+        magenta = [0.8, 0.0, 0.8];
+        plot(real(z), imag(z), '.', 'Color', magenta)
+        axis equal
+    end
 
 end

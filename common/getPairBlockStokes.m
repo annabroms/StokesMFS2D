@@ -54,10 +54,6 @@ if debug
 end
 
 project = ~isempty(pair_target_rbm_map);
-if project
-    validate_projection_inputs(pair_moment_map,pair_rbm_map, ...
-        pair_moment_gram,pair_target_rbm_map);
-end
 
 S = stokSLPmat(rin_pair,rout_f,mu);
 
@@ -71,14 +67,7 @@ end
 tol = 1e-11; %SVD truncation level
 visualise = 0;
 [Y,U] = getPseudoFactors(Atot,tol,visualise,svd_opts);
+
 end
 
-function validate_projection_inputs(pair_moment_map,pair_rbm_map, ...
-    pair_moment_gram,pair_target_rbm_map)
-if isempty(pair_moment_map) || isempty(pair_rbm_map) || ...
-        isempty(pair_moment_gram) || isempty(pair_target_rbm_map)
-    error('getPairBlockStokes:MissingProjectionData', ...
-        ['Projected pair assembly requires pair_moment_map, ', ...
-         'pair_rbm_map, pair_moment_gram, and pair_target_rbm_map.']);
-end
-end
+
