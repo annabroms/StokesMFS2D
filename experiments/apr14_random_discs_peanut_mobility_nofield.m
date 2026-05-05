@@ -116,8 +116,8 @@ else
     F = randn(geom.P,2);
     F = F - mean(F,1);
     T = randn(geom.P,1);
-    % T = ones(geom.P,1);
-    % F = zeros(geom.P,2);
+    T = ones(geom.P,1);
+    F = zeros(geom.P,2);
 
     tic;
     [UW, sol] = solve_mob_peanut_enhanced(q, F, T, opt);

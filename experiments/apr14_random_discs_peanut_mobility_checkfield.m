@@ -32,7 +32,7 @@ end
 spmd; maxNumCompThreads(N_threads); end
 
 % Geometry
-geom.P = 20;
+geom.P = 100;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -64,7 +64,7 @@ opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 opt_cfg.use_big_sparse = 1;
 opt_cfg.mob_sparse_map_coarse = 1;
 opt_cfg.parallel_precomp = 1; 
-opt_cfg.parallel_precomp_chunk_pairs = 8;
+opt_cfg.parallel_precomp_chunk_pairs = '';
 opt_cfg.parallel_big_sparse_build = 1; 
 
 opt_cfg.solve_threads = 8; 
@@ -112,8 +112,8 @@ else
     F = randn(geom.P,2);
     F = F - mean(F,1);
     T = randn(geom.P,1);
-    % T = ones(geom.P,1);
-    % F = zeros(geom.P,2);
+    T = ones(geom.P,1);
+    F = zeros(geom.P,2);
 
     tic;
     [UW, sol] = solve_mob_peanut_enhanced(q, F, T, opt);

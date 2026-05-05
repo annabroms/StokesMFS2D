@@ -65,7 +65,7 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     pair.rimage_canon = {rimage_i; rimage_j};
     pair.refine_canon = {refine_i; refine_j};
 
-    % --- Quadrature nodes via exp(1i*t) — single trig call each ---
+    % --- Source and target nodes via exp(1i*t) — single trig call each ---
     nout_c      = ceil(a_c * N_c);
     rout_base_c = exp(1i * linspace(0, 2*pi*(1-1/nout_c), nout_c)');
 
@@ -83,7 +83,7 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     % Precompute half-index for rin_pair (used multiple times)
     rin_half = numel(rin_pair) / 2;
 
-    if store_full
+    if store_full && debug
         pair.rin_pair = rin_pair;
     end
 
@@ -143,12 +143,14 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
         pair_proj_moment_map, pair_proj_rbm_map,...
         pair_proj_moment_gram, pair_target_rbm_map, svd_pair);
 
-    % Separate the unsigned intermediate UfTN = Uf_pair'*Npair
-    % from the stored Upf = -UfTN, to avoid sign confusion in Cmap
-    % expressions. UfTN is a direct substitute for Uf_pair'*Npair everywhere.
     Npair = evaluateCoarseOnPair(q_pair, rbase_in_c, rout_f);
-    UfTN  = Uf_pair' * Npair;    % = Uf_pair'*Npair, used in Cmap expressions
-    Upf   = -UfTN;               % stored quantity, used in colloc block
+    Upf   = -Uf_pair' * Npair;   % used in Cmap expressions
+
+    %clear some memory
+    if ~debug
+        Uf_pair = [];   % 2*nout_f × rank_f
+        Npair   = [];   % 2*nout_f × 4*N_c
+    end
 
     % --- Coarse (peanut) block ---
     DC = []; YC = [];
@@ -160,22 +162,32 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
             Lc_pair, pair_proj_moment_map, pair_proj_rbm_map,...
             pair_proj_moment_gram, svd_opts);
         if use_cmap           
-            pair.Cmap = -YC * (DC * Yf_pair * UfTN);
+            pair.Cmap = YC * (DC * Yf_pair * Upf);
         end
     end
 
     if use_cmap
-        pair.Cmap_FU = -pair_moment_map * Yf_pair * UfTN;
+        pair.Cmap_FU = pair_moment_map * Yf_pair * Upf;
     end
 
     % --- Store full payload ---
     if store_full
         pair.Upf     = Upf;
         pair.Ypf     = Yf_pair;
-        pair.Lf_pair = Lf_pair;
-        pair.Lc_pair = Lc_pair;
-        pair.DC      = DC;
-        pair.YC      = YC;
+        %pair.Lf_pair = Lf_pair;
+        if ~opt.use_matrix_free_Lc_pair
+            pair.Lc_pair = Lc_pair;
+        else
+            pair.Lc_pair = [];
+        end
+
+        if ~opt.cmap
+            pair.DC      = DC;
+            pair.YC      = YC;
+        else
+            pair.DC      = [];
+            pair.YC      = [];
+        end
     end
 
     % --- Collocation maps (only when full payload + project_force) ---
@@ -184,11 +196,13 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
         Ppair       = eye(size(Lf_pair)) - Lf_pair;
 
         % Upf = -UfTN is correct here — matches original definition
-        pair.Upair_colloc  = stokSLPmat(rin_pair, rout_pair_c, 1) *...
-                             Ppair * Yf_pair * Upf;
-        pair.Ecolloc       = stokSLPmat(rin_pair_c, rout_pair_c, 1);
-        pair.Ucross_colloc = buildStokesCrossPairVelocityMap(...
-                             pair.Ecolloc, N_c, numel(rout_base_c));
+        if use_canonical %not sure if this is actaully needed.
+            pair.Upair_colloc  = stokSLPmat(rin_pair, rout_pair_c, 1) *...
+                                Ppair * Yf_pair * Upf;
+            pair.Ecolloc       = stokSLPmat(rin_pair_c, rout_pair_c, 1);
+            pair.Ucross_colloc = buildStokesCrossPairVelocityMap(...
+                                pair.Ecolloc, N_c, numel(rout_base_c));
+        end
     end
 
     if debug

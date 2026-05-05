@@ -45,7 +45,7 @@ opt_cfg.solve_threads = 8;
 
 % Comparison figure
 compare.make_triptych_figure = true;
-compare.reference_N_c = 160;
+compare.reference_N_c = 120;
 compare.generate_reference_if_missing = true;
 compare.figure_width_cm = 14.0;
 
@@ -66,6 +66,10 @@ end
 
 io.data_filename = build_results_filename(script_name, geom.P, geom.phi, solver.N_c);
 io.name2 = build_results_filename(script_name, geom.P, geom.phi, compare.reference_N_c);
+
+io.name2 = 'mobilityP10000_fast_finer_flatiron.mat';
+io.name2 = 'apr14_random_discs_peanut_mobility_P10000_phi0.650_Nc120_results.mat';
+io.data_filename = 'mobilityP10000_checkfield_flatiron.mat';
 
 % Reporting and visualisation
 plots.font_size = 16;
@@ -452,18 +456,6 @@ set(ax, 'TickLabelInterpreter', 'latex', 'FontSize', font_size);
 grid(ax, 'on');
 end
 
-function draw_domain_boundary(ax, L, domain)
-half_L = L/2;
-style = 'k--';
-if strcmp(domain,'periodic')
-    style = 'r--';
-end
-
-hold(ax, 'on');
-plot(ax, [-half_L, half_L, half_L, -half_L, -half_L], ...
-    [-half_L, -half_L, half_L, half_L, -half_L], ...
-    style, 'LineWidth', 1.0);
-end
 
 function plot_pair_gap_histogram(ax, q, rad, domain, L, delta_pair, n_bins, face_color, edge_color)
 P = numel(q);

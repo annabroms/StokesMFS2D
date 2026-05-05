@@ -138,7 +138,7 @@ if ~reuse_pair_basis
             chunk_inputs{cc} = pair_inputs_all(row_start:row_end);
         end
         
-         parfor cc = 1:n_chunks
+        parfor cc = 1:n_chunks
             local_inputs = chunk_inputs{cc};
             n_in_chunk   = numel(local_inputs);
         
@@ -156,6 +156,7 @@ if ~reuse_pair_basis
             row_start = chunks(cc);
             row_end   = min(total_pairs, row_start + chunk_size - 1);
             pair_payloads(row_start:row_end) = chunk_bufs{cc};
+            chunk_bufs{cc} = [];   % <-- free immediately
         end
 
         log_precomp_done(show_counter,total_pairs);
@@ -175,15 +176,37 @@ if ~reuse_pair_basis
         [Uf,Yf,Up,Yp,Cmap,Cmap_FU] = store_pair_payload(...
             Uf,Yf,Up,Yp,Cmap,Cmap_FU,pair_payloads(ii),...
             pairs,ii,N_peanut,use_pair_map,store_full_pair_payload);
+        pair_payloads(ii) = init_pair_payload(pairs(ii,1), pairs(ii,2));  % free matrices
     end
 
     % ── optional dense fields ─────────────────────────────────────────────
-    if use_dense && store_full_pair_payload && ~isempty(rout_base_c)
+    if use_dense && store_full_pair_payload && ~isempty(rout_base_c) && ~use_pair_map
         pair_cache = populate_actual_dense_pair_fields(pair_cache,...
             q,rbase_in_c,rbase_in_f,rout_base_c,rimage_pairs,pairs);
     end
 
     return
+end
+
+function pair = init_pair_payload(i, j)
+    pair = struct(...
+        'rep_pair',      [i j],...
+        'q_pair',        [],...
+        'rimage_canon',  {{[]; []}},...
+        'refine_canon',  {{[]; []}},...
+        'rin_pair',      [],...
+        'Upf',           [],...
+        'Ypf',           [],...
+        'Lf_pair',       [],...
+        'Lc_pair',       [],...
+        'DC',            [],...
+        'YC',            [],...
+        'Cmap',          [],...
+        'Cmap_FU',       [],...
+        'Upair_colloc',  [],...
+        'Ucross_colloc', [],...
+        'Ecolloc',       []...
+    );
 end
 
 % =========================================================================
@@ -553,13 +576,15 @@ group.rep_pair      = pair.rep_pair;
 if store_full_pair_payload
     group.Upf           = pair.Upf;
     group.Ypf           = pair.Ypf;
-    group.DC            = pair.DC;
-    group.YC            = pair.YC;
     group.Lf_pair       = pair.Lf_pair;
     group.Lc_pair       = pair.Lc_pair;
     group.Upair_colloc  = pair.Upair_colloc;
     group.Ucross_colloc = pair.Ucross_colloc;
     group.Ecolloc       = pair.Ecolloc;
+    if ~use_cmap          % <-- guard: DC/YC are already in Cmap when cmap=1
+        pair.DC = DC;
+        pair.YC = YC;
+    end
 end
 end
 
