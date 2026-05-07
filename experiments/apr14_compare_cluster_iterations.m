@@ -39,6 +39,7 @@ if solve_resistance
     problem_tag = 'resistance';
     N_c = 150;
     N_f = 60;
+    N_f = 120;
     %N_f = 40;
 else
     problem_tag = 'mobility';
@@ -164,9 +165,9 @@ else
             velocities{idelta,irun} = UF;
             rotations{idelta,irun} = WT;
 
-            for imethod = 1:nmethods
+            for imethod = 1%:nmethods
                 opt_run = opt_template;
-                [~,sol] = methods(imethod).solver(q,UF,WT,opt_run);
+                [UW,sol] = methods(imethod).solver(q,UF,WT,opt_run);
 
                 iters(idelta,irun,imethod) = sol.it;
                 gmres_residuals(idelta,irun,imethod) = sol.resvec(end);

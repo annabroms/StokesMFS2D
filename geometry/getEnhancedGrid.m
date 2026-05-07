@@ -139,10 +139,10 @@ for k = 1:P
 end
 
 figure('Name','getEnhancedGrid selftest');
-plot(proxy, 'k--'); hold on;
-plot(q, 'k*', 'MarkerSize', 8);
+plot(proxy, 'r--'); hold on;
+%plot(q, 'k*', 'MarkerSize', 8);
 plot(acc_pts, 'ks', 'MarkerSize', 6, 'MarkerFaceColor', 'y');
-plot(cent_clust, 'ro');
+plot(cent_clust, 'r--');
 plot(coll_clust, 'b.');
 axis equal; grid on;
 legend('proxy boundaries','centers','accumulation points','clustered centers','clustered collocation','Location','best');
@@ -161,91 +161,90 @@ hold on;
 for k = 1:P
     body = q(k) + rad(k)*(cos(t)+1i*sin(t));
     proxy = q(k) + r_proxy*(cos(t)+1i*sin(t));
+    bndry = q(k) + (cos(t)+1i*sin(t));
     if k == 1
-        plot(real(body),imag(body),'k-','LineWidth',1.0,'DisplayName','body boundary');
-        plot(real(proxy),imag(proxy),'k--','LineWidth',1.0,'DisplayName','proxy boundary');
+       % plot(real(body),imag(body),'k-','LineWidth',1.0,'DisplayName','body boundary');
+        plot(real(proxy),imag(proxy),'r.','DisplayName','fine source curves');
     else
-        plot(real(body),imag(body),'k-','LineWidth',1.0,'HandleVisibility','off');
-        plot(real(proxy),imag(proxy),'k--','LineWidth',1.0,'HandleVisibility','off');
+       % plot(real(body),imag(body),'k-','LineWidth',1.0,'HandleVisibility','off');
+        plot(real(proxy),imag(proxy),'r.','HandleVisibility','off');
+        
     end
+    plot(real(bndry),imag(bndry),'k-','HandleVisibility','off');
 end
 
-plot(real(q),imag(q),'kp','MarkerSize',9,'MarkerFaceColor','k','DisplayName','particle centers');
-for k = 1:P
-    text(real(q(k)),imag(q(k)),sprintf('  q_%d',k), ...
-        'Color','k','FontSize',10,'Interpreter','none');
-end
+%plot(real(q),imag(q),'kp','MarkerSize',9,'MarkerFaceColor','k','DisplayName','particle centers');
+% for k = 1:P
+%     text(real(q(k)),imag(q(k)),sprintf('  q_%d',k), ...
+%         'Color','k','FontSize',10,'Interpreter','none');
+% end
 
 for k = 1:P
     rk = cent_clust_cells{k};
     if ~isempty(rk)
-        if k == 1
-            plot(real(rk),imag(rk),'ro','MarkerSize',4,'DisplayName','clustered source nodes');
-        else
-            plot(real(rk),imag(rk),'ro','MarkerSize',4,'HandleVisibility','off');
-        end
+        plot(real(rk),imag(rk),'r.','MarkerSize',4,'HandleVisibility','off');
     end
 end
 
-for k = 1:P
-    ck = coll_clust_cells{k};
-    if ~isempty(ck)
-        if k == 1
-            plot(real(ck),imag(ck),'b.','MarkerSize',10,'DisplayName','clustered collocation nodes');
-        else
-            plot(real(ck),imag(ck),'b.','MarkerSize',10,'HandleVisibility','off');
-        end
-    end
-end
+% for k = 1:P
+%     ck = coll_clust_cells{k};
+%     if ~isempty(ck)
+%         % if k == 1
+%         %     plot(real(ck),imag(ck),'b.','MarkerSize',10,'DisplayName','fine collocation nodes');
+%         % else
+%             plot(real(ck),imag(ck),'b.','MarkerSize',8,'HandleVisibility','off');
+%  %       end
+%     end
+% end
 
 for k = 1:P
     ak = acc_cells{k};
     if ~isempty(ak)
         if k == 1
-            plot(real(ak),imag(ak),'ms','MarkerSize',6,'MarkerFaceColor','y', ...
-                'DisplayName','accumulation points');
+            plot(real(ak),imag(ak),'b.','MarkerSize',10,'MarkerFaceColor','y', ...
+                'DisplayName','image accumulation points');
         else
-            plot(real(ak),imag(ak),'ms','MarkerSize',6,'MarkerFaceColor','y', ...
+            plot(real(ak),imag(ak),'b.','MarkerSize',10,'MarkerFaceColor','y', ...
                 'HandleVisibility','off');
         end
     end
 end
 
-for row = 1:size(pairs,1)
-    i = pairs(row,1);
-    j = pairs(row,2);
-    plot(real([q(i); q(j)]),imag([q(i); q(j)]),'Color',[0.25 0.25 0.25], ...
-        'LineStyle',':','LineWidth',1.0,'HandleVisibility','off');
-
-    src_ij = clust_pairs{i,j};
-    if ~isempty(src_ij)
-        text(real(src_ij(1)),imag(src_ij(1)),sprintf(' src(%d,%d)',i,j), ...
-            'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
-    end
-
-    src_ji = clust_pairs{j,i};
-    if ~isempty(src_ji)
-        text(real(src_ji(1)),imag(src_ji(1)),sprintf(' src(%d,%d)',j,i), ...
-            'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
-    end
-
-    coll_ij = coll_pairs{i,j};
-    if ~isempty(coll_ij)
-        text(real(coll_ij(1)),imag(coll_ij(1)),sprintf(' coll(%d,%d)',i,j), ...
-            'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
-    end
-
-    coll_ji = coll_pairs{j,i};
-    if ~isempty(coll_ji)
-        text(real(coll_ji(1)),imag(coll_ji(1)),sprintf(' coll(%d,%d)',j,i), ...
-            'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
-    end
-end
+% for row = 1:size(pairs,1)
+%     i = pairs(row,1);
+%     j = pairs(row,2);
+%     plot(real([q(i); q(j)]),imag([q(i); q(j)]),'Color',[0.25 0.25 0.25], ...
+%         'LineStyle',':','LineWidth',1.0,'HandleVisibility','off');
+% 
+%     % src_ij = clust_pairs{i,j};
+%     % if ~isempty(src_ij)
+%     %     text(real(src_ij(1)),imag(src_ij(1)),sprintf(' src(%d,%d)',i,j), ...
+%     %         'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
+%     % end
+% 
+%     % src_ji = clust_pairs{j,i};
+%     % if ~isempty(src_ji)
+%     %     text(real(src_ji(1)),imag(src_ji(1)),sprintf(' src(%d,%d)',j,i), ...
+%     %         'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
+%     % end
+% 
+%     % coll_ij = coll_pairs{i,j};
+%     % if ~isempty(coll_ij)
+%     %     text(real(coll_ij(1)),imag(coll_ij(1)),sprintf(' coll(%d,%d)',i,j), ...
+%     %         'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
+%     % end
+% 
+%     % coll_ji = coll_pairs{j,i};
+%     % if ~isempty(coll_ji)
+%     %     text(real(coll_ji(1)),imag(coll_ji(1)),sprintf(' coll(%d,%d)',j,i), ...
+%     %         'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
+%     % end
+% end
 
 axis equal;
-grid on;
+axis off
 xlabel('x');
 ylabel('y');
-title('Enhanced-grid node families and pair labels','Interpreter','none');
-legend('Location','bestoutside');
+%title('Enhanced-grid node families and pair labels','Interpreter','none');
+%legend('Interpreter','latex','FontSize',16);
 end

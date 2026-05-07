@@ -794,8 +794,12 @@ stats = struct();
 stats.requested = logical(requested);
 stats.active = false;
 stats.n_pairs = n_pairs;
-pool_info = gcp;
-stats.pool_size = pool_info.NumWorkers;
+pool = gcp('nocreate');
+if ~isempty(pool)
+    stats.pool_size = pool.NumWorkers;
+else
+    stats.pool_size = 1; 
+end
 stats.backend = 'serial';
 stats.reason = '';
 stats.used_pair_cache = false;

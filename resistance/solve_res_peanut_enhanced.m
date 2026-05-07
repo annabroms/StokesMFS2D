@@ -322,16 +322,6 @@ if debug
     end
 end
 
-single_threaded = opt.single_threaded; 
-if single_threaded
-    %not sure if all of this is needed...
-    setenv('OMP_NUM_THREADS','1');      % OpenMP
-    setenv('MKL_NUM_THREADS','1');      % MATLAB/Intel MKL
-    setenv('OPENBLAS_NUM_THREADS','1'); % OpenBLAS
-
-    maxNumCompThreads(1);               % MATLAB computational threads
-
-end
 
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
