@@ -32,7 +32,7 @@ spmd; maxNumCompThreads(N_threads); end
 
 
 % Geometry
-geom.P = 100;
+geom.P = 20;
 geom.rad = 1;
 geom.domain = 'boxed';
 geom.phi = 0.65;
@@ -65,11 +65,14 @@ opt_cfg.mob_big_sparse_build_mode = 'precomputed';
 opt_cfg.mob_big_sparse_build_mode = 'streaming';
 opt_cfg.use_big_sparse = 1; %switch here!
 opt_cfg.mob_sparse_map_coarse = 1;
-opt_cfg.parallel_precomp = 1; 
+opt_cfg.parallel_precomp = 0; 
 opt_cfg.mob_big_sparse_chunk_pairs = '';
 opt_cfg.parallel_precomp_chunk_pairs = '';
-opt_cfg.parallel_big_sparse_build = 1; 
-opt_cfg.solve_threads = '';
+opt_cfg.parallel_big_sparse_build = 0; 
+opt_cfg.solve_threads = 1';
+opt_cfg.smaller_ucorr = 1; 
+opt_cfg.mob_sparse_map_coarse = 1; %default 1 here. 
+opt_cfg.visualise_grid = 1; 
 
 
 

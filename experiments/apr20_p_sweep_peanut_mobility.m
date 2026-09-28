@@ -18,7 +18,7 @@ n_repeats = 10;
 N_c = 60;
 get_bndry_vel = true;
 
-run_test = 1;
+run_test = 0;
 
 % Storage for results
 n_p = length(P_range);
@@ -171,19 +171,19 @@ grid(ax2, 'on');
 set(ax2, 'TickLabelInterpreter', 'latex');
 axis tight
 
-% Figure 3: Number of near pairs vs P
-fig3 = figure('Name', 'Near pairs vs P', 'Color', 'w');
+% Figure 3: Number of near pairs vs phi
+fig3 = figure('Name', 'Near pairs vs phi', 'Color', 'w');
 ax3 = axes('Parent', fig3);
 hold(ax3, 'on');
-plot(ax3, P_range, n_close_mean./P_range', 'b-o', 'LineWidth', 2, 'DisplayName', 'Mean');
-fill_between_wrapper(ax3, P_range, n_close_min./P_range', n_close_max./P_range', 0.15);
+plot(ax3, P_range, 2*n_close_mean./P_range', 'b-o', 'LineWidth', 2, 'DisplayName', 'Mean');
+fill_between_wrapper(ax3, P_range, 2*n_close_min./P_range', 2*n_close_max./P_range', 0.15);
 hold(ax3, 'off');
 xlabel(ax3, '$P$', 'Interpreter', 'latex', 'FontSize', 14);
-ylabel(ax3, 'Number of near pairs per particle', 'Interpreter', 'latex', 'FontSize', 14);
-%legend(ax3, 'Location', 'best');
+ylabel(ax3, 'Near neighbors per body', 'Interpreter', 'latex', 'FontSize', 14);
 grid(ax3, 'on');
 set(ax3, 'TickLabelInterpreter', 'latex');
 axis tight
+
 
 fprintf('Experiments complete.\n');
 
@@ -297,8 +297,10 @@ for i = 1:n_p
 
         if isfile(individual_filepath)
             loaded = load(individual_filepath, 'run_data');
-            if isfield(loaded.run_data, 'iterations') && ~isempty(loaded.run_data.iterations)
+            if isfield(loaded.run_data, 'iterations') && ~isempty(loaded.run_data.iterations)       
+                ind = find(loaded.run_data.sol.resvec<1e-7);
                 iterations_all(i, j) = loaded.run_data.iterations;
+                iterations_all(i, j) = ind(1);
             elseif isfield(loaded.run_data, 'sol')
                 % Fallback: extract from sol struct
                 sol = loaded.run_data.sol;

@@ -69,8 +69,14 @@ io.name2 = build_results_filename(script_name, geom.P, geom.phi, compare.referen
 
 io.name2 = 'mobilityP10000_fast_finer_flatiron.mat';
 io.name2 = 'apr14_random_discs_peanut_mobility_P10000_phi0.650_Nc120_results.mat';
+%io.name2 = 'mobilityP10000_checkfield_flatiron.mat';
+%io.name2 = 'mobilityP10000_Nc60_Nf150_Nclust100_Npeanut400.mat';
+%io.name2 = 'mobilityP10000_Nc60_Nf150_Nclust80_Npeanut200.mat';
+%compare.reference_N_c = 60;
 io.data_filename = 'mobilityP10000_checkfield_flatiron.mat';
-
+io.data_filename = 'apr14_random_discs_peanut_mobility_P10000_phi0.650_Nc60_results.mat';
+io.data_filename = 'mobilityP10000_checkfield_Nc60_Nf150_Nclust80_Npeanut200.mat';
+io.data_filename = 'mobilityP10000_Nc60_Nf150_Nclust80_Npeanut200_checkfiled_gmres1e-8.mat';
 % Reporting and visualisation
 plots.font_size = 16;
 plots.full_edge_color = [0.10 0.10 0.10];
@@ -277,10 +283,10 @@ triptych_fig = [];
 if ~isempty(body_velocity_error)
     default_speed_clim = expand_if_degenerate([min(body_speed), max(body_speed)]);
     default_speed_clim(1) = 0;
-    default_error_clim = expand_if_degenerate([min(body_velocity_error), max(body_velocity_error)]);
     error_floor = get_positive_floor(body_velocity_error);
     error_log = log10(max(body_velocity_error, error_floor));
     default_error_clim = expand_if_degenerate([min(error_log), max(error_log)]);
+    %default_error_clim = [-6.1,-5.2];
     triptych_panels = make_triptych_panels( ...
         body_speed, choose_clim(plots.speed_clim, default_speed_clim), plots.speed_colormap, ...
         '$\mathrm{max\ boundary\ speed}$', ...
@@ -636,7 +642,7 @@ function body_error = max_boundary_velocity_error(UW, UW_ref, rad)
 [U_ref, W_ref] = unpack_UW(UW_ref);
 abs_error = sqrt(sum((U - U_ref).^2,2)) + rad*abs(W - W_ref);
 ref_speed = sqrt(sum(U_ref.^2,2)) + rad*abs(W_ref);
-body_error = abs_error ./ ref_speed;
+body_error = abs_error ./ max(ref_speed);
 end
 
 function panels = make_triptych_panels( ...
@@ -768,7 +774,7 @@ if fid < 0
     error('apr14_random_discs_peanut_mobility:TikzOpenFailed', ...
         'Could not open %s for writing.', picture_file);
 end
-cleanup_obj = onCleanup(@() fclose(fid)); %#ok<NASGU>
+cleanup_obj = onCleanup(@() fclose(fid)); 
 
 fprintf(fid,'%% Auto-generated from apr14_random_discs_peanut_mobility.m\n');
 fprintf(fid,'%% Adjust these font commands to match your paper.\n');
@@ -809,7 +815,7 @@ if fid < 0
     error('apr14_random_discs_peanut_mobility:TikzOpenFailed', ...
         'Could not open %s for writing.', picture_file);
 end
-cleanup_obj = onCleanup(@() fclose(fid)); %#ok<NASGU>
+cleanup_obj = onCleanup(@() fclose(fid)); 
 
 fprintf(fid,'%% Auto-generated from apr14_random_discs_peanut_mobility.m\n');
 fprintf(fid,'%% Large-P export: the particle geometry is embedded as a PDF image,\n');
@@ -945,22 +951,6 @@ function labels = format_triptych_ticklabels(values)
 labels = cell(size(values));
 for k = 1:numel(values)
     labels{k} = sprintf('%.1f', values(k));
-end
-end
-
-function label = format_tex_number(value)
-if value == 0
-    label = '$0$';
-    return
-end
-
-abs_value = abs(value);
-if abs_value >= 1e-2 && abs_value < 1e2
-    label = sprintf('$%.3g$', value);
-else
-    exponent = floor(log10(abs_value));
-    mantissa = value / 10^exponent;
-    label = sprintf('$%.2f\\times 10^{%d}$', mantissa, exponent);
 end
 end
 

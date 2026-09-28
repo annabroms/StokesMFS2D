@@ -25,7 +25,7 @@ rng(rng_seed);
 P = 20;
 rad = 1;
 nruns = 5;
-deltavec = logspace(-3,-1,10);
+deltavec = 1e-3; %logspace(-3,-1,10);
 
 geom.generator = 'cluster_gen'; % 'cluster_gen' or 'random_mc'
 geom.domain = 'boxed';          % used for random_mc
@@ -34,7 +34,7 @@ geom.n_sweeps = 30;             % used for random_mc
 geom.show_generation_plot = false;
 geom_tag = get_geometry_tag(geom);
 
-solve_resistance = true;
+solve_resistance = false;
 if solve_resistance
     problem_tag = 'resistance';
     N_c = 150;
@@ -45,11 +45,11 @@ else
     problem_tag = 'mobility';
     N_c = 80;
     N_f = 60;
-    N_f = 40;
+    %N_f = 40;
 end
 
 
-N_peanut = 400;
+N_peanut = 200;
 Nclust = 100;
 
 io.run_experiment = 1;
@@ -60,7 +60,7 @@ opt_template.delta_pair = 0.2;
 opt_template.N_peanut = N_peanut;
 opt_template.gmres_tol = 1e-7;
 opt_template.maxit = 2000;
-opt_template.visualise_sol = 0;
+opt_template.visualise_sol = 1;
 opt_template.visualise_grid = 0;
 opt_template.debug = 0;
 opt_template.gmres_verbose = 0;
@@ -73,6 +73,7 @@ opt_template.use_dense = 1;
 opt_template.get_bndry_field = 1;
 opt_template.parallel_precomp = 0;
 opt_template.Nclust = Nclust; 
+opt_template.solve_threads = 8;
 
 
 if solve_resistance
@@ -105,7 +106,8 @@ else
     io.save_results = false;
     plots.make_figures = true;
 end
-io.data_filename = sprintf('%s_P%d_%s_%s.mat', script_name, P, problem_tag, geom_tag);
+io.data_filename = sprintf('test_%s_P%d_%s_%s.mat', script_name, P, problem_tag, geom_tag);
+%io.data_filename = 'apr14_compare_cluster_iterations_mobility.mat';
 
 if io.run_experiment && io.load_results
     error('apr14_compare_cluster_iterations:ConflictingIO', ...
@@ -138,7 +140,9 @@ else
     gmres_residuals = nan(ndelta,nruns,nmethods);
     surface_residuals = nan(ndelta,nruns,nmethods);
     gmres_unknowns = nan(ndelta,nruns,nmethods);
+    solve_time = nan(ndelta,nruns,nmethods);
     unknown_ratio = nan(ndelta,nruns);
+    time_ratio = nan(ndelta,nruns);
     clusters = cell(ndelta,nruns);
     geom_meta = cell(ndelta,nruns);
     velocities = cell(ndelta,nruns);
@@ -163,9 +167,9 @@ else
             clusters{idelta,irun} = q;
             geom_meta{idelta,irun} = geom_meta_run;
             velocities{idelta,irun} = UF;
-            rotations{idelta,irun} = WT;
+            rotations{idelta,irun} = WT;true
 
-            for imethod = 1%:nmethods
+            for imethod = 1:nmethods
                 opt_run = opt_template;
                 [UW,sol] = methods(imethod).solver(q,UF,WT,opt_run);
 
@@ -173,6 +177,7 @@ else
                 gmres_residuals(idelta,irun,imethod) = sol.resvec(end);
                 surface_residuals(idelta,irun,imethod) = sol.rel_res;
                 gmres_unknowns(idelta,irun,imethod) = sol.gmres_unknowns;
+                solve_time(idelta,irun,imethod) = sol.solve_time.total;
 
                 fprintf('    %-22s it = %4d   unknowns = %6.0f   gmres = %.3e   surface = %.3e\n', ...
                     methods(imethod).label, sol.it, ...
@@ -182,6 +187,7 @@ else
             end
 
             unknown_ratio(idelta,irun) = gmres_unknowns(idelta,irun,2) / gmres_unknowns(idelta,irun,1);
+            time_ratio(idelta,irun) = solve_time(idelta,irun,2) / solve_time(idelta,irun,1);
         end
     end
 
@@ -205,6 +211,7 @@ else
     results.surface_residuals = surface_residuals;
     results.gmres_unknowns = gmres_unknowns;
     results.unknown_ratio = unknown_ratio;
+    results.time_ratio = time_ratio;
     results.clusters = clusters;
     results.geom_meta = geom_meta;
     results.velocities = velocities;
@@ -386,10 +393,16 @@ for imethod = 1:nmethods
 end
 
 [unknown_ratio_min,unknown_ratio_max,unknown_ratio_mean] = summariseRuns(results.unknown_ratio);
+%[time_ratio_min,time_ratio_max,time_ratio_mean] = summariseRuns(results.time_ratio);
+
 for imethod = 1:nmethods
     summary(imethod).unknown_ratio_min = unknown_ratio_min;
     summary(imethod).unknown_ratio_max = unknown_ratio_max;
     summary(imethod).unknown_ratio_mean = unknown_ratio_mean;
+
+    % summary(imethod).time_ratio_min = time_ratio_min;
+    % summary(imethod).time_ratio_max = time_ratio_max;
+    % summary(imethod).time_ratio_mean = time_ratio_mean;
 end
 
 results.summary = summary;
@@ -403,9 +416,10 @@ nmethods = numel(methods);
 figure(1);
 clf;
 hold on;
+markers = {'o','+'};
 for imethod = 1:nmethods
     plotBand(deltavec,summary(imethod).iter_min,summary(imethod).iter_max,methods(imethod).color);
-    plot(deltavec,summary(imethod).iter_mean,'-o', ...
+    plot(deltavec,summary(imethod).iter_mean,'Marker',markers{imethod}, ...
         'Color',methods(imethod).color, ...
         'LineWidth',1.5, ...
         'MarkerFaceColor',methods(imethod).color, ...
@@ -415,10 +429,11 @@ set(gca,'XScale','log');
 set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
-xlabel('$\delta$','Interpreter','latex');
-ylabel('GMRES iterations','Interpreter','latex');
+xlabel('$\delta$','Interpreter','latex','FontSize', 14);
+ylabel('GMRES iterations','Interpreter','latex','FontSize', 14);
 %title('Cluster solve iterations','Interpreter','latex');
-legend('Location','best','Interpreter','latex');
+%lgd = legend('Interpreter','latex');
+%lgd.Position = lgd.Position+[0 0 0.01 0];   % [left bottom width height]
 
 figure(2);
 clf;
@@ -428,7 +443,7 @@ for imethod = 1:nmethods
     gmres_max = clampPositive(summary(imethod).surface_max);
     gmres_mean = clampPositive(summary(imethod).surface_mean);
     plotBand(deltavec,gmres_min,gmres_max,methods(imethod).color);
-    plot(deltavec,gmres_mean,'-o', ...
+    plot(deltavec,gmres_mean,'Marker',markers{imethod}, ...
         'Color',methods(imethod).color, ...
         'LineWidth',1.5, ...
         'MarkerFaceColor',methods(imethod).color, ...
@@ -438,17 +453,18 @@ set(gca,'XScale','log','YScale','log');
 set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
-xlabel('$\delta$','Interpreter','latex');
-ylabel('Relative boundary residual','Interpreter','latex');
+xlabel('$\delta$','Interpreter','latex','FontSize', 14);
+ylabel('Relative boundary residual','Interpreter','latex','FontSize', 14);
 %title('Cluster solve residuals','Interpreter','latex');
-legend('Location','best','Interpreter','latex');
+%lgd = legend('Interpreter','latex');
+%lgd.Position = lgd.Position+[0 0 0.01 0];   % [left bottom width height]
 
 figure(3);
 clf;
 hold on;
 for imethod = 1:nmethods
     plotBand(deltavec,summary(imethod).unknowns_min,summary(imethod).unknowns_max,methods(imethod).color);
-    plot(deltavec,summary(imethod).unknowns_mean,'-o', ...
+    plot(deltavec,summary(imethod).unknowns_mean,'Marker',markers{imethod}, ...
         'Color',methods(imethod).color, ...
         'LineWidth',1.5, ...
         'MarkerFaceColor',methods(imethod).color, ...
@@ -458,10 +474,11 @@ set(gca,'XScale','log');
 set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
-xlabel('$\delta$','Interpreter','latex');
-ylabel('GMRES unknowns','Interpreter','latex');
+xlabel('$\delta$','Interpreter','latex','FontSize', 14);
+ylabel('GMRES unknowns','Interpreter','latex','FontSize', 14);
 %title('Cluster GMRES unknown counts','Interpreter','latex');
-legend('Location','best','Interpreter','latex');
+%lgd = legend('Interpreter','latex');
+%lgd.Position = lgd.Position+[0 0 0.01 0];   % [left bottom width height]
 
 figure(4);
 clf;
@@ -476,8 +493,24 @@ set(gca,'XScale','log');
 set(gca,'TickLabelInterpreter','latex');
 grid on;
 axis tight;
-xlabel('$\delta$','Interpreter','latex');
-ylabel('Ratio of unknowns:  1-body solve / peanut compression','Interpreter','latex');
+xlabel('$\delta$','Interpreter','latex','FontSize', 14);
+ylabel('Ratio of unknowns:  1-body solve / peanut compression','Interpreter','latex','FontSize', 14);
 %title('1-body to peanut GMRES unknown ratio','Interpreter','latex');
 %legend('Location','best','Interpreter','latex');
+
+figure(5);
+clf;
+hold on;
+plotBand(deltavec,summary(1).time_ratio_min,summary(1).time_ratio_max,methods(2).color);
+plot(deltavec,summary(1).time_ratio_mean,'-o', ...
+    'Color',methods(2).color, ...
+    'LineWidth',1.5, ...
+    'MarkerFaceColor',methods(2).color, ...
+    'DisplayName','1-body / peanut');
+set(gca,'XScale','log');
+set(gca,'TickLabelInterpreter','latex');
+grid on;
+axis tight;
+xlabel('$\delta$','Interpreter','latex','FontSize', 14);
+ylabel('Time ratio:  1-body solve / peanut compression','Interpreter','latex','FontSize', 14);
 end

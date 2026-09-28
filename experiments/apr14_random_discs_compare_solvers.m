@@ -1,5 +1,4 @@
 close all;
-clc;
 
 repo_root = fileparts(fileparts(mfilename('fullpath')));
 if ~isempty(repo_root)
@@ -8,29 +7,33 @@ end
 
 fprintf('=== Random Discs Compare Solvers (Apr 14, 2026) ===\n');
 
+resistance = 0; 
+
 % Random seeds
 geom_seed = 1;
 load_seed = 11;
 
 % Geometry
-P = 10;
+P = 50;
 rad = 1;
 domain = 'boxed';
 phi = 0.65;
-min_gap = 1e-3; 
+min_gap = 1e-1; 
 n_sweeps = 30;
 visualise_geometry = false;
 
 % Solver
-N_c = 60;
+N_c = 80;
 N_f = 150;
-
-N_c = 120; %120 for small 2-way error
 N_f = 60;
-N_peanut = 400;
+
+%N_c = 120; %120 for small 2-way error
+%N_f = 60;
+N_peanut = 200;
 delta_pair = 0.2;
 gmres_tol = 1e-8;
 maxit = 1000;
+Nclust = 80; 
 
 geom_opt = struct();
 geom_opt.domain = domain;
@@ -42,6 +45,8 @@ geom_opt.rng_seed = geom_seed;
 geom_opt.visualise = visualise_geometry;
 
 [q,geom_meta] = random_discs_mc(P,geom_opt);
+q = grow_cluster(P,min_gap,2);
+%q = [0; delta+2];
 [n_close,pairs] = count_close_pairs(q,delta_pair,rad); 
 
 opt = get2Dparams(P,N_c,N_f);
@@ -51,7 +56,7 @@ opt.N_peanut = N_peanut;
 opt.gmres_tol = gmres_tol;
 opt.maxit = maxit;
 opt.visualise_sol = 0;
-opt.visualise_grid = 0;
+opt.visualise_grid = 1;
 opt.debug = 0;
 opt.gmres_verbose = 0;
 opt.surface_error_mode = 'rel';
@@ -63,6 +68,8 @@ opt.use_dense = 1;
 opt.get_bndry_field = 1;
 opt.single_threaded = 0;
 opt.mob_big_sparse_build_mode = 'precomputed'; %streaming can't be used with get_bndry_field
+opt.Nclust = Nclust;
+opt.solve_threads = 8; 
 
 rng(load_seed);
 F = randn(P,2);
@@ -112,19 +119,21 @@ for k = it_start:numel(methods)
     results(k).mob_time = results(k).mob_sol.solve_time.total;
     results(k).mob_residual = results(k).mob_sol.rel_res;
 
-    fprintf('Running %s resistance...\n',methods(k).label);
-    [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
-    results(k).res_time =  results(k).res_sol.solve_time.total;
-    results(k).res_residual = results(k).res_sol.rel_res;
-
-
-    [Uk,Wk] = unpackUW(results(k).UW);
-    [FT_back,~] = methods(k).res_solver(q,Uk,Wk,opt);
-    results(k).two_way_mob_to_res = relerr_inf(FT_back,FT_ref);
-
-    [Fk,Tk] = unpackFT(results(k).FT);
-    [UW_back,~] = methods(k).mob_solver(q,Fk,Tk,opt);
-    results(k).two_way_res_to_mob = relerr_inf(UW_back,UW_ref);
+    if resistance
+        fprintf('Running %s resistance...\n',methods(k).label);
+        [results(k).FT,results(k).res_sol] = methods(k).res_solver(q,U,W,opt);
+        results(k).res_time =  results(k).res_sol.solve_time.total;
+        results(k).res_residual = results(k).res_sol.rel_res;
+    
+    
+        [Uk,Wk] = unpackUW(results(k).UW);
+        [FT_back,~] = methods(k).res_solver(q,Uk,Wk,opt);
+        results(k).two_way_mob_to_res = relerr_inf(FT_back,FT_ref);
+    
+        [Fk,Tk] = unpackFT(results(k).FT);
+        [UW_back,~] = methods(k).mob_solver(q,Fk,Tk,opt);
+        results(k).two_way_res_to_mob = relerr_inf(UW_back,UW_ref);
+    end
 end
 
 fprintf('\nMobility results:\n');
@@ -140,18 +149,20 @@ for k = it_start:numel(results)
         results(k).mob_time);
 end
 
-fprintf('\nResistance results:\n');
-fprintf('  %-22s %8s %10s %14s %14s %10s\n', ...
-    'solver','it','unknowns','gmres_res','surf_rel','time(s)');
-for k = it_start:numel(results)
-    fprintf('  %-22s %8d %10d %14.3e %14.3e %10.2f\n', ...
-        results(k).label, ...
-        results(k).res_sol.it, ...
-        results(k).res_sol.gmres_unknowns, ...
-        results(k).res_gmres_residual, ...
-        results(k).res_sol.rel_res, ...
-        results(k).res_time);
-end
+if resistance
+    fprintf('\nResistance results:\n');
+    fprintf('  %-22s %8s %10s %14s %14s %10s\n', ...
+        'solver','it','unknowns','gmres_res','surf_rel','time(s)');
+    for k = it_start:numel(results)
+        fprintf('  %-22s %8d %10d %14.3e %14.3e %10.2f\n', ...
+            results(k).label, ...
+            results(k).res_sol.it, ...
+            results(k).res_sol.gmres_unknowns, ...
+            results(k).res_gmres_residual, ...
+            results(k).res_sol.rel_res, ...
+            results(k).res_time);
+    end
+
 
 fprintf('\nTwo-way checks:\n');
 fprintf(['  two-way mob->res = ||R(M(F,T)) - [F;T]||_inf / max(1,||[F;T]||_inf)\n']);
@@ -162,6 +173,8 @@ for k = it_start:numel(results)
         results(k).label, ...
         results(k).two_way_mob_to_res, ...
         results(k).two_way_res_to_mob);
+end
+
 end
 
 fprintf('\nRatios (1-body / peanut):\n');

@@ -16,6 +16,8 @@ fprintf('=== Phi Sweep Peanut Mobility (Apr 20, 2026) ===\n');
 
 % Test parameters
 P = 500;
+%P = 25;
+phi_range = 0.75; 
 phi_range = linspace(0.35, 0.8, 10);
 n_repeats = 10;
 N_c = 60;
@@ -27,7 +29,7 @@ iterations_all = zeros(n_phi, n_repeats);
 residuals_all = zeros(n_phi, n_repeats);
 n_close_all = zeros(n_phi, n_repeats);
 
-run_test = 1;
+run_test = 0;
 
 if run_test
 
@@ -150,7 +152,7 @@ plot(ax1, phi_range, iterations_mean, 'b-o', 'LineWidth', 2, 'DisplayName', 'Mea
 %plot(ax1, phi_range, iterations_max, 'r--^', 'LineWidth', 1.5, 'DisplayName', 'Max');
 fill_between_wrapper(ax1, phi_range, iterations_min, iterations_max, 0.15);
 hold(ax1, 'off');
-xlabel(ax1, '$\phi$', 'Interpreter', 'latex', 'FontSize', 14);
+xlabel(ax1, '$\varphi$', 'Interpreter', 'latex', 'FontSize', 14);
 ylabel(ax1, 'Number of iterations', 'Interpreter', 'latex', 'FontSize', 14);
 %legend(ax1, 'Location', 'best');
 grid(ax1, 'on');
@@ -166,7 +168,7 @@ semilogy(ax2, phi_range, residuals_mean, 'b-o', 'LineWidth', 2, 'DisplayName', '
 %semilogy(ax2, phi_range, residuals_max, 'r--^', 'LineWidth', 1.5, 'DisplayName', 'Max');
 fill_between_log_wrapper(ax2, phi_range, residuals_min, residuals_max, 0.15);
 hold(ax2, 'off');
-xlabel(ax2, '$\phi$', 'Interpreter', 'latex', 'FontSize', 14);
+xlabel(ax2, '$\varphi$', 'Interpreter', 'latex', 'FontSize', 14);
 ylabel(ax2, 'Max relative residual', 'Interpreter', 'latex', 'FontSize', 14);
 %legend(ax2, 'Location', 'best');
 grid(ax2, 'on');
@@ -177,11 +179,11 @@ axis tight
 fig3 = figure('Name', 'Near pairs vs phi', 'Color', 'w');
 ax3 = axes('Parent', fig3);
 hold(ax3, 'on');
-plot(ax3, phi_range, n_close_mean/P, 'b-o', 'LineWidth', 2, 'DisplayName', 'Mean');
-fill_between_wrapper(ax3, phi_range, n_close_min/P, n_close_max/P, 0.15);
+plot(ax3, phi_range, 2*n_close_mean/P, 'b-o', 'LineWidth', 2, 'DisplayName', 'Mean');
+fill_between_wrapper(ax3, phi_range, 2*n_close_min/P, 2*n_close_max/P, 0.15);
 hold(ax3, 'off');
-xlabel(ax3, '$\phi$', 'Interpreter', 'latex', 'FontSize', 14);
-ylabel(ax3, 'Number of near pairs per particle', 'Interpreter', 'latex', 'FontSize', 14);
+xlabel(ax3, '$\varphi$', 'Interpreter', 'latex', 'FontSize', 14);
+ylabel(ax3, 'Near neighbors per body', 'Interpreter', 'latex', 'FontSize', 14);
 grid(ax3, 'on');
 set(ax3, 'TickLabelInterpreter', 'latex');
 axis tight
@@ -227,14 +229,18 @@ delta_pair = 0.2;
 n_close = count_close_pairs(q, delta_pair, 1);
 
 % Build solver options
-opt = get2Dparams(P, N_c, 150);
+
+N_f = 150;
+N_f = 60; 
+opt = get2Dparams(P, N_c, N_f);
+
 opt.rad = 1;
 opt.delta_pair = delta_pair;
 opt.N_peanut = 400;
 opt.gmres_tol = 1e-8;
 opt.maxit = 1000;
 opt.visualise_sol = 0;
-opt.visualise_grid = 0;
+opt.visualise_grid = 1;
 opt.debug = 0;
 opt.gmres_verbose = 0;
 opt.surface_error_mode = 'rel';
@@ -284,6 +290,42 @@ run_data.n_close = n_close;
 run_data.opt = opt;
 
 end
+
+function iterations_all = extract_iterations_from_files(data_root, phi_range, n_repeats)
+% Extract GMRES iterations from individual saved run data files
+% Used as fallback when aggregated results file is missing
+n_p = length(phi_range);
+iterations_all = zeros(n_p, n_repeats);
+individual_data_dir = fullfile(data_root, 'random_close_packing');
+P = 500;
+
+for i = 1:n_p
+    phi = phi_range(i);
+    for j = 1:n_repeats
+        individual_filename = sprintf('phi_%.3f_repeat_%d_results.mat', phi, j);
+        individual_filepath = fullfile(individual_data_dir, individual_filename);
+
+        if isfile(individual_filepath)
+            loaded = load(individual_filepath, 'run_data');
+            if isfield(loaded.run_data, 'iterations') && ~isempty(loaded.run_data.iterations)
+                ind = find(loaded.run_data.sol.resvec<1e-7);
+                iterations_all(i, j) = loaded.run_data.iterations;
+                iterations_all(i, j) = ind(1);
+            elseif isfield(loaded.run_data, 'sol')
+                % Fallback: extract from sol struct
+                sol = loaded.run_data.sol;
+                if isfield(sol, 'it')
+                    iterations_all(i, j) = sol.it;
+                end
+            end
+        else
+            warning('Could not find file: %s', individual_filepath);
+        end
+    end
+end
+end
+
+
 
 %% Helper function to extract residuals from individual files
 function residuals_all = extract_residuals_from_files(data_root, phi_range, n_repeats)
