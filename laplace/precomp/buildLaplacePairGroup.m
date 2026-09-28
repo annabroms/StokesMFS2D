@@ -19,6 +19,12 @@ else
 end
 R = opt.rad;
 
+% These options affect only the two-body correction factors. The one-body
+% Laplace inverse is built separately and retains its existing TSVD.
+svd_opts = struct( ...
+    'use_tikhonov',logical(getOptField(opt,'use_tikhonov',false)), ...
+    'tikhonov_tol',getOptField(opt,'tikhonov_tol',[]));
+
 if use_canonical
     q_pair = [-sep/2; sep/2];
     rimage_i = map_points_to_canonical(rimage_vec{i,j},mid,rot);
@@ -44,7 +50,8 @@ ntar_j = numel(rout_base_f) + numel(refine_j);
 proj_pair = struct('project_charge',project_charge, ...
     'nsrc',[nsrc_f_i nsrc_f_j], ...
     'ntar',[ntar_i ntar_j]);
-[Uf_pair,Yf_pair] = getPairBlockLaplace(rin_pair_f,rout_f,proj_pair);
+[Uf_pair,Yf_pair] = getPairBlockLaplace( ...
+    rin_pair_f,rout_f,proj_pair,svd_opts);
 
 Npair = evaluateCoarseOnPairLaplace(q_pair,rbase_in_c,rout_f);
 Upf = -Uf_pair'*Npair;
@@ -62,7 +69,7 @@ if opt.N_peanut
         'nsrc_c',[numel(rbase_in_c) numel(rbase_in_c)], ...
         'nsrc_f',[nsrc_f_i nsrc_f_j]);
     [DC,YC] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f, ...
-        rout_peanut,proj_peanut);
+        rout_peanut,proj_peanut,svd_opts);
 
     if opt.cmap
         C = -YC*(DC*Yf_pair*(Uf_pair'*Npair));
@@ -84,7 +91,8 @@ group = struct('group_id',group_id,'sep',sep,'q_pair',q_pair, ...
     'Upf',Upf,'Ypf',Ypf,'DC',DC,'YC',YC,'Cmap',C, ...
     'Cmap_QV',QV,'nout_f',numel(rout_base_f), ...
     'nsrc_f',[nsrc_f_i nsrc_f_j],'ntar_f',[ntar_i ntar_j], ...
-    'rep_pair',[i j]);
+    'rep_pair',[i j],'map_kind','none','interp_panel',[], ...
+    'interp_B',[]);
 end
 
 function Kq_pair = getPairChargeSumMap(n1,n2)

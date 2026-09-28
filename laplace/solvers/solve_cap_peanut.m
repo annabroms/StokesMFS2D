@@ -10,7 +10,9 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %   opt        - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius
-%       N_c,N_f       coarse/fine proxy point counts
+%       N_c,N_f       solver-coarse/fine proxy point counts
+%       N_cmap        canonical Cmap coarse point count (default N_c).
+%                     A different value requires pair-basis reuse and refit.
 %       a_c,a_f       coarse/fine collocation upsampling factors
 %       Rp_c,Rp_f     coarse/fine proxy radii
 %       delta_pair    pair-detection threshold
@@ -27,6 +29,22 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                     matvec.
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse to coarse map
+%       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
+%                     two-body pseudoinverses. Cmap compression remains TSVD
+%       tikhonov_tol  relative parameter lambda/sigma_max; empty uses the
+%                     legacy local cutoff as the Tikhonov knee
+%       use_interpolation
+%                     'none' (default off), 'reduced_noconst' (preferred),
+%                     'reduced', or 'full'. Interpolation uses a trained
+%                     piecewise-alpha canonical Cmap model instead of exact
+%                     pair precomputations. Call
+%                     prepareLaplaceCmapInterpolation before the solve.
+%       interpolation_tol
+%                     target action error for full/reconstructed Cmap
+%       charge_interpolation_tol
+%                     independent target for the full Cmap_QV map
+%       refit         false: Fourier rotation/resampling (default),
+%                     true: per-particle MFS field refitting around Cmap
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
@@ -67,6 +85,9 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_cap_peanut requires q, v_body, and an options struct opt.');
 end
 
+R = getOptField(opt,'rad',2);
+[opt,interpolation_mode] = configureLaplaceCapacitanceInterpolation(opt);
+
 [ram_check,] = startRamCheck(opt,mfilename);
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
@@ -79,6 +100,28 @@ body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 use_big_sparse_requested = logical(getOptField(opt,'use_big_sparse',false));
+N_c = getOptField(opt,'N_c',80);
+N_cmap = getOptField(opt,'N_cmap',N_c);
+refit = logical(getOptField(opt,'refit',false));
+reuse_pair_basis = logical(getOptField(opt, ...
+    'reuse_pair_basis_by_sep',false));
+validateattributes(N_c,{'numeric'},{'scalar','integer','positive'}, ...
+    mfilename,'opt.N_c');
+validateattributes(N_cmap,{'numeric'},{'scalar','integer','positive'}, ...
+    mfilename,'opt.N_cmap');
+opt.N_cmap = N_cmap;
+opt.refit = refit;
+if N_cmap ~= N_c && (~reuse_pair_basis || ~refit)
+    error('solve_cap_peanut:MixedCoarseRequiresReusedRefit', ...
+        ['opt.N_cmap may differ from opt.N_c only when ', ...
+         'opt.reuse_pair_basis_by_sep=true and opt.refit=true.']);
+end
+if use_big_sparse_requested && (N_cmap ~= N_c || refit)
+    error('solve_cap_peanut:MixedCoarseBigSparseUnsupported', ...
+        ['opt.use_big_sparse=1 currently requires opt.N_cmap=opt.N_c ', ...
+         'and opt.refit=false. Use the standard peanut matvec for ', ...
+         'per-particle refitting.']);
+end
 big_sparse_build_mode = '';
 if use_big_sparse_requested
     if ~logical(getOptField(opt,'cmap',false))
@@ -107,8 +150,20 @@ if use_big_sparse_requested
              'opt.get_bndry_field=0. Use ''auto'' or ''precomputed'' ', ...
              'for boundary postprocessing.']);
     end
+    if ~strcmp(interpolation_mode,'none') && ...
+            ~strcmp(big_sparse_build_mode,'precomputed')
+        error('solve_cap_peanut:InterpolationSparseRequiresPrecomputed', ...
+            ['Interpolated pair maps require ', ...
+             'opt.lap_big_sparse_build_mode=''precomputed''. Streaming ', ...
+             'constructs exact maps and cannot use interpolation.']);
+    end
 end
 opt_solve = opt;
+if isfield(opt_solve,'interpolation_model')
+    % The model itself lives once in pair_cache; matvec options only need
+    % the selected mode.
+    opt_solve = rmfield(opt_solve,'interpolation_model');
+end
 opt_solve.get_bndry_field = false;
 if use_big_sparse_requested
     opt_solve.use_big_sparse = true;
@@ -120,7 +175,7 @@ v_body = v_body(:);
 P = numel(q);
 assert(numel(v_body)==P,'v_body must have one entry per particle.');
 precomp_time = struct('total',nan,'one_body',nan,'pair_setup',nan, ...
-    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);~
+    'pair_basis',nan,'big_sparse',nan,'two_body_or_peanut',nan);
 
 
 %revert single threaded settings
@@ -138,10 +193,8 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-R = getOptField(opt,'rad',2);
 opt.gmres_verbose = gmres_verbose;
 
-N_c = getOptField(opt,'N_c',80);
 N_f = getOptField(opt,'N_f',150);
 a_c = getOptField(opt,'a_c',1.2);
 a_f = getOptField(opt,'a_f',1.2);
@@ -161,6 +214,18 @@ rbase_out_c = R*(cos(tout)+1i*sin(tout));
 tin = linspace(0,2*pi,N_c+1)';
 tin = tin(1:end-1);
 rbase_in_c = Rp_c*(cos(tin)+1i*sin(tin));
+
+% Cmap may use a different number of sources from the global interaction
+% representation.  The physical proxy radius is deliberately held fixed,
+% so changing N_cmap isolates angular resolution.  Rectangular field
+% Per-particle refits connect these grids inside transform_lap_peanut.
+if logical(getOptField(opt,'cmap',false)) && N_cmap ~= N_c
+    tin_cmap = linspace(0,2*pi,N_cmap+1)';
+    tin_cmap = tin_cmap(1:end-1);
+    rbase_in_cmap = Rp_c*(cos(tin_cmap)+1i*sin(tin_cmap));
+else
+    rbase_in_cmap = rbase_in_c;
+end
 
 tin_f = linspace(0,2*pi,N_f+1)';
 tin_f = tin_f(1:end-1);
@@ -208,8 +273,8 @@ if streaming_big_sparse
     pair_cache.stats.n_pairs = size(pairs,1);
 else
     [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
-        getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
-        rimage_vec,refine,pairs,opt);
+        getPairBasisLaplace(q,rbase_in_cmap,rbase_in_f,rout_base_f, ...
+        rbase_out_c,rimage_vec,refine,pairs,opt,rbase_in_c);
 end
 if get_precomp_time
     precomp_time.pair_basis = toc(pair_basis_timer);
@@ -226,6 +291,7 @@ end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
+geom.rbase_in_cmap = rbase_in_cmap;
 geom.rbase_in_f = rbase_in_f;
 geom.rout_base_f = rout_base_f;
 geom.refine = refine;
@@ -426,6 +492,10 @@ end
 
 sol = struct();
 sol.lambda_proxy = lambda_proxy;
+sol.N_c = N_c;
+sol.N_cmap = N_cmap;
+sol.refit = refit;
+sol.use_interpolation = interpolation_mode;
 sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;

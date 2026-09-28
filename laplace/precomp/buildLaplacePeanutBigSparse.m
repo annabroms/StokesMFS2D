@@ -397,7 +397,7 @@ for row = 1:n_pairs
         [Ucross,Ec,Lr] = getActualCollocFactors(meta,q,geom.rbase_in_c,...
             rout_base_c);
         entries = appendFactoredCanonicalPairBlocks(entries,pairs,row,...
-            N_c,N_check,numel(q),group,Ucross,Ec,Lr,P_pair,...
+            N_c,N_check,numel(q),pair_cache,group,Ucross,Ec,Lr,P_pair,...
             project_charge);
     else
         C_nonp = basis.Cmap{i,j};
@@ -492,7 +492,8 @@ for gg = 1:pair_cache.n_groups
                 'Lr',Lr);
         end
         entries = appendFactoredCanonicalPairBlocks(entries,pairs,row,N_c,...
-            N_check,numel(q),group,Ucross,Ec,Lr,P_pair,project_charge);
+            N_check,numel(q),pair_cache,group,Ucross,Ec,Lr,P_pair,...
+            project_charge);
     end
     if show_counter
         fprintf(['buildLaplacePeanutBigSparse: streamed canonical group ',...
@@ -554,7 +555,7 @@ end
 end
 
 function entries = appendFactoredCanonicalPairBlocks(entries,pairs,row,N_c,...
-    N_check,P,group,Ucross,Ec,Lr,P_pair,project_charge)
+    N_check,P,pair_cache,group,Ucross,Ec,Lr,P_pair,project_charge)
 i = pairs(row,1);
 j = pairs(row,2);
 global_in_idx = pairCoarseInputIndicesGlobal(i,j,N_c,P);
@@ -562,8 +563,9 @@ pair_idx = (row-1)*(2*N_c)+1:row*(2*N_c);
 u_idx = pairOutputIndices(i,j,N_check);
 qv_idx = (row-1)*2+1:row*2;
 
+[Cmap,Cmap_QV] = materializePairMap(pair_cache,group);
 entries.pair_nonp_canon = appendDenseBlock(entries.pair_nonp_canon,...
-    pair_idx,pair_idx,group.Cmap);
+    pair_idx,pair_idx,Cmap);
 entries.u_cross = appendDenseBlock(entries.u_cross,u_idx,global_in_idx,...
     Ucross);
 entries.u_peanut = appendDenseBlock(entries.u_peanut,u_idx,pair_idx,Ec);
@@ -571,12 +573,26 @@ if project_charge
     entries.u_qv = appendDenseBlock(entries.u_qv,u_idx,qv_idx,Lr);
 end
 entries.qv_canon = appendDenseBlock(entries.qv_canon,qv_idx,pair_idx,...
-    group.Cmap_QV);
+    Cmap_QV);
 
 if size(P_pair,1) ~= 2*N_c
     error('buildLaplacePeanutBigSparse:BadPairProjector',...
         'Internal pair projector size mismatch.');
 end
+end
+
+function [Cmap,Cmap_QV] = materializePairMap(pair_cache,group)
+map_kind = getOptField(group,'map_kind','none');
+if strcmp(map_kind,'reduced')
+    panel = pair_cache.interpolator.panels(group.interp_panel);
+    Cmap = panel.Cref+panel.U*group.interp_B*panel.V';
+elseif strcmp(map_kind,'reduced_noconst')
+    panel = pair_cache.interpolator.panels(group.interp_panel);
+    Cmap = panel.U*group.interp_B*panel.V';
+else
+    Cmap = group.Cmap;
+end
+Cmap_QV = group.Cmap_QV;
 end
 
 function block = appendDenseBlock(block,row_idx,col_idx,A)

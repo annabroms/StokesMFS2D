@@ -45,15 +45,50 @@ Cmap_QV = basis.Cmap_QV;
 pair_cache = basis.pair_cache;
 use_pair_cache = pair_cache.enabled;
 use_cmap = isfield(opt,'cmap') && opt.cmap;
+interpolation_mode = getLaplaceInterpolationMode(opt);
+use_interpolation = ~strcmp(interpolation_mode,'none');
+if use_interpolation && ~use_pair_cache
+    error('transform_lap_peanut:InterpolationRequiresPairCache', ...
+        'Interpolated maps require the canonical pair cache.');
+end
 get_bndry_field = logical(getOptField(opt,'get_bndry_field',true));
-need_explicit_pair_sources = ~use_cmap || get_bndry_field;
+need_explicit_pair_sources = (~use_cmap || get_bndry_field) && ...
+    ~use_interpolation;
 
 P = numel(q);
 N_c = opt.N_c;
+N_cmap = getOptField(opt,'N_cmap',N_c);
 N_f = opt.N_f;
 N_large = length(rvec_out)/P;
 N_check = length(rcheck_out)/P;
 use_ucorr_colloc = use_pair_cache && isequal(rcheck_out,rvec_out);
+use_refit = use_cmap && logical(getOptField(opt,'refit',false));
+if use_cmap && N_cmap ~= N_c && (~use_pair_cache || ~use_refit)
+    error('transform_lap_peanut:MixedCoarseRequiresReusedRefit', ...
+        ['opt.N_cmap may differ from opt.N_c only when ', ...
+         'opt.reuse_pair_basis_by_sep=true and opt.refit=true.']);
+end
+has_coarse_transfer = use_cmap && isfield(pair_cache,'coarse_transfer') && ...
+    isstruct(pair_cache.coarse_transfer) && ...
+    logical(getOptField(pair_cache.coarse_transfer,'enabled',false));
+if use_refit && ~has_coarse_transfer && ~isempty(pairs)
+    error('transform_lap_peanut:MissingCoarseTransfer', ...
+        ['opt.refit=true, but the pair basis does not contain the ', ...
+         'required per-particle coarse-grid refits.']);
+end
+if use_refit && has_coarse_transfer
+    if pair_cache.coarse_transfer.N_c ~= N_c || ...
+            pair_cache.coarse_transfer.N_cmap ~= N_cmap
+        error('transform_lap_peanut:CoarseTransferSizeMismatch', ...
+            'Stored coarse-grid refits do not match opt.N_c and opt.N_cmap.');
+    end
+end
+N_pair_c = N_c;
+if use_cmap
+    % Cmap remains square on its own aligned N_cmap grid.  Only the
+    % transfers into and out of this grid may be rectangular.
+    N_pair_c = N_cmap;
+end
 if isfield(opt,'project_charge') && ~isempty(opt.project_charge)
     project_charge = logical(opt.project_charge);
 else
@@ -126,8 +161,16 @@ for row = 1:size(pairs,1)
         meta = pair_cache.meta(row);
         group = pair_cache.groups(meta.group_id);
         
-        % interpolate data to canonical reference frame
-        rhs_pair = rotateUniformCircleData([lam_i lam_p2],[],meta.phase_c);
+        % Transfer data to the canonical reference frame.  opt.refit
+        % selects a per-particle MFS field fit; otherwise the equal-grid
+        % Fourier rotation is used.
+        if use_refit
+            F_to_cmap = pair_cache.coarse_transfer.to_cmap{row};
+            rhs_pair = F_to_cmap*[lam_i lam_p2];
+        else
+            rhs_pair = rotateUniformCircleData( ...
+                [lam_i lam_p2],[],meta.phase_c);
+        end
         rhs_pair = rhs_pair(:);
 
         % recover fine sources
@@ -140,14 +183,20 @@ for row = 1:size(pairs,1)
 
         % use coarse-to-coarse map without going via fine sources
         if use_cmap
-            tau_peanut_nonp_local = group.Cmap*rhs_pair;
-            pair_qv_local = group.Cmap_QV*rhs_pair;
+            [tau_peanut_nonp_local,pair_qv_local] = ...
+                applyLaplacePairCmap(pair_cache,group,rhs_pair);
         else
             tau_peanut_nonp_local = group.YC*(group.DC*beta_tot_nonp_local);
             pair_qv_local = [];
         end
     else
-        rhs_pair = [lam_i; lam_p2];
+        if use_refit
+            F_to_cmap = pair_cache.coarse_transfer.to_cmap{1};
+            rhs_pair = F_to_cmap*[lam_i lam_p2];
+            rhs_pair = rhs_pair(:);
+        else
+            rhs_pair = [lam_i; lam_p2];
+        end
         pair_mapped = Upf{i,p2}*rhs_pair;
         if need_explicit_pair_sources
             beta_tot_nonp_local = Ypf{i,p2}*pair_mapped;
@@ -164,15 +213,23 @@ for row = 1:size(pairs,1)
         end
     end
 
-    tau_peanut_nonp_pair = reshape(tau_peanut_nonp_local,N_c,2);
+    tau_peanut_nonp_pair = reshape(tau_peanut_nonp_local,N_pair_c,2);
    % tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
       %  projectChargeMode(tau_peanut_nonp_pair(:,2),project_charge)];
 
-    if use_pair_cache 
+    if use_refit
+        if use_pair_cache
+            F_from_cmap = pair_cache.coarse_transfer.from_cmap{row};
+        else
+            F_from_cmap = pair_cache.coarse_transfer.from_cmap{1};
+        end
+        tau_peanut_nonp_pair = F_from_cmap*tau_peanut_nonp_pair;
+    elseif use_pair_cache
         % tau_pair_rot = rotateUniformCircleData([tau_peanut_pair tau_peanut_nonp_pair],[],meta.phase_c_inv);
         % tau_peanut_pair = tau_pair_rot(:,1:2);
         % tau_peanut_nonp_pair = tau_pair_rot(:,3:4);
-        tau_pair_rot = rotateUniformCircleData(tau_peanut_nonp_pair,[],meta.phase_c_inv);
+        tau_pair_rot = rotateUniformCircleData( ...
+            tau_peanut_nonp_pair,[],meta.phase_c_inv);
         tau_peanut_nonp_pair = tau_pair_rot;
     end
     tau_peanut_pair = [projectChargeMode(tau_peanut_nonp_pair(:,1),project_charge) ...
@@ -208,6 +265,23 @@ for row = 1:size(pairs,1)
 
         u_peanut = meta.Ec_colloc_actual*tau_peanut_pair(:);
         u_pair = u_fine - u_peanut;
+    elseif use_interpolation
+        % The interpolation model intentionally stores no fine/image
+        % factors.  Evaluate the same coarse cross-pair and correction
+        % fields used by the cached solve-grid factors, now at arbitrary
+        % postprocessing targets.
+        u_fine_i = -lapSLPfield(q(p2)+rbase_in_c, ...
+            rcheck_out(block_i),lam_p2,false);
+        u_fine_p2 = -lapSLPfield(q(i)+rbase_in_c, ...
+            rcheck_out(block_p2),lam_i,false);
+        if project_charge
+            u_fine_i = u_fine_i-pair_qv_local(1);
+            u_fine_p2 = u_fine_p2-pair_qv_local(2);
+        end
+        u_fine = [u_fine_i;u_fine_p2];
+        u_peanut = lapSLPfield(rin_pair_c,rout_pair, ...
+            tau_peanut_pair(:),false);
+        u_pair = u_fine-u_peanut;
     elseif need_explicit_pair_sources 
         % use fine sources
         if use_pair_cache
@@ -310,4 +384,3 @@ n = numel(lam_in);
 lam_out = lam_in - (sum(lam_in)/n);
 
 end
-

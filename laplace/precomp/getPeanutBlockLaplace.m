@@ -1,15 +1,19 @@
-function [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj)
+function [DC,Y] = getPeanutBlockLaplace( ...
+    rin_pair_c,rin_pair_f,rout_peanut,proj,svd_opts)
 %GETPEANUTBLOCKLAPLACE Factorization for scalar peanut compression.
 %
 % Syntax:
 %   [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut)
 %   [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj)
+%   [DC,Y] = getPeanutBlockLaplace(...,proj,svd_opts)
 %
 % Inputs:
 %   proj - Optional struct for elastance projection:
 %          proj.project_charge (logical)
 %          proj.nsrc_c = [n1c n2c]
 %          proj.nsrc_f = [n1f n2f]
+%   svd_opts - Options passed to getPseudoFactors, including optional
+%              use_tikhonov and relative tikhonov_tol fields.
 %
 % See also: getPairBasisLaplace, transform_laplace_peanut, getPairBlockLaplace.
 %
@@ -17,6 +21,9 @@ function [DC,Y] = getPeanutBlockLaplace(rin_pair_c,rin_pair_f,rout_peanut,proj)
 
 if nargin < 4 || isempty(proj)
     proj = struct();
+end
+if nargin < 5 || isempty(svd_opts)
+    svd_opts = struct();
 end
 
 if isfield(proj,'project_charge') && ~isempty(proj.project_charge)
@@ -42,7 +49,8 @@ if project_charge
     Nf = apply_pair_charge_projection_columns(Nf,proj.nsrc_f(1),proj.nsrc_f(2));
 end
 
-[Y,U] = getPseudoFactors(Nc,1e-14,0);
+tol = 1e-14; %was 1e-14;
+[Y,U] = getPseudoFactors(Nc,tol,0,svd_opts);
 DC = U'*Nf;
 
 end

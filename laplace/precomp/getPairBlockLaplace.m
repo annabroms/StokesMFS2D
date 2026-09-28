@@ -1,9 +1,10 @@
-function [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj)
+function [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj,svd_opts)
 %GETPAIRBLOCKLAPLACE Build pseudoinverse factors for fine Laplace pair block in 2D.
 %
 % Syntax:
 %   [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f)
 %   [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj)
+%   [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj,svd_opts)
 %
 % Inputs:
 %   rin_pair - Pair source nodes [body i; body j].
@@ -12,6 +13,8 @@ function [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj)
 %              proj.project_charge (logical)
 %              proj.nsrc = [n1 n2]
 %              proj.ntar = [m1 m2]
+%   svd_opts - Options passed to getPseudoFactors, including optional
+%              use_tikhonov and relative tikhonov_tol fields.
 %
 % Notes:
 %   If proj.project_charge is true, this routine factorizes the modified
@@ -26,6 +29,9 @@ function [U,Y,A] = getPairBlockLaplace(rin_pair,rout_f,proj)
 
 if nargin < 3 || isempty(proj)
     proj = struct();
+end
+if nargin < 4 || isempty(svd_opts)
+    svd_opts = struct();
 end
 
 %project_charge is true for elastance, false for capacitance
@@ -56,7 +62,7 @@ if project_charge
     A = apply_pair_charge_projection_with_closure(A,n1,n2,m1,m2);
 end
 
-[Y,U] = getPseudoFactors(A,1e-14,0);
+[Y,U] = getPseudoFactors(A,1e-14,0,svd_opts);
 
 end
 

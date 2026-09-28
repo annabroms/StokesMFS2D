@@ -3,7 +3,8 @@ function opt = getLaplace2Dparams(P,R,N_c,N_f)
 %
 % Input: P - number of particles.
 %        R - physical particle radius
-%        N_c - Number of coarse proxy points per particle
+%        N_c - Number of coarse proxy points per particle used by the
+%              global solve and interaction representation
 %        N_f - Number of fine proxy points per particle
 %
 % See also: solve_cap_1B, solve_cap_2B, solve_cap_peanut.
@@ -20,6 +21,12 @@ elseif nargin<3
     N_c = 80;
 end
 opt.N_c = N_c;
+% Number of coarse sources in the canonical Cmap representation. Keeping
+% this equal to N_c recovers the original square-map implementation. The
+% capacitance peanut solver permits N_cmap ~= N_c only with canonical
+% pair-basis reuse and charge-preserving field refits around Cmap.
+opt.N_cmap = N_c;
+opt.refit = false; % false: equal-grid Fourier rotation; true: per-particle MFS field refit
 opt.a_c = 1.2;
 tol = 1e-12;
 sep = (1/N_c)*log(1/tol);
@@ -31,6 +38,8 @@ opt.delta_pair = 0.2*R; % largest distance for which pair corrections are applie
 opt.beta = 0.3; % beta is a parameter determining the shape of the enhancing ellipse 
 % segments for close pairs. Smaller beta means tip of ellipse closer to image accumulation points.
 opt.Nclust = 100; % Chebyshev nodes on each ellipse segment for close pairs, a portion of which are used as enhancing sources.
+opt.ellipse_constant = false; % if true, freeze the ellipse-segment discretisation at opt.smallest_delta
+opt.smallest_delta = 1e-3*R; % smallest gap ever requested; required when opt.ellipse_constant=true
 opt.a_f = 1.2;
 opt.N_f = N_f;
 sep = (1/N_f)*log(1/tol);
@@ -43,10 +52,37 @@ opt.show_counter = 1; % show progress for pre-computation step for all pairs
 opt.pc = 1; %Do pair corrections? %% Is this field still active?
 opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
+opt.use_tikhonov = false; % smoothly regularize pair/peanut pseudoinverses in two-body setup
+% Relative parameter lambda/sigma_max for those Tikhonov filters. Empty
+% uses the legacy 1e-14 pair and peanut pseudoinverse tolerance.
+opt.tikhonov_tol = [];
+% Pair-map construction for Laplace capacitance:
+%   'none'            exact map for every distinct separation (default off)
+%   'full'            interpolate the full canonical Cmap in alpha
+%   'reduced'         interpolate Cref+U*B(alpha)*V' panelwise
+%   'reduced_noconst' interpolate U*B(alpha)*V' panelwise (preferred mode)
+% The interpolation modes use canonical rotations for both refit=false
+% (Fourier rotation) and refit=true (charge-preserving field refits).
+% Interpolation remains opt-in because it is capacitance-only and requires
+% a compatible saved model; when enabled, use 'reduced_noconst'.
+opt.use_interpolation = 'none';
+% Accuracy targets for the canonical alpha interpolator.  The first is
+% applied to the final full/reconstructed coarse correction map C; the
+% second is applied independently to the 2-by-(2*N_cmap) charge map C_Q.
+opt.interpolation_tol = 1e-6;
+opt.charge_interpolation_tol = 1e-8;
+% Empty selects a deterministic, parameter-keyed file under data/.
+% Use prepareLaplaceCmapInterpolation before an interpolated solve.
+opt.interpolation_model_file = '';
+% Adaptive training search.  Defaults reproduce the documented current
+% search scale; most runs only need to change the two tolerances above.
+opt.interpolation_panel_count_candidates = [1 2 4 8];
+opt.interpolation_node_candidates = 3:2:17;
+opt.interpolation_validation_nodes = 33;
 opt.reuse_pair_basis_by_sep = true; % build one canonical x-axis pair basis per repeated separation
 opt.parallel_precomp = false; % parallelise pair-basis builds when a parallel pool is available
 opt.check_rotations = false; % store per-pair pair-basis data alongside the canonical cache for debugging
-opt.shared_sep_tol = 1e-2*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
+opt.shared_sep_tol = 1e-6*max(1,opt.rad); % separation matching tolerance used when grouping close pairs
 opt.rotation_mode = 'oversampled_fft'; % 'fft' | 'oversampled_fft' for cached pair rotations
 opt.rotation_oversample = 8; % oversampling factor used when rotation_mode = 'oversampled_fft'
 opt.use_big_sparse = false; % use global sparse close-pair correction matrices in peanut GMRES

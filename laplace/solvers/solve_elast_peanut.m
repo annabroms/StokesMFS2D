@@ -27,6 +27,10 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %                     matvec.
 %       use_fmm       use fmm2d (of flatiron) for Laplace field evals
 %       cmap          use compressed coarse-to-coarse map
+%       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
+%                     two-body pseudoinverses. Cmap compression remains TSVD
+%       tikhonov_tol  relative parameter lambda/sigma_max; empty uses the
+%                     legacy local cutoff as the Tikhonov knee
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
