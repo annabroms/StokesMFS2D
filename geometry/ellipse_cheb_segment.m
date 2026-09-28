@@ -37,6 +37,9 @@ theta = (j + 0.5) * pi / M;
 z_all = c + s * cos(theta + 1i*alpha);
 keep = abs(z_all) > r_proxy;
 z = z_all(keep);
+
+%z = z_all; %debug
+
 theta = theta(keep);   
 
 end

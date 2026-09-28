@@ -1,6 +1,7 @@
 # Matlab
 *.m~
 *.asv
+*.mat
 
 # folders to ignore
 data/

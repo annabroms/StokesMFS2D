@@ -10,6 +10,16 @@ function [cent_clust_cells, acc_cells, coll_clust_cells, clust_pairs, coll_pairs
 %           beta    : ellipse tip parameter (0<beta<1)
 %           r_proxy : proxy radius for filtering |z|>r_proxy
 %           delta_pair : proximity threshold for pairs
+%           ellipse_constant : if true, build the ellipse segment (and its
+%                    r_proxy node filter) for every close pair using the
+%                    fixed gap opt.smallest_delta instead of the pair's
+%                    actual gap. Node placement still follows the true
+%                    centers, so only the discretisation (which nodes pass
+%                    the r_proxy filter) is frozen, removing the jumps that
+%                    occur when nodes cross that filter as the true gap
+%                    changes. Requires opt.smallest_delta.
+%           smallest_delta : smallest gap that will ever be requested for a
+%                    close pair; only used when opt.ellipse_constant=true.
 %           visualise_grid : logical, optional plotting
 %                    flag for node visualisation
 %
@@ -59,6 +69,15 @@ else
     delta_pair = 0.2;
 end
 
+ellipse_constant = isfield(opt,'ellipse_constant') && logical(opt.ellipse_constant);
+if ellipse_constant
+    if ~isfield(opt,'smallest_delta') || isempty(opt.smallest_delta)
+        error('getEnhancedGrid:MissingSmallestDelta', ...
+            'opt.ellipse_constant=true requires opt.smallest_delta.');
+    end
+    smallest_delta = opt.smallest_delta;
+end
+
 if isfield(opt,'visualise_grid')
     visualise_grid = logical(opt.visualise_grid);
 else
@@ -81,8 +100,19 @@ for i = 1:P-1
         if gap < delta_pair
             pairs = [pairs; i j];
 
+            if ellipse_constant
+                if (smallest_delta-gap)>1e-9;
+                    error('getEnhancedGrid:GapBelowSmallestDelta', ...
+                        ['Pair (%d,%d) has gap=%.3g, smaller than ', ...
+                         'opt.smallest_delta=%.3g.'],i,j,gap,smallest_delta);
+                end
+                gap_ellipse = smallest_delta;
+            else
+                gap_ellipse = gap;
+            end
+
             [cent_i, cent_j, coll_i, coll_j, zacc_i, zacc_j] = ...
-                pair_clusters_ellipse(ci, cj, ri, rj, Nclust, gap, r_proxy, beta);
+                pair_clusters_ellipse(ci, cj, ri, rj, Nclust, gap_ellipse, r_proxy, beta);
 
             % Add enhancement nodes only if the accumulation point lies
             % outside the proxy radius for that particle.
@@ -152,6 +182,8 @@ function showEnhancedGridPoints(q,rad,r_proxy,cent_clust_cells,acc_cells, ...
     coll_clust_cells,clust_pairs,coll_pairs,pairs)
 %SHOWENHANCEDGRIDPOINTS Plot all node families used in getEnhancedGrid.
 
+draw_fine_grid = 0; % visualise fine discretization. 
+
 P = numel(q);
 t = linspace(0,2*pi,240).';
 
@@ -161,16 +193,23 @@ hold on;
 for k = 1:P
     body = q(k) + rad(k)*(cos(t)+1i*sin(t));
     proxy = q(k) + r_proxy*(cos(t)+1i*sin(t));
-    bndry = q(k) + (cos(t)+1i*sin(t));
     if k == 1
-       % plot(real(body),imag(body),'k-','LineWidth',1.0,'DisplayName','body boundary');
-        plot(real(proxy),imag(proxy),'r.','DisplayName','fine source curves');
+        fill(real(body), imag(body), ...
+        [1 0.5 0], ...
+        'EdgeColor', 'none', ...
+        'FaceAlpha', 0.2,'DisplayName','Active particle');
+
+
+        plot(real(body),imag(body),'b.','MarkerSize',10,'DisplayName','Coarse collocation nodes');
+        plot(real(proxy),imag(proxy),'r.','DisplayName','Fine source points'); % $\mathbf{\mathcal{Y}}^{(1\text{-}2)}$');
     else
        % plot(real(body),imag(body),'k-','LineWidth',1.0,'HandleVisibility','off');
         plot(real(proxy),imag(proxy),'r.','HandleVisibility','off');
         
     end
-    plot(real(bndry),imag(bndry),'k-','HandleVisibility','off');
+    if draw_fine_grid
+        plot(real(body),imag(body),'k-','HandleVisibility','off');
+    end
 end
 
 %plot(real(q),imag(q),'kp','MarkerSize',9,'MarkerFaceColor','k','DisplayName','particle centers');
@@ -182,27 +221,55 @@ end
 for k = 1:P
     rk = cent_clust_cells{k};
     if ~isempty(rk)
-        plot(real(rk),imag(rk),'r.','MarkerSize',4,'HandleVisibility','off');
+        ind = abs(rk-q(k))<r_proxy;
+        if k == 1
+            plot(real(rk(ind)),imag(rk(ind)),'.','Color',[1 0 1 0.1],'MarkerSize',2,'DisplayName','Discarded ellipse points');
+        else
+            plot(real(rk),imag(rk),'.','Color',[1 0 1 0.1],'MarkerSize',2,'HandleVisibility','off');
+        end
+        ind = abs(rk-q(k))>r_proxy;
+        plot(real(rk(ind)),imag(rk(ind)),'r.','HandleVisibility','off');
+        if draw_fine_grid
+            plot(real([q(k), acc_cells{k}]),imag([q(k), acc_cells{k}]),'k--','HandleVisibility','off');
+            plot(real(q(k)),imag(q(k)),'k.','MarkerSize',10,'HandleVisibility','off');
+        end
     end
 end
 
-% for k = 1:P
-%     ck = coll_clust_cells{k};
-%     if ~isempty(ck)
-%         % if k == 1
-%         %     plot(real(ck),imag(ck),'b.','MarkerSize',10,'DisplayName','fine collocation nodes');
-%         % else
-%             plot(real(ck),imag(ck),'b.','MarkerSize',8,'HandleVisibility','off');
-%  %       end
-%     end
-% end
+for k = 1:P
+    ck = coll_clust_cells{k};
+    if ~isempty(ck)
+         if k == 1
+             plot(real(ck),imag(ck),'m.','MarkerSize',8,'DisplayName','Fine collocation nodes');
+         else
+             plot(real(ck),imag(ck),'m.','MarkerSize',8,'HandleVisibility','off');
+         end
+         %   plot(real(ck),imag(ck),'b.','MarkerSize',8,'HandleVisibility','off');
+ %       end
+    end
+end
+
+
+xlabel('x');
+ylabel('y');
+%title('Enhanced-grid node families and pair labels','Interpreter','none');
+%legend('Interpreter','latex','FontSize',16);
+
+if draw_fine_grid
+
+for row = 1:size(pairs,1)
+    i = pairs(row,1);
+    j = pairs(row,2);
+    plot(real([q(i); q(j)]),imag([q(i); q(j)]),'Color',[0.25 0.25 0.25], ...
+        'LineStyle',':','LineWidth',1.0,'HandleVisibility','off');
+end
 
 for k = 1:P
     ak = acc_cells{k};
     if ~isempty(ak)
         if k == 1
             plot(real(ak),imag(ak),'b.','MarkerSize',10,'MarkerFaceColor','y', ...
-                'DisplayName','image accumulation points');
+                'DisplayName','Image accumulation points');
         else
             plot(real(ak),imag(ak),'b.','MarkerSize',10,'MarkerFaceColor','y', ...
                 'HandleVisibility','off');
@@ -210,41 +277,82 @@ for k = 1:P
     end
 end
 
-% for row = 1:size(pairs,1)
-%     i = pairs(row,1);
-%     j = pairs(row,2);
-%     plot(real([q(i); q(j)]),imag([q(i); q(j)]),'Color',[0.25 0.25 0.25], ...
-%         'LineStyle',':','LineWidth',1.0,'HandleVisibility','off');
+x1 = q(2);
+x2 = acc_cells{2};
+y1 = -0.2;
+y2 = y1;
+draw_arrow(x1,y1,x2,y2,0.2);
+
+%%
+x2 = q(2)-1;
+y1 = y1-0.4;
+y2 = y1; 
+draw_arrow(x1,y1,x2,y2,0.2);
+
+%%
+
+x1 = q(2);
+y1 = 0;
+y2 = r_proxy*sin(pi/5);
+x2 = q(2)+r_proxy*cos(pi/5);
+
+draw_arrow(x1,y1,x2,y2,0.3);
+
+%%
+plot([q(2)-1,q(2)-1],[-0.6,0.5],'k-','HandleVisibility','off')
+plot([q(1)+1,q(1)+1],[-0.6,0.5],'k-','HandleVisibility','off')
+%%
+% x2 = q(1)+1;
+% x1 = q(1)+0.92;
+% y1 = 0.46;
+% y2 = 0.46;
+% plot([x1 x2], [y1 y2], 'k-', 'LineWidth', 1.5,'HandleVisibility','off')
 % 
-%     % src_ij = clust_pairs{i,j};
-%     % if ~isempty(src_ij)
-%     %     text(real(src_ij(1)),imag(src_ij(1)),sprintf(' src(%d,%d)',i,j), ...
-%     %         'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
-%     % end
+% % Direction vector
+% dx = x2 - x1;
+% dy = y2 - y1;
 % 
-%     % src_ji = clust_pairs{j,i};
-%     % if ~isempty(src_ji)
-%     %     text(real(src_ji(1)),imag(src_ji(1)),sprintf(' src(%d,%d)',j,i), ...
-%     %         'Color',[0.7 0 0],'FontSize',9,'Interpreter','none');
-%     % end
+% % Arrowheads at both ends
+% quiver(x1, y1,  dx,  dy, 0, 'k', 'LineWidth', 1.3, 'MaxHeadSize', 70,'HandleVisibility','off')
+
+%%
+x1 = q(2)-1;
+x2 = q(2)-0.92;
+y1 = 0.46;
+y2 = 0.46;
+
+% plot([x1 x2], [y1 y2], 'k-', 'LineWidth', 1.5,'HandleVisibility','off')
 % 
-%     % coll_ij = coll_pairs{i,j};
-%     % if ~isempty(coll_ij)
-%     %     text(real(coll_ij(1)),imag(coll_ij(1)),sprintf(' coll(%d,%d)',i,j), ...
-%     %         'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
-%     % end
+% % Direction vector
+% dx = x2 - x1;
+% dy = y2 - y1;
 % 
-%     % coll_ji = coll_pairs{j,i};
-%     % if ~isempty(coll_ji)
-%     %     text(real(coll_ji(1)),imag(coll_ji(1)),sprintf(' coll(%d,%d)',j,i), ...
-%     %         'Color',[0 0 0.8],'FontSize',9,'Interpreter','none');
-%     % end
-% end
+% % Arrowheads at both ends
+% quiver(x2, y2, -dx, -dy, 0, 'k', 'LineWidth', 1.3, 'MaxHeadSize', 70,'HandleVisibility','off')
+
+
+
+%plot([q(1)+1,q(2)-1],[0.55,0.55],'k-','LineWidth', 1.5,'HandleVisibility','off')
+
+end
+
+legend show
+set(legend,'interpreter','latex','FontSize',20,'box','off')
 
 axis equal;
 axis off
-xlabel('x');
-ylabel('y');
-%title('Enhanced-grid node families and pair labels','Interpreter','none');
-%legend('Interpreter','latex','FontSize',16);
+end
+
+function draw_arrow(x1,y1,x2,y2,aSize)
+
+plot([x1 x2], [y1 y2], 'k-', 'LineWidth', 1.5,'HandleVisibility','off')
+
+% Direction vector
+dx = x2 - x1;
+dy = y2 - y1;
+
+% Arrowheads at both ends
+quiver(x1, y1,  dx,  dy, 0, 'k', 'LineWidth', 1.3, 'MaxHeadSize', aSize,'HandleVisibility','off')
+quiver(x2, y2, -dx, -dy, 0, 'k', 'LineWidth', 1.3, 'MaxHeadSize', aSize,'HandleVisibility','off')
+
 end

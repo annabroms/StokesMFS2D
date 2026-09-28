@@ -134,7 +134,7 @@ if useKDTree
 end
 
 maxit = 100;
-tol = 1e-5;
+tol = 1e-10;
 deltaR = delta*R;
 
 if verbose
