@@ -2,13 +2,12 @@ function output = mar26_visualse_coarse_fine_new_rotation()
 fprintf('=== Coarse/Fine Visualisation (Mar 27, 2026) - new rotation ===\n');
 close all;
 rad = 1;
-domainPadding = 1.8;
 nCirclePts = 240;
 
 fluidColor = [0.82 0.91 0.98];
 bodyColor = [1 1 1];
 bodyEdgeColor = [0.72 0.77 0.82];
-insetEdgeColor = blendWithWhite([0.30 0.42 0.55],0.25);
+insetEdgeColor = blendWithWhite([0.30 0.42 0.55],0.25); %#ok<NASGU>
 
 coarseNodeCount = 10;
 coarseNodeColor = [0.10 0.34 0.82];
@@ -24,23 +23,55 @@ numberFontSize = 12;
 annotationTextColor = [0 0 0];
 neighbourNumberColor = [0.55 0.55 0.55];
 numberFontName = 'Courier';
+
 % Nudge these offsets if individual numerals look slightly off-center.
 numberBaseOffset = [0.00, 0.00];
 numberSixOffset = [-0.05, 0.00];
 numberSevenOffset = [-0.10, 0.00];
 numberPosition = @(center,label) getCircleNumberPosition( ...
-    center,label,numberBaseOffset,numberSixOffset,numberSevenOffset);
+    center,label,numberBaseOffset,numberSixOffset,numberSevenOffset); %#ok<NASGU>
 
 rotate_group = true;
 showPairVelocityLabels = false;
+
 % Keep row spacing uniform after rotation by leaving q_strip unshifted.
-% Use topChiColumnGap and bottomChiColumnGap below to move the chi columns.
+% Use topEtaColumnGap and bottomEtaColumnGap below to move the eta columns.
 gapAfterEquals = 0.95;
-gapAfterTopPlus = 1.8;
-gapAfterBottomPlus = 1.9;
-% Move the two chi-columns horizontally in the rotated layout.
-topChiColumnGap = 23.92;
-bottomChiColumnGap = 42.12;
+gapAfterTopPlus = 1.9;
+gapAfterBottomPlus = 2.1;
+
+% Move the two eta-columns horizontally in the rotated layout.
+topEtaColumnGap = 23.92;
+topEtaColumnGap = 22.92;
+bottomEtaColumnGap = 42.12;
+bottomEtaColumnGap = 38.12;
+% -------------------------------------------------------------------------
+% Manual tweaks for the bottom pair terms
+%
+% The bottom eta labels are kept in one column by default:
+% all bottom eta labels have x-position bottomEtaColumnX.
+%
+% These arrays let you manually move the extra bottom + signs and eta labels
+% when a particle has several displayed bottom pairs.
+%
+% localPairIdx = 1 corresponds to the first bottom pair, i.e.
+% pairDisplayLists{k}(2).
+% localPairIdx = 2 corresponds to pairDisplayLists{k}(3), etc.
+%
+% The shifts are in FINAL plot coordinates, after layoutRotate has been
+% applied.
+%
+% To keep all eta labels column-aligned, keep bottomEtaMultiXShift all zero.
+% To move labels slightly up/down within the column, change
+% bottomEtaMultiYShift.
+% -------------------------------------------------------------------------
+
+bottomPlusMultiXShift = [0.4, 1.2, 0.0, 0.0];
+bottomPlusMultiYShift = [0.0, 0.0, 0.0, 0.0];
+
+bottomEtaMultiXShift = [-0.1, 8.5, 0.0, 0.0];
+bottomEtaMultiYShift = [0.0, 0.0, 0.0, 0.0];
+
 pairTitleTopClearance = 0.45;
 pairTitleBottomClearance = 0.60;
 mainAxesPosition = [0.06, 0.36, 0.58, 0.56];
@@ -58,10 +89,14 @@ insetPadBottom = 1.20;
 insetPadTop = 1.20;
 
 closeGap = 0.15;
-turnAngles = (pi/180)*[15, 70, -50]; % 55];
+turnAngles = (pi/180)*[-20, 70, -50]; % 55];
+
+
+
 [q_close, q_far, q_fine] = buildFineGeometry(rad,closeGap,turnAngles,rotate_group);
 
 panelSpacing = 6.7;
+%panelSpacing = 5.7;
 topRowY = 0;
 psiLabelY = 4.2;
 equalsY = -4.1;
@@ -69,7 +104,9 @@ coarseFocusRowY = -7.4 - gapAfterEquals;
 row2LabelYOffset = 2.30;
 phiLabelY = coarseFocusRowY + row2LabelYOffset;
 pairTopRowY = -13.9 - gapAfterEquals - gapAfterTopPlus;
+pairTopRowY = -12.9 - gapAfterEquals - gapAfterTopPlus;
 pairBottomRowY = -21.4 - gapAfterEquals - gapAfterTopPlus - gapAfterBottomPlus;
+pairBottomRowY = -18 - gapAfterEquals - gapAfterTopPlus - gapAfterBottomPlus;
 verticalPlusTopY = 0.44*(coarseFocusRowY + pairTopRowY);
 verticalPlusBottomY = 0.47*(pairTopRowY + pairBottomRowY) + 0.2;
 pairTitleYOffset = 1.10;
@@ -81,12 +118,12 @@ isolatedFocusLabelOffset = [-1.95, -0.4];
 isolatedNeighbourLabelOffset = [1.3, -1.20];
 isolatedBodyLabelFontSize = 8;
 
-pairRowSpacing = 5.5*rad;
+pairRowSpacing = 8*rad;
 
 q_strip = (0:numel(q_close)-1).' * panelSpacing;
 topFarDisplays = [q_strip(1) - panelSpacing + 1i*topRowY; ...
     q_strip(end) + panelSpacing + 1i*topRowY];
-topDisplayCenters = [topFarDisplays(1); q_strip + 1i*topRowY]; % topFarDisplays(2)];
+topDisplayCenters = [topFarDisplays(1); q_strip + 1i*topRowY];
 row2DisplayCenters = topDisplayCenters + 1i*coarseFocusRowY;
 
 neighbourLists = cell(numel(q_close),1);
@@ -99,16 +136,19 @@ end
 topPairTitleY = -inf;
 bottomPairTitleY = -inf;
 layoutRotate = @(z) -1i*conj(z);
+
 allPanelCentersRot = [layoutRotate(topDisplayCenters(:)); ...
     layoutRotate(row2DisplayCenters(:)); ...
     layoutRotate(real(topDisplayCenters) + 1i*psiLabelY); ...
     layoutRotate(real(topDisplayCenters) + 1i*equalsY); ...
     layoutRotate(real(row2DisplayCenters) + 1i*phiLabelY)];
+
 for k = 1:numel(q_close)
     centerNow = q_strip(k) + 1i*topRowY;
     centerDisplay = layoutRotate(centerNow);
     localOffsets = q_close(neighbourLists{k}) - q_close(k);
     localCenters = centerDisplay + localOffsets;
+
     allPanelCentersRot = [allPanelCentersRot; centerDisplay; localCenters(:); ... %#ok<AGROW>
         layoutRotate(q_strip(k) + 1i*verticalPlusTopY)];
 
@@ -117,55 +157,73 @@ for k = 1:numel(q_close)
         pairTopMid = layoutRotate(q_strip(k) + 1i*pairTopRowY);
         focusTop = pairTopMid - 0.5*relTop;
         neighbourTop = pairTopMid + 0.5*relTop;
+
         topPairTitleY = max(topPairTitleY, ...
             max(imag([focusTop, neighbourTop])) + rad + pairTitleYOffset);
+
         allPanelCentersRot = [allPanelCentersRot; focusTop; neighbourTop; pairTopMid]; %#ok<AGROW>
     end
 
-    % if numel(pairDisplayLists{k}) >= 2
-    %     relBottom = q_close(pairDisplayLists{k}(2)) - q_close(k);
-    %     pairBottomMid = layoutRotate(q_strip(k) + 1i*pairBottomRowY);
-    %     focusBottom = pairBottomMid - 0.5*relBottom;
-    %     neighbourBottom = pairBottomMid + 0.5*relBottom;
-    %     bottomPairTitleY = max(bottomPairTitleY, ...
-    %         max(imag([focusBottom, neighbourBottom])) + rad + pairTitleYOffset + bottomPairTitleLift);
-    %     allPanelCentersRot = [allPanelCentersRot; focusBottom; neighbourBottom; ... %#ok<AGROW>
-    %         pairBottomMid; layoutRotate(q_strip(k) + 1i*verticalPlusBottomY)];
-    % end
     if numel(pairDisplayLists{k}) >= 2
+        for jj = 2:numel(pairDisplayLists{k})
+            localPairIdx = jj - 1;
+            rowOffset = (jj-2) * pairRowSpacing;
 
-    for jj = 2:numel(pairDisplayLists{k})
+            neighbourIdx = pairDisplayLists{k}(jj);
 
-        rowOffset = (jj-2) * pairRowSpacing;
+            relBottom = q_close(neighbourIdx) - q_close(k);
+            pairBottomMid = layoutRotate(q_strip(k) + 1i*(pairBottomRowY - rowOffset));
 
-        neighbourIdx = pairDisplayLists{k}(jj);
+            focusBottom = pairBottomMid - 0.5*relBottom;
+            neighbourBottom = pairBottomMid + 0.5*relBottom;
 
-        relBottom = q_close(neighbourIdx) - q_close(k);
-        pairBottomMid = layoutRotate(q_strip(k) + 1i*(pairBottomRowY - rowOffset));
+            plusShift = getManualShift(localPairIdx, ...
+                bottomPlusMultiXShift,bottomPlusMultiYShift);
 
-        focusBottom = pairBottomMid - 0.5*relBottom;
-        neighbourBottom = pairBottomMid + 0.5*relBottom;
+            plusBottomPos = layoutRotate(q_strip(k) + 1i*(verticalPlusBottomY - rowOffset)) ...
+                + plusShift;
 
-        bottomPairTitleY = max(bottomPairTitleY, ...
-            max(imag([focusBottom, neighbourBottom])) ...
-            + rad + pairTitleYOffset + bottomPairTitleLift);
+            bottomPairTitleY = max(bottomPairTitleY, ...
+                max(imag([focusBottom, neighbourBottom])) ...
+                + rad + pairTitleYOffset + bottomPairTitleLift);
 
-        allPanelCentersRot = [allPanelCentersRot; ...
-            focusBottom; ...
-            neighbourBottom; ...
-            pairBottomMid; ...
-            layoutRotate(q_strip(k) + 1i*(verticalPlusBottomY - rowOffset))]; %#ok<AGROW>
+            allPanelCentersRot = [allPanelCentersRot; ...
+                focusBottom; ...
+                neighbourBottom; ...
+                pairBottomMid; ...
+                plusBottomPos]; %#ok<AGROW>
+        end
     end
 end
-end
-topPairTitleY = topPairTitleY + pairTitleTopClearance;
-bottomPairTitleY = bottomPairTitleY + pairTitleBottomClearance;
-topChiColumnX = verticalPlusTopY + topChiColumnGap;
-bottomChiColumnX = verticalPlusBottomY + bottomChiColumnGap;
 
-chiTitleCentersRot = [topChiColumnX - 1i*q_strip(:); ...
-    bottomChiColumnX - 1i*q_strip(:)];
-allPanelCentersRot = [allPanelCentersRot; chiTitleCentersRot];
+topPairTitleY = topPairTitleY + pairTitleTopClearance; %#ok<NASGU>
+bottomPairTitleY = bottomPairTitleY + pairTitleBottomClearance; %#ok<NASGU>
+
+topEtaColumnX = verticalPlusTopY + topEtaColumnGap;
+bottomEtaColumnX = verticalPlusBottomY + bottomEtaColumnGap;
+
+% Include all eta-label positions when setting the bounds.
+% Bottom eta labels are column-aligned by default.
+etaTitleCentersRot = topEtaColumnX - 1i*q_strip(:);
+
+for k = 1:numel(q_close)
+    if numel(pairDisplayLists{k}) >= 2
+        for jj = 2:numel(pairDisplayLists{k})
+            localPairIdx = jj - 1;
+
+            etaShift = getManualShift(localPairIdx, ...
+                bottomEtaMultiXShift,bottomEtaMultiYShift);
+
+            etaTitleCentersRot = [etaTitleCentersRot; ...
+                bottomEtaColumnX - 1i*q_strip(k) + etaShift]; %#ok<AGROW>
+        end
+    else
+        etaTitleCentersRot = [etaTitleCentersRot; ...
+            bottomEtaColumnX - 1i*q_strip(k)]; %#ok<AGROW>
+    end
+end
+
+allPanelCentersRot = [allPanelCentersRot; etaTitleCentersRot];
 
 fig4 = figure('Color','w','Name','mar26 visualise coarse fine new rotation - closest neighbours');
 ax4 = axes;
@@ -187,13 +245,15 @@ for k = 1:numel(topDisplayCenters)
         'Color',annotationTextColor,'Parent',ax4);
 
     centerRot = layoutRotate(topDisplayCenters(k));
-    if k == 1 %|| k == numel(topDisplayCenters)
+    if k == 1
         drawDisk(ax4,centerRot,rad,bodyColor,'none',1.0,nCirclePts);
         drawBoundaryNodes(ax4,centerRot,rad,coarseNodeCount,coarseNodeColor,coarseNodeSize);
     end
+
     drawCircleNumber(ax4,centerRot,sprintf('%d',k), ...
         annotationTextColor,numberFontSize,numberFontName, ...
         numberBaseOffset,numberSixOffset,numberSevenOffset);
+
     numberLabelIdx = numberLabelIdx + 1; %#ok<NASGU>
 end
 
@@ -213,8 +273,6 @@ for k = 1:numel(row2DisplayCenters)
         numberBaseOffset,numberSixOffset,numberSevenOffset);
 end
 
-
-
 for k = 1:numel(q_close)
     centerNow = q_strip(k) + 1i*topRowY;
     centerRot = layoutRotate(centerNow);
@@ -223,8 +281,10 @@ for k = 1:numel(q_close)
 
     for j = 1:numel(neighbourOffsets)
         neighbourRot = centerRot + neighbourOffsets(j);
+
         drawDisk(ax4,neighbourRot,rad,bodyColor,blendWithWhite(bodyEdgeColor,0.45),0.9,nCirclePts);
         drawBoundaryNodes(ax4,neighbourRot,rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
+
         drawCircleNumber(ax4,neighbourRot, ...
             sprintf('%d',neighbourLists{k}(j) + 1),neighbourNumberColor, ...
             numberFontSize,numberFontName,numberBaseOffset,numberSixOffset,numberSevenOffset);
@@ -232,6 +292,7 @@ for k = 1:numel(q_close)
 
     drawDisk(ax4,centerRot,rad,bodyColor,bodyEdgeColor,1.1,nCirclePts);
     drawBoundaryNodes(ax4,centerRot,rad,fineNodeCount,fineNodeColor,fineNodeSize);
+
     drawCircleNumber(ax4,centerRot,sprintf('%d',overallIdx), ...
         annotationTextColor,numberFontSize,numberFontName, ...
         numberBaseOffset,numberSixOffset,numberSevenOffset);
@@ -245,104 +306,84 @@ for k = 1:numel(q_close)
     if ~isempty(pairDisplayLists{k})
         relTop = q_close(pairDisplayLists{k}(1)) - q_close(k);
         pairTopMid = layoutRotate(q_strip(k) + 1i*pairTopRowY);
+
         focusTop = pairTopMid - 0.5*relTop;
         neighbourTop = pairTopMid + 0.5*relTop;
         neighbourOverallIdx = pairDisplayLists{k}(1) + 1;
 
         drawDisk(ax4,focusTop,rad,bodyColor,bodyEdgeColor,1.0,nCirclePts);
         drawBoundaryNodes(ax4,focusTop,rad,fineNodeCount,fineNodeColor,fineNodeSize);
+
         drawDisk(ax4,neighbourTop,rad,bodyColor,blendWithWhite(bodyEdgeColor,0.45),0.9,nCirclePts);
         drawBoundaryNodes(ax4,neighbourTop,rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
+
         drawCircleNumber(ax4,focusTop,sprintf('%d',overallIdx), ...
             annotationTextColor,numberFontSize,numberFontName, ...
             numberBaseOffset,numberSixOffset,numberSevenOffset);
+
         drawCircleNumber(ax4,neighbourTop,sprintf('%d',neighbourOverallIdx), ...
             neighbourNumberColor,numberFontSize,numberFontName, ...
             numberBaseOffset,numberSixOffset,numberSevenOffset);
 
-        pairTopTitlePos = topChiColumnX - 1i*q_strip(k);
+        pairTopTitlePos = topEtaColumnX - 1i*q_strip(k);
         text(real(pairTopTitlePos),imag(pairTopTitlePos), ...
-            ['$\chi^{(' num2str(overallIdx) ',' num2str(neighbourOverallIdx) ')}$'], ...
+            ['$\boldsymbol{\eta}^{(' num2str(overallIdx) ',' num2str(neighbourOverallIdx) ')}$'], ...
             'HorizontalAlignment','center','VerticalAlignment','middle', ...
             'Interpreter','latex','FontSize',formulaFontSize, ...
             'Color',annotationTextColor,'Parent',ax4);
     end
 
-    % if numel(pairDisplayLists{k}) >= 2
-    %     plusBottomPos = layoutRotate(q_strip(k) + 1i*verticalPlusBottomY);
-    %     text(real(plusBottomPos),imag(plusBottomPos),'$+$', ...
-    %         'HorizontalAlignment','center','VerticalAlignment','middle', ...
-    %         'Interpreter','latex','FontSize',formulaFontSize, ...
-    %         'Color',annotationTextColor,'Parent',ax4);
-    % 
-    %     relBottom = q_close(pairDisplayLists{k}(2)) - q_close(k);
-    %     pairBottomMid = layoutRotate(q_strip(k) + 1i*pairBottomRowY);
-    %     focusBottom = pairBottomMid - 0.5*relBottom;
-    %     neighbourBottom = pairBottomMid + 0.5*relBottom;
-    %     neighbourOverallIdx = pairDisplayLists{k}(2) + 1;
-    % 
-    %     drawDisk(ax4,focusBottom,rad,bodyColor,bodyEdgeColor,1.0,nCirclePts);
-    %     drawBoundaryNodes(ax4,focusBottom,rad,fineNodeCount,fineNodeColor,fineNodeSize);
-    %     drawDisk(ax4,neighbourBottom,rad,bodyColor,blendWithWhite(bodyEdgeColor,0.45),0.9,nCirclePts);
-    %     drawBoundaryNodes(ax4,neighbourBottom,rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
-    %     drawCircleNumber(ax4,focusBottom,sprintf('%d',overallIdx), ...
-    %         annotationTextColor,numberFontSize,numberFontName, ...
-    %         numberBaseOffset,numberSixOffset,numberSevenOffset);
-    %     drawCircleNumber(ax4,neighbourBottom,sprintf('%d',neighbourOverallIdx), ...
-    %         neighbourNumberColor,numberFontSize,numberFontName, ...
-    %         numberBaseOffset,numberSixOffset,numberSevenOffset);
-    % 
-    %     pairBottomTitlePos = bottomChiColumnX - 1i*q_strip(k);
-    %     text(real(pairBottomTitlePos),imag(pairBottomTitlePos), ...
-    %         ['$\chi^{(' num2str(overallIdx) ',' num2str(neighbourOverallIdx) ')}$'], ...
-    %         'HorizontalAlignment','center','VerticalAlignment','middle', ...
-    %         'Interpreter','latex','FontSize',formulaFontSize, ...
-    %         'Color',annotationTextColor,'Parent',ax4);
-    % end
     if numel(pairDisplayLists{k}) >= 2
+        for jj = 2:numel(pairDisplayLists{k})
+            localPairIdx = jj - 1;
+            rowOffset = (jj-2) * pairRowSpacing;
 
-    for jj = 2:numel(pairDisplayLists{k})
+            plusShift = getManualShift(localPairIdx, ...
+                bottomPlusMultiXShift,bottomPlusMultiYShift);
 
-        % Optional: offset each displayed pair vertically so they do not overlap
-        rowOffset = (jj-2) * pairRowSpacing;
+            plusBottomPos = layoutRotate(q_strip(k) + 1i*(verticalPlusBottomY - rowOffset)) ...
+                + plusShift;
 
-        plusBottomPos = layoutRotate(q_strip(k) + 1i*(verticalPlusBottomY - rowOffset));
-        text(real(plusBottomPos),imag(plusBottomPos),'$+$', ...
-            'HorizontalAlignment','center','VerticalAlignment','middle', ...
-            'Interpreter','latex','FontSize',formulaFontSize, ...
-            'Color',annotationTextColor,'Parent',ax4);
+            text(real(plusBottomPos),imag(plusBottomPos),'$+$', ...
+                'HorizontalAlignment','center','VerticalAlignment','middle', ...
+                'Interpreter','latex','FontSize',formulaFontSize, ...
+                'Color',annotationTextColor,'Parent',ax4);
 
-        neighbourIdx = pairDisplayLists{k}(jj);
+            neighbourIdx = pairDisplayLists{k}(jj);
 
-        relBottom = q_close(neighbourIdx) - q_close(k);
-        pairBottomMid = layoutRotate(q_strip(k) + 1i*(pairBottomRowY - rowOffset));
+            relBottom = q_close(neighbourIdx) - q_close(k);
+            pairBottomMid = layoutRotate(q_strip(k) + 1i*(pairBottomRowY - rowOffset));
 
-        focusBottom = pairBottomMid - 0.5*relBottom;
-        neighbourBottom = pairBottomMid + 0.5*relBottom;
-        neighbourOverallIdx = neighbourIdx + 1;
+            focusBottom = pairBottomMid - 0.5*relBottom;
+            neighbourBottom = pairBottomMid + 0.5*relBottom;
+            neighbourOverallIdx = neighbourIdx + 1;
 
-        drawDisk(ax4,focusBottom,rad,bodyColor,bodyEdgeColor,1.0,nCirclePts);
-        drawBoundaryNodes(ax4,focusBottom,rad,fineNodeCount,fineNodeColor,fineNodeSize);
+            drawDisk(ax4,focusBottom,rad,bodyColor,bodyEdgeColor,1.0,nCirclePts);
+            drawBoundaryNodes(ax4,focusBottom,rad,fineNodeCount,fineNodeColor,fineNodeSize);
 
-        drawDisk(ax4,neighbourBottom,rad,bodyColor,blendWithWhite(bodyEdgeColor,0.45),0.9,nCirclePts);
-        drawBoundaryNodes(ax4,neighbourBottom,rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
+            drawDisk(ax4,neighbourBottom,rad,bodyColor,blendWithWhite(bodyEdgeColor,0.45),0.9,nCirclePts);
+            drawBoundaryNodes(ax4,neighbourBottom,rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
 
-        drawCircleNumber(ax4,focusBottom,sprintf('%d',overallIdx), ...
-            annotationTextColor,numberFontSize,numberFontName, ...
-            numberBaseOffset,numberSixOffset,numberSevenOffset);
+            drawCircleNumber(ax4,focusBottom,sprintf('%d',overallIdx), ...
+                annotationTextColor,numberFontSize,numberFontName, ...
+                numberBaseOffset,numberSixOffset,numberSevenOffset);
 
-        drawCircleNumber(ax4,neighbourBottom,sprintf('%d',neighbourOverallIdx), ...
-            neighbourNumberColor,numberFontSize,numberFontName, ...
-            numberBaseOffset,numberSixOffset,numberSevenOffset);
+            drawCircleNumber(ax4,neighbourBottom,sprintf('%d',neighbourOverallIdx), ...
+                neighbourNumberColor,numberFontSize,numberFontName, ...
+                numberBaseOffset,numberSixOffset,numberSevenOffset);
 
-        pairBottomTitlePos = bottomChiColumnX - 1i*(q_strip(k) + rowOffset);
-        text(real(pairBottomTitlePos),imag(pairBottomTitlePos), ...
-            ['$\chi^{(' num2str(overallIdx) ',' num2str(neighbourOverallIdx) ')}$'], ...
-            'HorizontalAlignment','center','VerticalAlignment','middle', ...
-            'Interpreter','latex','FontSize',formulaFontSize, ...
-            'Color',annotationTextColor,'Parent',ax4);
+            etaShift = getManualShift(localPairIdx, ...
+                bottomEtaMultiXShift,bottomEtaMultiYShift);
+
+            pairBottomTitlePos = bottomEtaColumnX - 1i*q_strip(k) + etaShift;
+
+            text(real(pairBottomTitlePos),imag(pairBottomTitlePos), ...
+                ['$\boldsymbol{\eta}^{(' num2str(overallIdx) ',' num2str(neighbourOverallIdx) ')}$'], ...
+                'HorizontalAlignment','center','VerticalAlignment','middle', ...
+                'Interpreter','latex','FontSize',formulaFontSize, ...
+                'Color',annotationTextColor,'Parent',ax4);
+        end
     end
-end
 end
 
 if showPairVelocityLabels
@@ -362,6 +403,7 @@ pairCenters = q_close_rot(closePairIdx);
 
 fig5 = figure('Color','w','Name','mar26 visualise coarse fine new rotation - coarse pair inset');
 ax5 = axes('Parent',fig5,'Position',mainAxesPosition);
+
 pairDisplayRotate = @(z) -z;
 q_fine_pair_display = pairDisplayRotate(q_fine_rot);
 pairCentersDisplay = pairDisplayRotate(pairCenters);
@@ -391,9 +433,11 @@ for k = 1:numel(q_fine_pair_display)
     if ~mainKeepMask(k)
         continue;
     end
+
     drawDisk(ax5,q_fine_pair_display(k),rad,bodyColor,'none',1.0,nCirclePts);
     drawBoundaryNodes(ax5,q_fine_pair_display(k),rad,coarseNodeCount,coarseNodeColor,coarseNodeSize);
 end
+
 drawRectOutline(ax5,insetLocalBounds,zoomOutlineColor,zoomOutlineLineWidth);
 
 ax5Inset = axes('Parent',fig5,'Position',insetAxesPosition);
@@ -445,10 +489,8 @@ output.figure5InsetCenterOffsetInches = figure5InsetCenterOffsetInches;
 output.figure5InsetBottomMarginInches = figure5InsetBottomMarginInches;
 
 pairOverallIdx = closePairIdx + 1;
-%pairDistance = abs(pairCenters(2) - pairCenters(1))*0.7;
 pairDistance = abs(pairCenters(2) - pairCenters(1))*0.93;
 isolatedPairCenters = [(0.5i+0.1)*pairDistance; -(0.5i+0.1)*pairDistance];
-%isolatedPairCenters = [(0.5i)*pairDistance; -(0.5i)*pairDistance];
 isolatedPairBounds = getBoundsXY(isolatedPairCenters,rad,isolatedPairPadX,isolatedPairPadY);
 
 fig6 = figure('Color','w','Name','mar26 visualise coarse fine new rotation - isolated pair');
@@ -458,12 +500,13 @@ hold(ax6,'on');
 
 drawDisk(ax6,isolatedPairCenters(1),rad,bodyColor,'none',1.0,nCirclePts);
 drawBoundaryNodes(ax6,isolatedPairCenters(1),rad,fineNodeCount,fineNodeColor,fineNodeSize);
+
 drawDisk(ax6,isolatedPairCenters(2),rad,bodyColor,'none',0.9,nCirclePts);
 drawBoundaryNodes(ax6,isolatedPairCenters(2),rad,fineNodeCount,fadedFineNodeColor,fineNodeSize);
 
 isolatedPairTitlePos = [0, max(imag(isolatedPairCenters)) + rad + isolatedPairTitleYOffset];
 text(isolatedPairTitlePos(1),isolatedPairTitlePos(2), ...
-    ['$\mathbf{u} = \mathbf{0}$'], ...
+    '$\mathbf{u} = \mathbf{0}$', ...
     'HorizontalAlignment','center','VerticalAlignment','middle', ...
     'Interpreter','latex','FontSize',formulaFontSize, ...
     'Color',annotationTextColor,'Parent',ax6);
@@ -472,6 +515,7 @@ text(real(isolatedPairCenters(1)),imag(isolatedPairCenters(1)),'$i$', ...
     'HorizontalAlignment','center','VerticalAlignment','middle', ...
     'Interpreter','latex','FontSize',isolatedBodyLabelFontSize, ...
     'Color',annotationTextColor,'Parent',ax6);
+
 text(real(isolatedPairCenters(2)),imag(isolatedPairCenters(2)),'$j$', ...
     'HorizontalAlignment','center','VerticalAlignment','middle', ...
     'Interpreter','latex','FontSize',isolatedBodyLabelFontSize, ...
@@ -479,7 +523,7 @@ text(real(isolatedPairCenters(2)),imag(isolatedPairCenters(2)),'$j$', ...
 
 focusDataPos = [real(isolatedPairCenters(1)) + isolatedFocusLabelOffset(1), ...
     imag(isolatedPairCenters(1)) + isolatedFocusLabelOffset(2)];
-text(focusDataPos(1),focusDataPos(2),'$\chi^{(i,j)}$', ...
+text(focusDataPos(1),focusDataPos(2),'$\boldsymbol{\eta}^{(i,j)}$', ...
     'HorizontalAlignment','left','VerticalAlignment','middle', ...
     'Interpreter','latex','FontSize',formulaFontSize, ...
     'Color',annotationTextColor,'Parent',ax6);
@@ -487,7 +531,7 @@ text(focusDataPos(1),focusDataPos(2),'$\chi^{(i,j)}$', ...
 neighbourDataPos = [real(isolatedPairCenters(2)) + isolatedNeighbourLabelOffset(1), ...
     imag(isolatedPairCenters(2)) + isolatedNeighbourLabelOffset(2)];
 text(neighbourDataPos(1),neighbourDataPos(2), ...
-    ['$\mathbf{u} = -\boldsymbol{\phi}^{(i)}$'], ...
+    '$\mathbf{u} = -\boldsymbol{\phi}^{(i)}$', ...
     'HorizontalAlignment','right','VerticalAlignment','middle', ...
     'Interpreter','latex','FontSize',formulaFontSize, ...
     'Color',annotationTextColor,'Parent',ax6);
@@ -500,21 +544,42 @@ output.isolatedPairCenters = isolatedPairCenters;
 end
 
 
+function shift = getManualShift(localPairIdx,xShiftList,yShiftList)
+if localPairIdx <= numel(xShiftList)
+    dx = xShiftList(localPairIdx);
+else
+    dx = 0;
+end
+
+if localPairIdx <= numel(yShiftList)
+    dy = yShiftList(localPairIdx);
+else
+    dy = 0;
+end
+
+shift = dx + 1i*dy;
+end
+
+
 function [q_close, q_far, q_fine] = buildFineGeometry(rad,closeGap,turnAngles,rotate_group)
 dClose = rad*(2 + closeGap);
 q_close = zeros(4,1);
+
 for k = 2:numel(q_close)
     q_close(k) = q_close(k-1) + dClose*exp(1i*turnAngles(k-1));
 end
+q_far = [q_close(2) - (3.7 + 2.2i)]; %q_close(5) + (4.0 - 1.1i)];
+%q_far = [q_close(2) - (3.7 - 2.9i)];
 
-q_far = [q_close(2) - (3.7 - 2.9i)]; % q_close(5) + (4.0 - 1.1i)];
 shiftCenter = mean(q_close);
 q_close = q_close - shiftCenter;
 q_far = q_far - shiftCenter;
+
 if rotate_group
     q_close = -1i*q_close;
     q_far = -1i*q_far;
 end
+
 [q_close, ~] = sortBodiesTopToBottom(q_close);
 [q_far, ~] = sortBodiesTopToBottom(q_far);
 q_fine = [q_close; q_far];
@@ -598,13 +663,16 @@ end
 
 function arrangeInsetAxesToMatchMainScale(fig,axMain,mainBounds,axInset,insetBounds, ...
     gapInches,centerOffsetInches,bottomMarginInches)
+
 [figPos,mainPos,insetPos,figUnits,mainUnits,insetUnits] = ...
-    getFigureAndAxesPositionsInches(fig,axMain,axInset);
+    getFigureAndAxesPositionsInches(fig,axMain,axInset); %#ok<ASGLU>
+
 cleanupObj = onCleanup(@() restoreFigureAxesUnits(fig,axMain,axInset, ...
     figUnits,mainUnits,insetUnits)); %#ok<NASGU>
 
 mainScale = min(mainPos(3)/(mainBounds(2) - mainBounds(1)), ...
     mainPos(4)/(mainBounds(4) - mainBounds(3)));
+
 insetWidth = mainScale*(insetBounds(2) - insetBounds(1));
 insetHeight = mainScale*(insetBounds(4) - insetBounds(3));
 
@@ -615,9 +683,11 @@ if insetY < bottomMarginInches
     shiftUp = bottomMarginInches - insetY;
     figPos(4) = figPos(4) + shiftUp;
     mainPos(2) = mainPos(2) + shiftUp;
-    insetPos(2) = insetPos(2) + shiftUp;
+    insetPos(2) = insetPos(2) + shiftUp; %#ok<NASGU>
+
     set(fig,'Position',figPos);
     set(axMain,'Position',mainPos);
+
     insetY = bottomMarginInches;
 end
 
@@ -627,6 +697,7 @@ end
 
 function [figPos,mainPos,insetPos,figUnits,mainUnits,insetUnits] = ...
     getFigureAndAxesPositionsInches(fig,axMain,axInset)
+
 figUnits = get(fig,'Units');
 mainUnits = get(axMain,'Units');
 insetUnits = get(axInset,'Units');
@@ -650,11 +721,13 @@ end
 
 function pos = getCircleNumberPosition(center,labelText,baseOffset,sixOffset,sevenOffset)
 offset = baseOffset;
+
 if strcmp(labelText,'6')
     offset = offset + sixOffset;
 elseif strcmp(labelText,'7')
     offset = offset + sevenOffset;
 end
+
 pos = [real(center) + offset(1), imag(center) + offset(2)];
 end
 
@@ -681,6 +754,7 @@ function bounds = expandBounds(bounds,padding)
 if isscalar(padding)
     padding = [padding, padding];
 end
+
 bounds = [bounds(1) - padding(1), bounds(2) + padding(1), ...
     bounds(3) - padding(2), bounds(4) + padding(2)];
 end
@@ -704,6 +778,7 @@ end
 
 function drawInsetConnectors(fig,axMain,mainBounds,axInset,insetBounds,edgeColor,lineWidth)
 drawnow;
+
 mainTop = dataPointToFigure(axMain,[mainBounds(2), mainBounds(4)]);
 mainBottom = dataPointToFigure(axMain,[mainBounds(2), mainBounds(3)]);
 insetTop = dataPointToFigure(axInset,[insetBounds(1), insetBounds(4)]);
@@ -712,11 +787,15 @@ insetBottom = dataPointToFigure(axInset,[insetBounds(1), insetBounds(3)]);
 axOverlay = axes('Parent',fig,'Position',[0 0 1 1], ...
     'Color','none','XLim',[0 1],'YLim',[0 1], ...
     'HitTest','off','HandleVisibility','off');
+
 hold(axOverlay,'on');
+
 line(axOverlay,[mainTop(1), insetTop(1)],[mainTop(2), insetTop(2)], ...
     'Color',edgeColor,'LineWidth',lineWidth,'Clipping','off');
+
 line(axOverlay,[mainBottom(1), insetBottom(1)],[mainBottom(2), insetBottom(2)], ...
     'Color',edgeColor,'LineWidth',lineWidth,'Clipping','off');
+
 axis(axOverlay,'off');
 end
 
@@ -724,6 +803,7 @@ end
 function figPoint = dataPointToFigure(ax,point)
 axUnits = get(ax,'Units');
 cleanupObj = onCleanup(@() set(ax,'Units',axUnits)); %#ok<NASGU>
+
 set(ax,'Units','normalized');
 axPos = get(ax,'Position');
 xLim = xlim(ax);
@@ -731,6 +811,7 @@ yLim = ylim(ax);
 
 u = (point(1) - xLim(1))/(xLim(2) - xLim(1));
 v = (point(2) - yLim(1))/(yLim(2) - yLim(1));
+
 figPoint = [axPos(1) + u*axPos(3), axPos(2) + v*axPos(4)];
 end
 
@@ -743,9 +824,11 @@ end
 
 function idx = rightmostClosePair(q_close_rot)
 pairScores = -inf(numel(q_close_rot)-1,1);
+
 for k = 1:numel(q_close_rot)-1
     pairScores(k) = real(mean(q_close_rot(k:k+1)));
 end
+
 [~, bestPair] = max(pairScores);
 idx = bestPair:(bestPair+1);
 end

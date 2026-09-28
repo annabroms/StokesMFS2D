@@ -7,7 +7,8 @@ data/
 anna_test/
 notes/
 visuals/*
-!visuals/tikz/
+visuals/tikz/*.tex
+visuals/tikz/*.pdf
 !visuals/tikz/**
 !visuals/matlab_gen/
 !visuals/matlab_gen/**

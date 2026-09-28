@@ -7,7 +7,7 @@ repoRoot = fileparts(fileparts(scriptDir));
 addpath(genpath(repoRoot));
 
 referenceScales = getUnrotatedReferenceScales(repoRoot);
-out = mar26_visualse_coarse_fine_new_rotation();
+out = mar26_visualse_coarse_fine_new_rotation_smaller();
 
 pdfFile4 = fullfile(scriptDir,'mar26_visualse_coarse_fine_new_rotation_fig4.pdf');
 annotationTexFile4 = fullfile(scriptDir,'mar26_visualse_coarse_fine_new_rotation_fig4_annotations.tex');

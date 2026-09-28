@@ -68,7 +68,7 @@ pairLabelXOffset = 0.70;
 pairTitleYOffset = 0.80;
 bottomPairTitleLift = 0.30;
 bottomVerticalPlusLift = 0.35;
-rotate_group = false;
+rotate_group = true;
 showPairVelocityLabels = false;
 drawAnnotations = false;
 exportAnnotationData = true;
@@ -137,20 +137,20 @@ end
 %% Fine chain: five close bodies and two farther bodies
 closeGap = 0.15;
 dClose = rad*(2 + closeGap);
-turnAngles = (pi/180)*[15, 70, -20, 55];
+turnAngles = (pi/180)*[-20, 70, -50]; % 55];
 
-q_close = zeros(5,1);
+q_close = zeros(4,1);
 for k = 2:numel(q_close)
     q_close(k) = q_close(k-1) + dClose*exp(1i*turnAngles(k-1));
 end
 
-q_far = [q_close(2) - (3.7 - 2.9i); q_close(5) + (4.0 - 1.1i)];
+q_far = [q_close(2) - (3.7 + 2.2i)]; %q_close(5) + (4.0 - 1.1i)];
 shiftCenter = mean(q_close);
 q_close = q_close - shiftCenter;
 q_far = q_far - shiftCenter;
 if rotate_group
-    q_close = 1i*q_close;
-    q_far = 1i*q_far;
+    q_close = -1i*q_close;
+    q_far = -1i*q_far;
 end
 [q_close, ~] = sortBodiesTopToBottom(q_close);
 [q_far, ~] = sortBodiesTopToBottom(q_far);
@@ -172,8 +172,8 @@ for k = 1:numel(q_far)
     drawBoundaryNodes(ax3,q_far(k),rad, ...
         figure2NodeCount,figure2NodeColor,figure2NodeSize);
 end
-figure2LabelPositions = [q_far(1); q_close(:); q_far(2)];
-figure2LabelTexts = {'1','2','3','4','5','6','7'};
+figure2LabelPositions = [q_far(1); q_close(:)]; % q_far(2)];
+figure2LabelTexts = {'1','2','3','4','5'};
 for k = 1:numel(figure2LabelPositions)
     annotationData.figure2CircleNumberLabels(k).text = figure2LabelTexts{k};
     annotationData.figure2CircleNumberLabels(k).position = ...
@@ -201,7 +201,7 @@ for k = 1:numel(q_close)
     q_strip(k) = (k-1)*panelSpacing;
 end
 
-topFarDisplays = [q_strip(1) - panelSpacing + 1i*topRowY; ...
+topFarDisplays = [q_strip(1) - panelSpacing + 1i*topRowY ...
     q_strip(end) + panelSpacing + 1i*topRowY];
 topDisplayCenters = [topFarDisplays(1); q_strip + 1i*topRowY; topFarDisplays(2)];
 row2DisplayCenters = topDisplayCenters + 1i*coarseFocusRowY;
