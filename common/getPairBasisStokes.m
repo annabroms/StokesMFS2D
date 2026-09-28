@@ -99,7 +99,7 @@ if ~reuse_pair_basis
     % preallocate the rest of the array before entering parfor.
     pair_payloads(1,1) = build_pair_data(...
         q,rbase_in_c,rbase_in_f,rimage_pairs,refine,pairs,...
-        opt,Lc,1,false,svd_opts,false,payload_mode);
+        opt,Lc,1,false,svd_opts,false,payload_mode); %should be false debug flag
     pair_payloads(total_pairs,1) = pair_payloads(1);
 
     if use_parallel_pairs
@@ -581,7 +581,7 @@ if store_full_pair_payload
     group.Upair_colloc  = pair.Upair_colloc;
     group.Ucross_colloc = pair.Ucross_colloc;
     group.Ecolloc       = pair.Ecolloc;
-    if ~use_cmap          % <-- guard: DC/YC are already in Cmap when cmap=1
+    if ~isempty(group.Cmap)          % <-- guard: DC/YC are already in Cmap when cmap=1
         pair.DC = DC;
         pair.YC = YC;
     end
@@ -764,7 +764,11 @@ if ~isempty(DC) && ~isempty(YC) && (getOptField(opt,'N_peanut',0) > 0)
 
     rin_pair_c = [q_pair(1)+rbase_in_c; q_pair(2)+rbase_in_c];
     Nf_test    = stokSLPmat(rin_pair,rout_peanut_test,1);
-    Ntot_test  = Nf_test - (isempty(Lf_pair) == 0)*Nf_test*Lf_pair;
+    if opt.project
+        Ntot_test  = Nf_test - (isempty(Lf_pair) == 0)*Nf_test*Lf_pair;
+    else
+        Ntot_test  = Nf_test;
+    end
 
     Npeanut_test = stokSLPmat(rin_pair_c,rout_peanut_test,1);
     if ~isempty(Lc_pair)
@@ -778,7 +782,12 @@ if ~isempty(DC) && ~isempty(YC) && (getOptField(opt,'N_peanut',0) > 0)
         pairwise_error_metrics(ls2_res,rhs2);
 
     Nf_colloc   = stokSLPmat(rin_pair,rout_peanut_colloc,1);
-    Ntot_colloc = Nf_colloc - (isempty(Lf_pair) == 0)*Nf_colloc*Lf_pair;
+    if opt.project
+        Ntot_colloc = Nf_colloc - (isempty(Lf_pair) == 0)*Nf_colloc*Lf_pair;
+    else
+        Ntot_colloc = Nf_colloc;
+    end
+
 
     Npeanut_colloc = stokSLPmat(rin_pair_c,rout_peanut_colloc,1);
     if ~isempty(Lc_pair)

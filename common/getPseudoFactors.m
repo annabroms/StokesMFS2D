@@ -1,6 +1,5 @@
 function [Y, U] = getPseudoFactors(N, tol, visualise, svd_opts)
-%GETPSEUDOFACTORS Computes factors that provide the matrix psuedoinverse from 
-% a truncated SVD 
+%GETPSEUDOFACTORS Compute factors for a regularized matrix pseudoinverse.
 %
 % Syntax:
 %   [Y, U] = getPseudoFactors(N, tol, visualise)
@@ -22,20 +21,24 @@ function [Y, U] = getPseudoFactors(N, tol, visualise, svd_opts)
 %                               size(N,1) or size(N,1)/2, in which case
 %                               the weights are repeated for x/y Stokes
 %                               row blocks.
+%               use_tikhonov  : use zero-order Tikhonov filtering instead
+%                               of a hard truncated-SVD cutoff. Default false.
+%               tikhonov_tol  : relative Tikhonov parameter lambda/sigma_max.
+%                               Empty or omitted uses tol.
 %
 % Outputs:
-%   U - Matrix of left singular vectors corresponding to retained singular values
-%   Y - Product VS⁺, where:
-%         - S⁺ is a diagonal matrix with entries 1/σ for retained singular values
-%         - V contains the corresponding right singular vectors
+%   U - Matrix of left singular vectors used by the regularized inverse.
+%   Y - Filtered right singular-vector factor, so that N_reg^+ = Y*U'.
 %
 % Description:
-%   Computes a truncated SVD of matrix N and returns factor matrices U and Y such that:
-%       N⁺ ≈ Y * U'
+%   Computes an SVD of matrix N and returns factor matrices U and Y such that:
+%       N_reg^+ = Y * U'
 %   This allows efficient and backward-stable application of the pseudoinverse without explicitly forming it.
 %
 % Notes:
-%   - Only singular values greater than max(σ) * tol are retained
+%   - TSVD retains singular values greater than max(σ)*tol.
+%   - Tikhonov uses the smooth filter σ/(σ^2+lambda^2), with
+%     lambda = max(σ)*tikhonov_tol, and carries all min(size(N)) modes.
 %   - Intended for use in stable pseudoinverse application (e.g., solving least-squares problems)
 %
 % Anna Broms 4 April 2025
@@ -69,6 +72,12 @@ end
 
 column_weight = logical(getOptField(svd_opts,'column_weight',false));
 left_weight = logical(getOptField(svd_opts,'left_weight',false));
+use_tikhonov = logical(getOptField(svd_opts,'use_tikhonov',false));
+tikhonov_tol = getOptField(svd_opts,'tikhonov_tol',tol);
+if use_tikhonov
+    validateattributes(tikhonov_tol,{'numeric'}, ...
+        {'scalar','real','positive','finite'},mfilename,'svd_opts.tikhonov_tol');
+end
 
 if column_weight || left_weight
     N_svd = N;
@@ -98,11 +107,25 @@ end
 [UU,S,V] = svd(N_svd);
 S = diag(S);
 
-%use relative tolerance 
+% Use either a hard relative cutoff or a smooth Tikhonov filter. Scaling
+% the singular values by sigma_max evaluates the latter without forming
+% normal equations or squaring the condition number of N.
 if isempty(S)
     ra = 0;
+    inverse_filter = zeros(0,1);
+elseif use_tikhonov
+    ra = numel(S);
+    sigma_max = max(S);
+    if sigma_max == 0
+        inverse_filter = zeros(size(S));
+    else
+        sigma_scaled = S/sigma_max;
+        inverse_filter = (sigma_scaled ./ ...
+            (sigma_scaled.^2 + tikhonov_tol^2))/sigma_max;
+    end
 else
     ra = sum(S>max(S)*tol);
+    inverse_filter = 1./S(1:ra);
 end
 
 
@@ -149,9 +172,7 @@ if visualise
     % title('Relative decay rate of sing vals','interpreter','latex')
 end
 
-S = S(1:ra);  %get pseudoinverse of S
-iS = 1./S; 
-Y = V(:,1:ra)*diag(iS);
+Y = V(:,1:ra)*diag(inverse_filter);
 if column_weight
     Y = bsxfun(@times,col_scale(:),Y);
 end
@@ -268,4 +289,19 @@ for icase = 1:numel(cases)
 end
 
 fprintf('getPseudoFactors weighting self-test passed.\n');
+
+% Check the Tikhonov factor action against the defining spectral filter.
+N = [1 2 -1; 0.5 -3 2; 4 1 0; -2 0.25 1];
+b = [0.3; -1.2; 2.1; 0.7];
+tikhonov_tol = 1e-3;
+opts = struct('use_tikhonov',true,'tikhonov_tol',tikhonov_tol);
+[Y,U] = getPseudoFactors(N,1e-12,0,opts);
+[Ur,Sr,Vr] = svd(N,'econ');
+sing = diag(Sr);
+lambda = tikhonov_tol*max(sing);
+x_ref = Vr*diag(sing./(sing.^2+lambda^2))*Ur'*b;
+x = Y*(U'*b);
+assert(norm(x-x_ref,inf) <= 1e3*eps(max(1,norm(x_ref,inf))), ...
+    'Tikhonov pseudoinverse action mismatch.');
+fprintf('getPseudoFactors Tikhonov self-test passed.\n');
 end

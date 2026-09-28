@@ -82,8 +82,44 @@ function z = createPeanut(q1, q2, Np, debug, R)
 
         figure(2)
         magenta = [0.8, 0.0, 0.8];
-        plot(real(z), imag(z), '.', 'Color', magenta)
+        plot(real(z), imag(z), '.', 'Color', magenta,'DisplayName','Peanut collocation nodes')
         axis equal
+        hold on
+
+
+        % Draw separation circles
+        
+        % Use the same centering shift for peanut and separation-circle centres
+        zmean = mean(z);
+
+        % Local centres of the separation circles
+        c_sep_low_loc  = (R + delta/2) - 1i*(2*R*sa);
+        c_sep_high_loc = (R + delta/2) + 1i*(2*R*sa);
+        
+       % z = rot * (z - zmean) + qmid;
+        
+        c_sep_low  = rot * (c_sep_low_loc  - zmean) + qmid;
+        c_sep_high = rot * (c_sep_high_loc - zmean) + qmid;
+
+        tt = linspace(0, 2*pi, 400);
+    
+        sep_low  = c_sep_low  + R*exp(1i*tt);
+        sep_high = c_sep_high + R*exp(1i*tt);
+    
+        gray = [0.5 0.5 0.5];
+    
+        plot(real(sep_low), imag(sep_low), '--', ...
+            'Color', gray, ...
+            'HandleVisibility','off')
+    
+        plot(real(sep_high), imag(sep_high), '--', ...
+            'Color', gray, ...
+            'HandleVisibility','off')
+    
+    
+        legend
+        hold off
+   
     end
 
 end

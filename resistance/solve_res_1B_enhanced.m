@@ -79,6 +79,13 @@ for k = 1:P
 end
 
 %% Optional matrix inspection
+
+if isempty(opt.solve_threads)
+    maxNumCompThreads('automatic');
+else
+    maxNumCompThreads(opt.solve_threads); 
+end
+
 if debug
     ncols = 2*geom.total_target_count;
     CC = zeros(ncols);
@@ -118,7 +125,7 @@ end
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
 %% Solve
-disp(' == Solving... == ');
+fprintf(' == Solving using %u threads...  == \n',maxNumCompThreads);
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres( ...

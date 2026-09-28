@@ -38,6 +38,10 @@ function [FT,sol] = solve_res_peanut_enhanced(q,U,W,opt)
 %       get_bndry_field
 %                     if true, evaluate and report boundary velocity residuals
 %       cmap          if true, use coarse-to-coarse pair map for FT updates
+%       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
+%                     fine-pair and peanut two-body pseudoinverses
+%       tikhonov_tol  relative parameter lambda/sigma_max; empty uses each
+%                     block's legacy TSVD tolerance as the Tikhonov knee
 %       use_big_sparse
 %                     if true, use solve-grid sparse close-pair correction
 %                     maps in the GMRES matvec
@@ -283,6 +287,13 @@ end
 
 %% Solve system
 
+if isempty(opt.solve_threads)
+    maxNumCompThreads('automatic');
+else
+    maxNumCompThreads(opt.solve_threads); 
+end
+
+
 % Build the matrix to inspect conditioning/eigenvalues if requested.
 if debug
     x = zeros(2*length(rout),1);
@@ -325,7 +336,7 @@ end
 
 ram_check = markRamCheckPhase(ram_check,'precomp_end');
 
-disp(' == Solving... == ');
+fprintf(' == Solving using %u threads...  == \n',maxNumCompThreads);
 solve_time_token = manageSolveTimeMeasurement('start',get_solve_time);
 solve_time_cleanup = onCleanup(@() manageSolveTimeMeasurement('reset'));
 [tau,it,resvec,real_res] = helsing_gmres(matvec_handle, ...
@@ -475,6 +486,11 @@ else
     end
 end
 
+FT_test = zeros(3*P,1); 
+for k= 1:P
+    FT_test((k-1)*3+1:3*k) = K'*[lam_c_x((k-1)*N_c+1:k*N_c); lam_c_y((k-1)*N_c+1:k*N_c)];
+end
+
 
 if visualise_sol
 
@@ -589,7 +605,7 @@ test = 2;
 delta_pair = 0.2;
 %delta_pair = 2+0.4; 
 N_peanut = 400; 
-N_c = 150; 
+N_c = 60; 
 N_f = 150; 
 visualise = 1; 
 debug = 1;
@@ -601,6 +617,7 @@ opt.visualise_sol = visualise;
 opt.debug = debug;
 opt.cmap = 1; 
 opt.reuse_pair_basis_by_sep = 1;
+opt.res_sparse_map_coarse = 0; 
 opt.rotation_mode = 'oversampled_fft';
 opt.rotation_oversample = 8;
 opt.visualise_sol = visualise;
@@ -667,7 +684,7 @@ if test == 1
 else
 
     rng(9);
-    P = 5;
+    P = 2;
     delta = 0.001; %P = 5
     x = 1+delta/2;
     y = sqrt((2+delta)^2-(1+delta/2)^2);

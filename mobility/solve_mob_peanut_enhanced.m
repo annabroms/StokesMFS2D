@@ -38,6 +38,10 @@ function [UW,sol] = solve_mob_peanut_enhanced(q,F,T,opt)
 %       cmap          if true, use coarse-to-coarse pair map without
 %                     recovering fine sources (other than for evaluating the 
 %                     field at or near the boundaries)
+%       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
+%                     fine-pair and peanut two-body pseudoinverses
+%       tikhonov_tol  relative parameter lambda/sigma_max; empty uses each
+%                     block's legacy TSVD tolerance as the Tikhonov knee
 %       parallel_precomp
 %                     if true, parallelise supported pair-basis
 %                     precomputations when a parallel pool is available
@@ -248,7 +252,7 @@ end
 plot_grid = 0; %debug option: visualise each close pair 
 opt.project_force = true;
 opt.project = true;
-opt.pair_basis_debug = plot_grid;
+%opt.pair_basis_debug = plot_grid;
 opt.rad = ones(P,1);
 if get_precomp_time
     pair_timer = tic;
@@ -907,9 +911,10 @@ close all;
 %% Set geometry and data
 q = [0; 2.001; 2.001i]; %center coordinates
 
-delta = 1e-3;
+delta = 2e-2;
+delta = 0.01;
 %delta = 0.5; 
-P = 20;
+P = 2;
 q = 0:2+delta:(P-1)*(2+delta);
 % P = 4; 
 % q = [0; 2+delta; 7; 9+delta];
@@ -928,6 +933,7 @@ q = grow_cluster(P,delta,2);
 %rings = 1;
 %q = hexagonal_lattice(delta,rings,1);
 %q = [q(4);q(end-1:end)];
+q = [0; 2+delta];
 
 P = length(q);
 F = [real(q) imag(q)];
@@ -961,13 +967,12 @@ debug = 0;
 N_c = 150;
 N_f = 150;
 N_c = 60;
-N_f = 60;
+%N_f = 60;
 
-N_c = 80;
-N_f = 60;
 opt = get2Dparams(P,N_c,N_f);
 opt.delta_pair = delta_pair;
 opt.N_peanut = N_peanut;
+opt.Nclust = 80;
 opt.visualise_sol = 1;
 opt.visualise_grid = 1; 
 opt.gmres_tol = gmres_tol;
@@ -978,9 +983,10 @@ opt.reuse_pair_basis_by_sep = 0;
 opt.cmap = 1; % coarse to coarse compression?
 opt.self_correct = 1; % create identiy matrix for a pair by utilising known rhs in pair problem
 opt.use_dense = 1; % use stored matrices for evaluation of Stokeslet on single body / pair
-opt.pair_basis_debug = 0; 
+opt.pair_basis_debug = 1; 
 opt.RAM_check = 1; 
 opt.get_bndry_field = 1;
+opt.use_big_sparse = 0; 
 %opt.Nclust = 100; 
 opt.mob_big_sparse_build_mode = 'precomputed';
 % opt.beta = 0.5;

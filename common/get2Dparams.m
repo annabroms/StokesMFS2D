@@ -18,6 +18,7 @@ opt.debug = 0; %visualise system matrix by hitting matvec with columns of
 
 %set separation between true boundary and proxy surface
 tol = 1e-12;
+tol = 1e-10;
 sep = (1/N_c)*log(1/tol); %separation between surfaces based on rule of thumb in Stein & Barnett QFS paper (2021) 
 opt.Rp_c = max([1-sep,0.01]); %radius of proxy surface
 
@@ -33,6 +34,8 @@ opt.a_f = 1.2; % upsampling factor for collocation points so that M_f = a_f*N_f;
 % Enhancement with Stokeslets only, using ellipse segments
 opt.Nclust = 100;
 opt.beta = 0.3; %determines distance between focus and tip of ellipse for enhancing nodes
+opt.ellipse_constant = 0; % if true, freeze the ellipse-segment discretisation at opt.smallest_delta
+opt.smallest_delta = []; % smallest gap ever requested; required when opt.ellipse_constant=1
 % Image based enhancement
 opt.M_image = 35;  % Not always in use - sets extra collocation points for close to touching region
 opt.s = [0 0 1 1 0 0 0]; %source types at clustered nodes
@@ -82,6 +85,10 @@ opt.use_direct = true; % in parallel solve, use direct local Stokeslet evals ins
 opt.pair_basis_debug = 0; % check accuracy in fine and peanut least squares problem
 opt.column_weight = false; % scale LS operator columns before SVD in peanut solvers
 opt.left_weight = false; % scale LS operator rows by local arclength weights in peanut solvers
+opt.use_tikhonov = false; % smoothly regularize pair/peanut pseudoinverses in two-body setup
+% Relative parameter lambda/sigma_max for those Tikhonov filters. Empty
+% uses each block's legacy TSVD tolerance (1e-11 pair, 1e-14 peanut).
+opt.tikhonov_tol = [];
 opt.use_fmm = 1; 
 opt.get_precomp_time = 1; 
 opt.solve_threads = maxNumCompThreads('automatic');

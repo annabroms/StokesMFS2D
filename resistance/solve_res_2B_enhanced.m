@@ -763,6 +763,7 @@ if test == 1
     gmres_tol = 1e-7;
     debug = 1; 
     opt = get2Dparams(P);
+    opt.pair_basis_debug = 1; 
     opt.rad = rad;
     opt.delta_pair = delta_pair;
     opt.lr = lr;

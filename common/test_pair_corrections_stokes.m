@@ -42,6 +42,9 @@ if ~isfinite(delta_pair) || delta_pair <= 0
 end
 
 opt_eval = prepareStokesOpt(opt, R);
+opt_eval.P = 2; 
+opt_eval.show_grid = 1;
+opt_eval.pair_basis_debug = 1; 
 Rp_f = getOptField(opt_eval,'Rp_f',[]);
 
 % For equal radii, the accumulation point measured from the left center is
@@ -105,6 +108,7 @@ end
 
 function result = runStokesCase(q, mob_fun, res_fun, F_ref, T_ref, U_ref, W_ref, opt)
 [UW_mob, sol_mob, coeff_mob] = callMobilitySolver(mob_fun, q, F_ref, T_ref, opt);
+opt.project = 0; 
 [FT_res, sol_res, coeff_res] = callResistanceSolver(res_fun, q, U_ref, W_ref, opt);
 
 [F_back, T_back] = unpackFT(FT_res);

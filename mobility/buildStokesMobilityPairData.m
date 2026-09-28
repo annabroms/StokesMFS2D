@@ -13,6 +13,12 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     if nargin < 12 || isempty(use_canonical); use_canonical = false;      end
     if nargin < 13 || isempty(payload_mode);  payload_mode  = 'full';     end
 
+    % Tikhonov regularization is deliberately attached only to the
+    % two-body pair and peanut factors built here. The reusable one-body
+    % preconditioner retains its existing TSVD behavior.
+    svd_opts.use_tikhonov = logical(getOptField(opt,'use_tikhonov',false));
+    svd_opts.tikhonov_tol = getOptField(opt,'tikhonov_tol',[]);
+
     store_full = strcmp(payload_mode, 'full');
 
     % --- Cache frequently used opt fields up front ---
@@ -97,8 +103,8 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
 
     % --- Debug geometry plot ---
     if debug
-        plot_pair_geometry(i, j, q_pair, rin_1_f, rin_2_f, rout_base,...
-            refine_i, refine_j, rimage_i, rimage_j);
+        plot_pair_geometry(q_pair, rin_1_f, rin_2_f, rout_base_c, rbase_in_c,...
+            rout_f, rimage_i, rimage_j,opt.Rp_f);
     end
 
     % --- Coarse correction operator ---
@@ -157,7 +163,9 @@ function [pair, debug_data] = buildStokesMobilityPairData(...
     rin_pair_c = [q_pair(1) + rbase_in_c; q_pair(2) + rbase_in_c];
 
     if N_peanut > 0
-        rout_peanut = createPeanut(q_pair(1), q_pair(2), N_peanut, false);
+       % debug_peanut = 1; 
+        debug_peanut = 1; 
+        rout_peanut = createPeanut(q_pair(1), q_pair(2), N_peanut, debug_peanut);
         [DC, YC] = getPeanutBlockStokes(rin_pair_c, rin_pair, rout_peanut,...
             Lc_pair, pair_proj_moment_map, pair_proj_rbm_map,...
             pair_proj_moment_gram, svd_opts);
@@ -255,24 +263,44 @@ end
 
 % =========================================================================
 
-function plot_pair_geometry(i, j, q_pair, rin_1_f, rin_2_f, rout_base,...
-        refine_i, refine_j, rimage_i, rimage_j)
-    figure(801); clf;
-    plot(real(rin_1_f), imag(rin_1_f), 'r.', 'MarkerSize', 10); hold on;
-    plot(real(rin_2_f), imag(rin_2_f), 'b.', 'MarkerSize', 10);
-    plot(real(q_pair(1)+rout_base), imag(q_pair(1)+rout_base), 'ro', 'MarkerSize', 4);
-    plot(real(q_pair(2)+rout_base), imag(q_pair(2)+rout_base), 'bo', 'MarkerSize', 4);
-    plot(real(refine_i), imag(refine_i), 'r+', 'MarkerSize', 6);
-    plot(real(refine_j), imag(refine_j), 'b+', 'MarkerSize', 6);
+function plot_pair_geometry(q_pair, rin_1_f, rin_2_f, rout_base, rin_base,...
+        rout_f, rimage_i, rimage_j,r_proxy)
+    figure(2); hold on;
+    % plot(real(q_pair(1)+rin_base), imag(q_pair(1)+rin_base), 'k.', 'MarkerSize', 5,'DisplayName','Coarse sources'); hold on;
+    % plot(real(q_pair(2)+rin_base), imag(q_pair(2)+rin_base), 'k.', 'MarkerSize', 5,'HandleVisibility','off');
+    % plot(real(rin_1_f), imag(rin_1_f), 'r.', 'MarkerSize', 5,'DisplayName','Fine sources'); hold on;
+    % plot(real(rin_2_f), imag(rin_2_f), 'r.', 'MarkerSize', 5,'HandleVisibility','off');
+        plot(real(q_pair(1)+rin_base), imag(q_pair(1)+rin_base), 'k.', 'MarkerSize', 5,'DisplayName','Coarse sources'); hold on;
+    plot(real(q_pair(2)+rin_base), imag(q_pair(2)+rin_base), 'k.', 'MarkerSize', 5,'HandleVisibility','off');
+    plot(real(rin_1_f), imag(rin_1_f), 'r.', 'MarkerSize', 5,'DisplayName','Fine sources'); hold on;
+    plot(real(rin_2_f), imag(rin_2_f), 'r.', 'MarkerSize', 5,'HandleVisibility','off');
+
+    % plot(real(q_pair(1)+rout_base), imag(q_pair(1)+rout_base), 'b.', 'MarkerSize', 10,'DisplayName','Coarse collocation nodes');
+    % plot(real(q_pair(2)+rout_base), imag(q_pair(2)+rout_base), 'b.', 'MarkerSize', 10,'HandleVisibility','off');
+    %plot(real(q_pair(1)+rout_base), imag(q_pair(1)+rout_base), 'b.', 'MarkerSize', 20,'DisplayName','Coarse collocation nodes');
+    %plot(real(q_pair(2)+rout_base), imag(q_pair(2)+rout_base), 'b.', 'MarkerSize', 20,'HandleVisibility','off');
+    %plot(real(rout_f), imag(rout_f), 'm.', 'MarkerSize', 6,'DisplayName','Fine collocation nodes');
     if ~isempty(rimage_i)
-        plot(real(rimage_i), imag(rimage_i), 'ks', 'MarkerSize', 5);
+        plot(real(rimage_i), imag(rimage_i), 'r.', 'MarkerSize', 5,'HandleVisibility','off'); %was 10
     end
     if ~isempty(rimage_j)
-        plot(real(rimage_j), imag(rimage_j), 'kd', 'MarkerSize', 5);
+        plot(real(rimage_j), imag(rimage_j), 'r.', 'MarkerSize', 5,'HandleVisibility','off');
     end
-    axis equal; grid on;
-    title(sprintf('getPairBasisStokes pair (%d,%d)', i, j), 'Interpreter', 'none');
+  
+    [~, ~, ~, ~, acc_i, acc_j] = ...
+                pair_clusters_ellipse(q_pair(1), q_pair(2), 1, 1, 100, abs(q_pair(1)-q_pair(2))-2, r_proxy, 0.3);
+
+   % plot(real(acc_i), imag(acc_i), 'gs', 'MarkerSize', 5, 'MarkerFaceColor','g','HandleVisibility','off');
+    %plot(real(acc_j), imag(acc_j), 'gs', 'MarkerSize', 5,'MarkerFaceColor','g','DisplayName','Image accumulation points');
+    axis equal; 
+    %title(sprintf('getPairBasisStokes pair (%d,%d)', i, j), 'Interpreter', 'none');
     drawnow;
+    %fill(real(q_pair(1)+rout_base), imag(q_pair(1)+rout_base),[1 0.5 0],'FaceAlpha',0.1,'DisplayName','Active particle','LineStyle','none')
+    fill(real(q_pair(1)+rout_base), imag(q_pair(1)+rout_base),[0.5 0.5 0.5],'FaceAlpha',0.1,'DisplayName','Particle interior','LineStyle','none')
+    fill(real(q_pair(2)+rout_base), imag(q_pair(2)+rout_base),[0.5 0.5 0.5],'FaceAlpha',0.1,'HandleVisibility','off','LineStyle','none')
+    axis off; 
+    legend show
+    set(legend,'interpreter','latex','FontSize',16,'box','off')
 end
 
 % =========================================================================

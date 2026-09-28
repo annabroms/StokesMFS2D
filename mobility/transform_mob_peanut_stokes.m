@@ -216,6 +216,13 @@ for row = 1:n_pairs
     lam_c_y(coarse_i) = lam_c_y(coarse_i) + tau_peanut_tot(2*N_c+1:3*N_c);
     lam_c_y(coarse_p2) = lam_c_y(coarse_p2) + tau_peanut_tot(3*N_c+1:4*N_c);
 
+    %debug: 
+    % lam_c_nonpx(coarse_i) = lam_c_nonpx(coarse_i) + tau_peanut_ntot(1:N_c);
+    % lam_c_nonpx(coarse_p2) = lam_c_nonpx(coarse_p2) + tau_peanut_ntot(N_c+1:2*N_c);
+    % lam_c_nonpy(coarse_i) = lam_c_nonpy(coarse_i) + tau_peanut_ntot(2*N_c+1:3*N_c);
+    % lam_c_nonpy(coarse_p2) = lam_c_nonpy(coarse_p2) + tau_peanut_ntot(3*N_c+1:4*N_c);
+
+    
     if need_explicit_pair_sources
         im_nr = length(rimage_i);
         f_ind1_x = 1:N_f;
