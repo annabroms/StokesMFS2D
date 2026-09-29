@@ -1,19 +1,20 @@
-function model = buildLaplaceCmapInterpolator(opt,rbase_in_c, ...
-        rbase_in_f,rout_base_f)
+function model = buildLaplaceCmapInterpolator(opt,varargin)
 %BUILDLAPLACECMAPINTERPOLATOR Train one adaptive production alpha model.
 %
 % This is an explicit, potentially expensive training operation.  Normal
 % scripts should call prepareLaplaceCmapInterpolation, which loads a saved
 % compatible model and asks before invoking this routine on a cache miss.
 
-[opt,mode] = configureLaplaceCapacitanceInterpolation(opt);
+[problem,rbase_in_c,rbase_in_f,rout_base_f] = ...
+    parseTrainerInputs(varargin{:});
+[opt,mode] = configureLaplaceCmapInterpolation(opt,problem);
 if strcmp(mode,'none')
     error('buildLaplaceCmapInterpolator:InterpolationDisabled', ...
         ['Set opt.use_interpolation to ''reduced_noconst'', ', ...
          '''reduced'', or ''full''.']);
 end
 
-if nargin < 2 || isempty(rbase_in_c)
+if isempty(rbase_in_c)
     [rbase_in_c,rbase_in_f,rout_base_f] = defaultGrids(opt);
 end
 rbase_in_c = rbase_in_c(:);
@@ -26,10 +27,13 @@ if numel(rbase_in_c) ~= opt.N_cmap || ...
         'The supplied canonical grids do not match the configured sizes.');
 end
 
-signature = buildLaplaceCmapInterpolationSignature(opt,true);
+signature = buildLaplaceCmapInterpolationSignature(opt,true,problem);
 signature_id = laplaceInterpolationSignatureId(signature);
-exact_signature = buildLaplaceCmapInterpolationSignature(opt,false);
-exact_signature = rmfield(exact_signature,'mode');
+exact_signature = buildLaplaceCmapInterpolationSignature(opt,false,problem);
+search_fields = {'mode','panel_count_candidates','node_candidates', ...
+    'validation_nodes','audit_nodes','reference_location'};
+exact_signature = rmfield(exact_signature, ...
+    search_fields(isfield(exact_signature,search_fields)));
 
 q_candidates = signature.node_candidates;
 q_basis = max(q_candidates);
@@ -47,9 +51,9 @@ base_ranges = makeBaseRanges(opt,to_alpha);
 all_delta = mergeNearlyEqual(all_delta,1e-12);
 grids = struct('rbase_in_c',rbase_in_c, ...
     'rbase_in_f',rbase_in_f,'rout_base_f',rout_base_f);
-fprintf(['Training %s Laplace Cmap model: C tolerance %.3e, ', ...
-    'C_Q tolerance %.3e.\n'],mode,opt.interpolation_tol, ...
-    opt.charge_interpolation_tol);
+fprintf(['Training %s Laplace %s Cmap model: C tolerance %.3e, ', ...
+    'voltage/charge tolerance %.3e.\n'],mode,problem, ...
+    opt.interpolation_tol,opt.volt_charge_interp_tol);
 fprintf(['Searching panel counts %s and node counts %s on %d ', ...
     'base range(s).\n'],mat2str(panel_count_candidates), ...
     mat2str(q_candidates),numel(base_ranges));
@@ -68,7 +72,7 @@ for ib = 1:n_base
         pass = true;
         for ip = 1:numel(plans)
             selections(ip) = selectPanel(plans(ip),mode,q_candidates, ...
-                opt.interpolation_tol,opt.charge_interpolation_tol, ...
+                opt.interpolation_tol,opt.volt_charge_interp_tol, ...
                 delta_pool,C_pool,QV_pool);
             pass = pass && selections(ip).pass;
         end
@@ -83,9 +87,9 @@ end
     panel_count_candidates,mode);
 if isempty(chosen_counts)
     error('buildLaplaceCmapInterpolator:NoPassingConfiguration', ...
-        ['No configuration met C tolerance %.3e and C_Q tolerance ', ...
+        ['No configuration met C tolerance %.3e and voltage/charge tolerance ', ...
          '%.3e with at most %d panels per base range and %d nodes.'], ...
-        opt.interpolation_tol,opt.charge_interpolation_tol, ...
+        opt.interpolation_tol,opt.volt_charge_interp_tol, ...
         max(panel_count_candidates),max(q_candidates));
 end
 
@@ -103,7 +107,8 @@ for ib = 1:n_base
 end
 
 model = struct();
-model.kind = 'laplace_capacitance_cmap_alpha';
+model.problem = problem;
+model.kind = sprintf('laplace_%s_cmap_alpha',problem);
 model.version = 3;
 model.mode = mode;
 model.coordinate = 'alpha';
@@ -113,7 +118,7 @@ model.delta_min = opt.smallest_delta;
 model.delta_max = opt.delta_pair;
 model.delta_star = (R-opt.Rp_f)^2/opt.Rp_f;
 model.action_tolerance = opt.interpolation_tol;
-model.charge_action_tolerance = opt.charge_interpolation_tol;
+model.volt_charge_action_tolerance = opt.volt_charge_interp_tol;
 model.signature = signature;
 model.signature_id = signature_id;
 model.panels = model_panels;
@@ -145,6 +150,38 @@ model.model_file = '';
 fprintf('Selected panel counts by base range: %s.\n', ...
     mat2str(chosen_counts));
 reportLaplaceCmapInterpolator(model,'newly trained (unsaved)');
+end
+
+function [problem,rbase_in_c,rbase_in_f,rout_base_f] = ...
+        parseTrainerInputs(varargin)
+problem = 'capacitance';
+rbase_in_c = [];
+rbase_in_f = [];
+rout_base_f = [];
+args = varargin;
+if ~isempty(args) && (ischar(args{1}) || isstring(args{1}))
+    problem = resolveLaplaceInterpolationProblem( ...
+        args{1},'buildLaplaceCmapInterpolator');
+    args = args(2:end);
+end
+if isempty(args)
+    return
+end
+if numel(args) ~= 3
+    error('buildLaplaceCmapInterpolator:BadInputs', ...
+        ['Supply either no custom grids or all three grids: ', ...
+         'rbase_in_c, rbase_in_f, and rout_base_f.']);
+end
+rbase_in_c = args{1};
+rbase_in_f = args{2};
+rout_base_f = args{3};
+if isempty(rbase_in_c) && isempty(rbase_in_f) && isempty(rout_base_f)
+    return
+end
+if isempty(rbase_in_c) || isempty(rbase_in_f) || isempty(rout_base_f)
+    error('buildLaplaceCmapInterpolator:PartialGridInputs', ...
+        'Custom canonical grids must all be nonempty.');
+end
 end
 
 function ranges = makeBaseRanges(opt,to_alpha)
@@ -503,7 +540,7 @@ if pass
         rank_text = 'n/a';
     end
     fprintf(['  %-12s panels=%d: PASS ranks=%s, C nodes=%s, ', ...
-        'C_Q nodes=%s\n'],name,count,rank_text, ...
+        'voltage/charge nodes=%s\n'],name,count,rank_text, ...
         mat2str([selections.q]),mat2str([selections.q_charge]));
 else
     fprintf('  %-12s panels=%d: no passing configuration\n',name,count);
@@ -527,7 +564,10 @@ function [delta_pool,C_pool,QV_pool,n_new,cache_file] = ...
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 cache_dir = fullfile(repo_root,'data','laplace_cmap_interpolation');
 signature_id = laplaceInterpolationSignatureId(signature);
-cache_file = fullfile(cache_dir,['exact_' signature_id '.mat']);
+problem = resolveLaplaceInterpolationProblem( ...
+    getOptField(opt,'interpolation_problem','capacitance'),mfilename);
+cache_prefix = ['exact_' problem '_'];
+cache_file = fullfile(cache_dir,[cache_prefix signature_id '.mat']);
 delta_pool = zeros(0,1);
 C_pool = zeros(2*opt.N_cmap,2*opt.N_cmap,0);
 QV_pool = zeros(2,2*opt.N_cmap,0);
@@ -545,7 +585,7 @@ n_new = 0;
 for k = 1:numel(delta_query)
     delta = delta_query(k);
     if isempty(findDelta(delta,delta_pool))
-        snapshot = buildCanonicalLaplacePairMap(delta,opt,grids);
+        snapshot = buildCanonicalLaplacePairMap(delta,opt,grids,problem);
         delta_pool(end+1,1) = delta; %#ok<AGROW>
         C_pool(:,:,end+1) = snapshot.Cmap; %#ok<AGROW>
         QV_pool(:,:,end+1) = snapshot.Cmap_QV; %#ok<AGROW>

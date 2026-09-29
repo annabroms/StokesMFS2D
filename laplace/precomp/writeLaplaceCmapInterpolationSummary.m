@@ -9,13 +9,15 @@ if fid < 0
         'Could not open %s for writing.',markdown_file);
 end
 cleanup = onCleanup(@() fclose(fid));
+problem = getLaplaceCmapModelProblem(model);
+volt_charge_tolerance = getLaplaceCmapModelVoltChargeTolerance(model);
 
-fprintf(fid,'# Laplace capacitance interpolation model\n\n');
+fprintf(fid,'# Laplace %s interpolation model\n\n',problem);
 fprintf(fid,'- Mode: `%s`\n',model.mode);
 fprintf(fid,'- Signature: `%s`\n',model.signature_id);
 fprintf(fid,'- Matrix tolerance: `%.16g`\n',model.action_tolerance);
-fprintf(fid,'- Charge-map tolerance: `%.16g`\n', ...
-    model.charge_action_tolerance);
+fprintf(fid,'- Voltage/charge-map tolerance: `%.16g`\n', ...
+    volt_charge_tolerance);
 fprintf(fid,'- Coordinate: `alpha`\n');
 fprintf(fid,'- Gap interval: `[%.16g, %.16g]`\n', ...
     model.delta_min,model.delta_max);
@@ -24,7 +26,7 @@ fprintf(fid,'- Panels: `%d` (`%s` by base range)\n', ...
 fprintf(fid,'- Exact snapshots used: `%d`\n',model.n_exact_snapshots);
 fprintf(fid,'- Maximum certified C error: `%.6e`\n', ...
     model.training.max_C_error);
-fprintf(fid,'- Maximum certified C_Q error: `%.6e`\n\n', ...
+fprintf(fid,'- Maximum certified voltage/charge-map error: `%.6e`\n\n', ...
     model.training.max_CQ_error);
 
 fprintf(fid,'## Discretization and regularization\n\n');
@@ -38,7 +40,7 @@ end
 
 fprintf(fid,'\n## Selected panels\n\n');
 fprintf(fid,['| Panel | Base | delta min | delta max | C nodes | ', ...
-    'C_Q nodes | Rank | C error | C_Q error |\n']);
+    'Voltage/charge nodes | Rank | C error | Voltage/charge error |\n']);
 fprintf(fid,'|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n');
 for k = 1:model.n_panels
     panel = model.panels(k);
@@ -55,7 +57,10 @@ end
 
 fprintf(fid,'\n## MATLAB usage\n\n```matlab\n');
 fprintf(fid,'opt.use_interpolation = ''%s'';\n',model.mode);
-fprintf(fid,'loaded = load(''%s'',''model'');\n',strrep(model_file,'''',''''''));
-fprintf(fid,'opt.interpolation_model = loaded.model;\n```\n');
+fprintf(fid,'loaded = load(''%s'',''model'');\n', ...
+    strrep(model_file,'''',''''''));
+fprintf(fid,'opt.interpolation_model = loaded.model;\n');
+fprintf(fid,'opt = prepareLaplaceCmapInterpolation(opt,''%s'');\n',problem);
+fprintf(fid,'```\n');
 clear cleanup
 end

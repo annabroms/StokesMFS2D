@@ -75,6 +75,9 @@ left_weight = logical(getOptField(svd_opts,'left_weight',false));
 use_tikhonov = logical(getOptField(svd_opts,'use_tikhonov',false));
 tikhonov_tol = getOptField(svd_opts,'tikhonov_tol',tol);
 if use_tikhonov
+    if isempty(tikhonov_tol)
+        tikhonov_tol = tol;
+    end
     validateattributes(tikhonov_tol,{'numeric'}, ...
         {'scalar','real','positive','finite'},mfilename,'svd_opts.tikhonov_tol');
 end
@@ -304,4 +307,42 @@ x = Y*(U'*b);
 assert(norm(x-x_ref,inf) <= 1e3*eps(max(1,norm(x_ref,inf))), ...
     'Tikhonov pseudoinverse action mismatch.');
 fprintf('getPseudoFactors Tikhonov self-test passed.\n');
+
+% Weighted Tikhonov action uses the same scaled operator definition.
+weighted_opts = struct('column_weight',true,'left_weight',true, ...
+    'row_weights',[0.2;1.3;4;0.7], ...
+    'use_tikhonov',true,'tikhonov_tol',tikhonov_tol);
+[Yw,Uw] = getPseudoFactors(N,1e-12,0,weighted_opts);
+column_scale = 1./vecnorm(N,2,1);
+Dw = diag(column_scale);
+Ww = diag(sqrt(weighted_opts.row_weights));
+[Uwr,Swr,Vwr] = svd(Ww*N*Dw,'econ');
+singw = diag(Swr);
+lambdaw = tikhonov_tol*max(singw);
+xw_ref = Dw*Vwr*diag(singw./(singw.^2+lambdaw^2))*Uwr'*Ww*b;
+xw = Yw*(Uw'*b);
+assert(norm(xw-xw_ref,inf) <= 1e3*eps(max(1,norm(xw_ref,inf))), ...
+    'Weighted Tikhonov pseudoinverse action mismatch.');
+
+% Empty Tikhonov tolerance falls back to the caller TSVD tolerance.
+fallback_tol = 2e-4;
+[Yempty,Uempty] = getPseudoFactors(N,fallback_tol,0, ...
+    struct('use_tikhonov',true,'tikhonov_tol',[]));
+[Yexplicit,Uexplicit] = getPseudoFactors(N,fallback_tol,0, ...
+    struct('use_tikhonov',true,'tikhonov_tol',fallback_tol));
+assert(norm(Yempty*Uempty'-Yexplicit*Uexplicit',inf) <= ...
+    1e3*eps(max(1,norm(Yexplicit*Uexplicit',inf))), ...
+    'Empty Tikhonov tolerance did not use the TSVD tolerance.');
+
+% Zero matrices remain finite, and disabling Tikhonov preserves TSVD.
+[Yzero,Uzero] = getPseudoFactors(zeros(4,3),tol,0,opts);
+assert(all(isfinite(Yzero(:))) && all(isfinite(Uzero(:))) && ...
+    norm(Yzero*Uzero',inf) == 0, ...
+    'Zero-matrix Tikhonov factors must define the zero action.');
+[Ytsvd,Utsvd] = getPseudoFactors(N,tol,0);
+[Yoff,Uoff] = getPseudoFactors(N,tol,0, ...
+    struct('use_tikhonov',false,'tikhonov_tol',1));
+assert(norm(Ytsvd*Utsvd'-Yoff*Uoff',inf) == 0, ...
+    'Disabled Tikhonov changed the TSVD action.');
+fprintf('getPseudoFactors Tikhonov edge-case tests passed.\n');
 end

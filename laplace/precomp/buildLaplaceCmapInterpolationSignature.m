@@ -1,15 +1,22 @@
-function signature = buildLaplaceCmapInterpolationSignature(opt,include_targets)
+function signature = buildLaplaceCmapInterpolationSignature( ...
+        opt,include_targets,problem)
 %BUILDLAPLACECMAPINTERPOLATIONSIGNATURE Parameter identity for saved models.
 
 if nargin < 2
     include_targets = true;
 end
-[opt,mode] = configureLaplaceCapacitanceInterpolation(opt);
+if nargin < 3
+    problem = getOptField(opt,'interpolation_problem','capacitance');
+end
+problem = resolveLaplaceInterpolationProblem(problem,mfilename);
+[opt,mode] = configureLaplaceCmapInterpolation(opt,problem);
 
 signature = struct();
 signature.format_version = 3;
 signature.trainer_version = 1;
 signature.mode = mode;
+signature.problem = problem;
+signature.project_charge = strcmp(problem,'elastance');
 signature.rad = opt.rad;
 signature.N_cmap = getOptField(opt,'N_cmap',opt.N_c);
 signature.N_f = opt.N_f;
@@ -39,8 +46,7 @@ signature.audit_nodes = 4;
 signature.reference_location = 'delta_midpoint';
 if include_targets
     signature.interpolation_tol = opt.interpolation_tol;
-    signature.charge_interpolation_tol = ...
-        opt.charge_interpolation_tol;
+    signature.volt_charge_interp_tol = opt.volt_charge_interp_tol;
 end
 validateattributes(signature.panel_count_candidates,{'numeric'}, ...
     {'vector','integer','positive'},mfilename, ...

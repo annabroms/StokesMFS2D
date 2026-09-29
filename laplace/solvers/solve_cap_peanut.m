@@ -32,7 +32,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
 %                     two-body pseudoinverses. Cmap compression remains TSVD
 %       tikhonov_tol  relative parameter lambda/sigma_max; empty uses the
-%                     legacy local cutoff as the Tikhonov knee
+%                     legacy local cutoff normally and 1e-11 for interpolation
 %       use_interpolation
 %                     'none' (default off), 'reduced_noconst' (preferred),
 %                     'reduced', or 'full'. Interpolation uses a trained
@@ -41,7 +41,7 @@ function [Q,sol] = solve_cap_peanut(q,v_body,opt)
 %                     prepareLaplaceCmapInterpolation before the solve.
 %       interpolation_tol
 %                     target action error for full/reconstructed Cmap
-%       charge_interpolation_tol
+%       volt_charge_interp_tol
 %                     independent target for the full Cmap_QV map
 %       refit         false: Fourier rotation/resampling (default),
 %                     true: per-particle MFS field refitting around Cmap
@@ -86,7 +86,7 @@ if nargin < 3 || ~isstruct(opt)
 end
 
 R = getOptField(opt,'rad',2);
-[opt,interpolation_mode] = configureLaplaceCapacitanceInterpolation(opt);
+[opt,interpolation_mode] = configureLaplaceCmapInterpolation(opt,'capacitance');
 
 [ram_check,] = startRamCheck(opt,mfilename);
 
@@ -495,6 +495,7 @@ sol.lambda_proxy = lambda_proxy;
 sol.N_c = N_c;
 sol.N_cmap = N_cmap;
 sol.refit = refit;
+sol.interpolation_problem = 'capacitance';
 sol.use_interpolation = interpolation_mode;
 sol.it = it;
 sol.gmres_tol = gmres_tol;

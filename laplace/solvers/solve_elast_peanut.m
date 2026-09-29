@@ -10,7 +10,9 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %   opt        - Options struct (see getLaplace2Dparams.m).
 %     Required fields:
 %       rad           physical particle radius
-%       N_c,N_f       coarse/fine proxy point counts
+%       N_c,N_f       solver-coarse/fine proxy point counts
+%       N_cmap        canonical Cmap coarse count; a different value
+%                     requires pair-basis reuse and refit
 %       a_c,a_f       coarse/fine collocation upsampling factors
 %       Rp_c,Rp_f     coarse/fine proxy radii
 %       delta_pair    pair-detection threshold
@@ -30,7 +32,17 @@ function [v_body,sol] = solve_elast_peanut(q,Q_body,opt)
 %       use_tikhonov  use smooth Tikhonov filters instead of TSVD in the
 %                     two-body pseudoinverses. Cmap compression remains TSVD
 %       tikhonov_tol  relative parameter lambda/sigma_max; empty uses the
-%                     legacy local cutoff as the Tikhonov knee
+%                     legacy local cutoff normally and 1e-11 for interpolation
+%       use_interpolation
+%                     'none' (default) or 'full'. Elastance rejects all
+%                     reduced interpolation modes. Prepare the model with
+%                     prepareLaplaceCmapInterpolation(opt,'elastance').
+%       interpolation_tol
+%                     target action error for the full Cmap
+%       volt_charge_interp_tol
+%                     target for the auxiliary voltage/charge map
+%       refit         false: Fourier rotation/resampling (default),
+%                     true: charge-preserving field refitting around Cmap
 %       get_bndry_field
 %                     if true, reconstruct boundary fields/residuals in
 %                     postprocessing
@@ -70,6 +82,42 @@ if nargin < 3 || ~isstruct(opt)
     error('solve_elast_peanut requires q, Q_body, and an options struct opt.');
 end
 
+rad = getOptField(opt,'rad',2);
+[opt,interpolation_mode] = ...
+    configureLaplaceCmapInterpolation(opt,'elastance');
+if ~strcmp(interpolation_mode,'none')
+    if ~isfield(opt,'interpolation_model') || ...
+            isempty(opt.interpolation_model)
+        error('solve_elast_peanut:ModelNotPrepared', ...
+            ['Interpolated elastance solves require an attached model. ', ...
+             'Call prepareLaplaceCmapInterpolation(opt,''elastance'').']);
+    end
+    interpolation_model = opt.interpolation_model;
+    valid_model = isstruct(interpolation_model) && ...
+        isscalar(interpolation_model) && ...
+        isfield(interpolation_model,'version') && ...
+        interpolation_model.version == 3 && ...
+        isfield(interpolation_model,'mode') && ...
+        strcmp(interpolation_model.mode,'full') && ...
+        isfield(interpolation_model,'signature');
+    if valid_model
+        try
+            valid_model = strcmp(getLaplaceCmapModelProblem( ...
+                interpolation_model),'elastance') && ...
+                isLaplaceCmapSignatureCompatible( ...
+                interpolation_model.signature, ...
+                buildLaplaceCmapInterpolationSignature( ...
+                opt,true,'elastance'),'elastance');
+        catch
+            valid_model = false;
+        end
+    end
+    if ~valid_model
+        error('solve_elast_peanut:IncompatibleInterpolationModel', ...
+            ['The attached interpolation model is not a compatible ', ...
+             'full Laplace elastance model.']);
+    end
+end
 [ram_check,~] = startRamCheck(opt,mfilename); 
 
 visualise_sol = logical(getOptField(opt,'visualise_sol',getOptField(opt,'visualise',0)));
@@ -82,6 +130,28 @@ body_plot_font_size = getOptField(opt,'body_plot_font_size',14);
 get_precomp_time = logical(getOptField(opt,'get_precomp_time',false));
 get_solve_time = logical(getOptField(opt,'get_solve_time',true));
 use_big_sparse_requested = logical(getOptField(opt,'use_big_sparse',false));
+N_c = getOptField(opt,'N_c',80);
+N_cmap = getOptField(opt,'N_cmap',N_c);
+refit = logical(getOptField(opt,'refit',false));
+reuse_pair_basis = logical(getOptField(opt, ...
+    'reuse_pair_basis_by_sep',false));
+validateattributes(N_c,{'numeric'},{'scalar','integer','positive'}, ...
+    mfilename,'opt.N_c');
+validateattributes(N_cmap,{'numeric'},{'scalar','integer','positive'}, ...
+    mfilename,'opt.N_cmap');
+opt.N_cmap = N_cmap;
+opt.refit = refit;
+if N_cmap ~= N_c && (~reuse_pair_basis || ~refit)
+    error('solve_elast_peanut:MixedCoarseRequiresReusedRefit', ...
+        ['opt.N_cmap may differ from opt.N_c only when ', ...
+         'opt.reuse_pair_basis_by_sep=true and opt.refit=true.']);
+end
+if use_big_sparse_requested && (N_cmap ~= N_c || refit)
+    error('solve_elast_peanut:MixedCoarseBigSparseUnsupported', ...
+        ['opt.use_big_sparse=1 currently requires opt.N_cmap=opt.N_c ', ...
+         'and opt.refit=false. Use the standard peanut matvec for ', ...
+         'per-particle refitting.']);
+end
 
 q = q(:);
 Q_body = Q_body(:);
@@ -97,10 +167,9 @@ if ~exist('solver_name','var') || isempty(solver_name)
 end
 fprintf('==== START: %s ====\n', solver_name);
 
-rad = getOptField(opt,'rad',2);
 opt.gmres_verbose = gmres_verbose;
 
-N_c = opt.N_c; %coarse proxy sources per body
+% N_c is the global coarse proxy count validated above
 N_f = opt.N_f; %fine proxy sources per body (used to construct pair corrections only)
 a_c = opt.a_c; %a_c = M_c/N_c, where M_c is the number of coarse collocation nodes per body
 a_f = opt.a_f;
@@ -112,7 +181,6 @@ sep_f = (1/N_f)*log(1/tol_c);
 Rp_c = getOptField(opt,'Rp_c',rad*max([1-sep_c,0.01]));
 Rp_f = getOptField(opt,'Rp_f',rad*max([1-sep_f,0.01]));
 
-opt.project_charge = true; % always true for elastance, false for capacitance
 big_sparse_build_mode = '';
 if use_big_sparse_requested
     if ~logical(getOptField(opt,'cmap',false))
@@ -141,8 +209,18 @@ if use_big_sparse_requested
              'opt.get_bndry_field=0. Use ''auto'' or ''precomputed'' ', ...
              'for boundary postprocessing.']);
     end
+    if ~strcmp(interpolation_mode,'none') && ...
+            ~strcmp(big_sparse_build_mode,'precomputed')
+        error('solve_elast_peanut:InterpolationSparseRequiresPrecomputed', ...
+            ['Interpolated pair maps require ', ...
+             'opt.lap_big_sparse_build_mode=''precomputed''. Streaming ', ...
+             'constructs exact maps and cannot use interpolation.']);
+    end
 end
 opt_solve = opt;
+if isfield(opt_solve,'interpolation_model')
+    opt_solve = rmfield(opt_solve,'interpolation_model');
+end
 opt_solve.get_bndry_field = false;
 if use_big_sparse_requested
     opt_solve.use_big_sparse = true;
@@ -158,6 +236,14 @@ rbase_out_c = rad*(cos(tout)+1i*sin(tout));
 tin = linspace(0,2*pi,N_c+1)';
 tin = tin(1:end-1);
 rbase_in_c = Rp_c*(cos(tin)+1i*sin(tin));
+
+if logical(getOptField(opt,'cmap',false)) && N_cmap ~= N_c
+    tin_cmap = linspace(0,2*pi,N_cmap+1)';
+    tin_cmap = tin_cmap(1:end-1);
+    rbase_in_cmap = Rp_c*(cos(tin_cmap)+1i*sin(tin_cmap));
+else
+    rbase_in_cmap = rbase_in_c;
+end
 
 tin_f = linspace(0,2*pi,N_f+1)';
 tin_f = tin_f(1:end-1);
@@ -208,8 +294,8 @@ if streaming_big_sparse
     pair_cache.stats.n_pairs = size(pairs,1);
 else
     [UB_all,YB_all,UC_all,YC_all,Cmap,Cmap_QV,pair_cache] = ...
-        getPairBasisLaplace(q,rbase_in_c,rbase_in_f,rout_base_f,rbase_out_c, ...
-        rimage_vec,refine,pairs,opt);
+        getPairBasisLaplace(q,rbase_in_cmap,rbase_in_f,rout_base_f, ...
+        rbase_out_c,rimage_vec,refine,pairs,opt,rbase_in_c);
 end
 if get_precomp_time
     precomp_time.pair_basis = toc(pair_basis_timer);
@@ -226,6 +312,7 @@ end
 
 geom = struct();
 geom.rbase_in_c = rbase_in_c;
+geom.rbase_in_cmap = rbase_in_cmap;
 geom.rbase_in_f = rbase_in_f;
 geom.rout_base_f = rout_base_f;
 geom.refine = refine;
@@ -420,6 +507,11 @@ end
 
 sol = struct();
 sol.lambda_proxy = lambda_proxy;
+sol.N_c = N_c;
+sol.N_cmap = N_cmap;
+sol.refit = refit;
+sol.interpolation_problem = 'elastance';
+sol.use_interpolation = interpolation_mode;
 sol.it = it;
 sol.gmres_tol = gmres_tol;
 sol.maxres = maxres;

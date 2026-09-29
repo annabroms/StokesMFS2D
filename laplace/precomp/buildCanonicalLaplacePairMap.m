@@ -1,8 +1,13 @@
-function snapshot = buildCanonicalLaplacePairMap(delta,opt,grids)
-%BUILDCANONICALLAPLACEPAIRMAP Exact aligned Cmap and charge map at one gap.
+function snapshot = buildCanonicalLaplacePairMap(delta,opt,grids,problem)
+%BUILDCANONICALLAPLACEPAIRMAP Exact aligned Cmap and auxiliary map at one gap.
 %
 % This is the shared production snapshot constructor used by both the
 % runtime interpolator and the Sep. 25 experiments.
+
+if nargin < 4
+    problem = getOptField(opt,'interpolation_problem','capacitance');
+end
+problem = resolveLaplaceInterpolationProblem(problem,mfilename);
 
 R = opt.rad;
 sep = 2*R+delta;
@@ -22,7 +27,7 @@ end
 
 group = buildLaplacePairGroup(1,1,sep,q,grids.rbase_in_c, ...
     grids.rbase_in_f,rimage_vec,refine,pairs,opt_exact, ...
-    grids.rout_base_f,false,true);
+    grids.rout_base_f,strcmp(problem,'elastance'),true);
 snapshot = struct('delta',delta,'Cmap',group.Cmap, ...
-    'Cmap_QV',group.Cmap_QV);
+    'Cmap_QV',group.Cmap_QV,'problem',problem);
 end

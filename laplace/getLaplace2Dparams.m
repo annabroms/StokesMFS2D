@@ -37,7 +37,7 @@ opt.Rp_c = opt.rad*max([1-sep,0.01]);
 opt.delta_pair = 0.2*R; % largest distance for which pair corrections are applied. 
 opt.beta = 0.3; % beta is a parameter determining the shape of the enhancing ellipse 
 % segments for close pairs. Smaller beta means tip of ellipse closer to image accumulation points.
-opt.Nclust = 100; % Chebyshev nodes on each ellipse segment for close pairs, a portion of which are used as enhancing sources.
+opt.Nclust = 150; % Chebyshev nodes on each ellipse segment for close pairs, a portion of which are used as enhancing sources.
 opt.ellipse_constant = false; % if true, freeze the ellipse-segment discretisation at opt.smallest_delta
 opt.smallest_delta = 1e-3*R; % smallest gap ever requested; required when opt.ellipse_constant=true
 opt.a_f = 1.2;
@@ -54,7 +54,8 @@ opt.compress_cmap  = 0; % low rank compression of cmap
 opt.cmap_tol = 1e-8; %tolerance in the low rank compression
 opt.use_tikhonov = false; % smoothly regularize pair/peanut pseudoinverses in two-body setup
 % Relative parameter lambda/sigma_max for those Tikhonov filters. Empty
-% uses the legacy 1e-14 pair and peanut pseudoinverse tolerance.
+% uses the legacy 1e-14 pair and peanut pseudoinverse tolerance;
+% interpolation instead selects its 1e-11 default.
 opt.tikhonov_tol = [];
 % Pair-map construction for Laplace capacitance:
 %   'none'            exact map for every distinct separation (default off)
@@ -63,16 +64,16 @@ opt.tikhonov_tol = [];
 %   'reduced_noconst' interpolate U*B(alpha)*V' panelwise (preferred mode)
 % The interpolation modes use canonical rotations for both refit=false
 % (Fourier rotation) and refit=true (charge-preserving field refits).
-% Interpolation remains opt-in because it is capacitance-only and requires
-% a compatible saved model; when enabled, use 'reduced_noconst'.
+% Elastance supports only 'full'; capacitance supports all listed modes.
+% Interpolation remains opt-in and requires a compatible saved model.
 opt.use_interpolation = 'none';
 % Accuracy targets for the canonical alpha interpolator.  The first is
 % applied to the final full/reconstructed coarse correction map C; the
-% second is applied independently to the 2-by-(2*N_cmap) charge map C_Q.
+% second is applied independently to the 2-by-(2*N_cmap) voltage/charge map.
 opt.interpolation_tol = 1e-6;
-opt.charge_interpolation_tol = 1e-8;
+opt.volt_charge_interp_tol = 1e-8;
 % Empty selects a deterministic, parameter-keyed file under data/.
-% Use prepareLaplaceCmapInterpolation before an interpolated solve.
+% Pass 'capacitance' or 'elastance' to prepareLaplaceCmapInterpolation.
 opt.interpolation_model_file = '';
 % Adaptive training search.  Defaults reproduce the documented current
 % search scale; most runs only need to change the two tolerances above.

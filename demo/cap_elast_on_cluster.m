@@ -1,5 +1,5 @@
-%CAPACITANCE_ON_CLUSTER Reproduce the hexagonal-pack capacitance demo but on 
-% a randomized cluster with fixed interparticle distances.
+%CAP_ELAST_ON_CLUSTER Reproduce the hexagonal-pack capacitance demo but on 
+% a randomized cluster with fixed interparticle distances. 
 %
 % Running this script performs:
 %   1) A peanut-compressed capacitance solve 
@@ -34,7 +34,6 @@ N_f = 150; %used in the interpolation
 opt = getLaplace2Dparams(P,R,N_c,N_f);
 opt.N_cmap = 80;
 opt.delta_pair = 0.4;
-opt.Nclust = 100;
 opt.N_peanut = 400;
 opt.visualise_sol = 0;
 opt.visualise_grid = 0;
@@ -48,11 +47,15 @@ opt.use_big_sparse = 0;
 opt.get_bndry_field = 1;
 opt.refit = 1; 
 opt.ellipse_constant = 1;
+opt.Nclust = 150;
+opt.volt_charge_interp_tol = 1e-6;
+opt.interpolation_tol = 1e-5;
+opt.tikhonov_tol = 1e-11; %1e-11;
 
-% Use the preferred reference-free reduced interpolation model.  The
-% preparation call loads the compatible parameter-keyed MAT file; it does
-% not silently retrain a missing model in batch mode.
-opt.use_interpolation = 'reduced_noconst';
+% Use the selected full capacitance interpolation model. The preparation
+% call loads the compatible parameter-keyed MAT file; it does not silently
+% retrain a missing model in batch mode.
+opt.use_interpolation = 'full'; % 'reduced_noconst';
 opt = prepareLaplaceCmapInterpolation(opt);
 
 fprintf('Peanut-compressed capacitance solve\n');
@@ -63,18 +66,22 @@ t_peanut = toc;
 fprintf('  GMRES it=%d, maxres=%.3e, time=%.2f s\n\n', ...
     sol_peanut.it,sol_peanut.maxres,t_peanut);
 
-opt.use_interpolation = 'none'; %not implemented for elastance
-tic;
-[Q_peanut_pre,sol_peanut_pre] = solve_cap_peanut(q,v_body,opt);
-t_peanut = toc;
-fprintf('  GMRES it=%d, maxres=%.3e, time=%.2f s\n\n', ...
-    sol_peanut_pre.it,sol_peanut_pre.maxres,t_peanut);
+% opt.use_interpolation = 'none';
+% tic;
+% [Q_peanut_pre,sol_peanut_pre] = solve_cap_peanut(q,v_body,opt);
+% t_peanut = toc;
+% fprintf('  GMRES it=%d, maxres=%.3e, time=%.2f s\n\n', ...
+%     sol_peanut_pre.it,sol_peanut_pre.maxres,t_peanut);
 
 opt_tw = opt;
+opt_tw.interpolation_tol = 1e-5;
 opt_tw.visualise_sol = 0;
 opt_tw.gmres_tol = 1e-10;
-opt_tw.refit = 0; %non-fft based
-opt_tw.N_cmap = opt.N_c; 
+opt_tw.refit = 0; % Fourier rotation on equal coarse grids
+opt_tw.N_cmap = opt.N_c;
+opt_tw = rmfield(opt_tw,'interpolation_model');
+opt_tw.interpolation_model_file = '';
+opt_tw = prepareLaplaceCmapInterpolation(opt_tw,'elastance');
 
 fprintf('Peanut cap->elast two-way check\n');
 tic;
