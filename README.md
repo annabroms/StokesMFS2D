@@ -1,4 +1,7 @@
 # StokesMFS2D
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24448433.svg)](https://doi.org/10.5281/zenodo.24448433)
+
 Method-of-fundamental-solutions (MFS) solvers for 2D Stokes and Laplace boundary value problems on geometries of close-to-touching disks in free space. This research code implements both one-body (1B) and pair-based (2B) preconditioning strategies.
 
 The 1B solvers use left- or right-preconditioning based on single-body solves. The 2B solvers extend the right preconditioners by incorporating pair corrections. These generalise an idea of Cheng and Greengard[^cheng-greengard] and use a fine set of sources for each pair of disks. Solvers with the _peanut extension compress this two-body discretisation to an equivalent coarse set of proxy nodes within each body. With pair corrections, both the number of GMRES unknowns and the number of iterations are significantly reduced compared to one-body preconditioning.
