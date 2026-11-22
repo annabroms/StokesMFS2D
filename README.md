@@ -13,6 +13,9 @@ Greater gains are achieved for Stokes BVPs than for Laplace, owing to the strong
 </p>
 <p align="center"><em>Example mobility problem on 10000 circles, packing fraction phi = 0.65</em></p>
 
+## Requirements
+- MATLAB. The Statistics and Machine Learning Toolbox is used for fast neighbour searches (`rangesearch` in `geometry/find_close_pairs.m`, and `createns`/`knnsearch` in `geometry/grow_cluster.m`). Without it, close-pair detection falls back to a brute-force O(P^2) search and `grow_cluster` falls back to brute-force nearest-neighbour checks.
+
 ## Repository overview
 - `mobility/`
   Stokes mobility solvers (input force/torque, output rigid-body velocities), including:
